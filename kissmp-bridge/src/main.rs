@@ -5,7 +5,7 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
-    let addr = &"0.0.0.0:1234".parse::<SocketAddr>().unwrap();
+    let addr = &"0.0.0.0:7894".parse::<SocketAddr>().unwrap();
     let mut listener = TcpListener::bind(addr).await.unwrap();
     while let Ok(conn) = listener.accept().await {
         let stream = conn.0;
