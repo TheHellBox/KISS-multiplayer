@@ -7,10 +7,18 @@ use tokio::net::TcpListener;
 async fn main() {
     let addr = &"0.0.0.0:1234".parse::<SocketAddr>().unwrap();
     let mut listener = TcpListener::bind(addr).await.unwrap();
-    let addr = &"185.87.49.206:1234".parse::<SocketAddr>().unwrap();
     while let Ok(conn) = listener.accept().await {
         let stream = conn.0;
         let (mut reader, mut writer) = tokio::io::split(stream);
+
+        // Receive addr from client
+        let mut addr_len = [0; 4];
+        reader.read_exact(&mut addr_len).await.unwrap();
+        let addr_len = u32::from_le_bytes(addr_len) as usize;
+        let mut addr_buffer = vec![0; addr_len];
+        reader.read_exact(&mut addr_buffer).await.unwrap();
+        let addr_str = String::from_utf8(addr_buffer).unwrap();
+        let addr = &addr_str.parse::<SocketAddr>().unwrap();
        
         let mut endpoint = quinn::Endpoint::builder();
         let mut client_cfg = quinn::ClientConfig::default();

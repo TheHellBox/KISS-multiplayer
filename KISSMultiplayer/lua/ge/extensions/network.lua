@@ -10,11 +10,15 @@ local connection = {
   timeout_buffer = nil
 }
 
-local function connect(addr, port)
+local function connect(addr)
   print("Connecting...")
   connection.tcp = socket.tcp()
   connection.tcp:settimeout(5.0)
-  local connected, err = connection.tcp:connect(addr, port)
+  local connected, err = connection.tcp:connect("127.0.0.1", "7894")
+  -- Send server address to the bridge
+  local addr_lenght = ffi.string(ffi.new("uint32_t[?]", 1, {#addr}), 4)
+  connection.tcp.send(addr_lenght)
+  connection.tcp.send(addr)
   local _ = connection.tcp:receive(1)
   local len, _, _ = connection.tcp:receive(4)
   local len = ffi.cast("uint32_t*", ffi.new("char[?]", #len, len))
