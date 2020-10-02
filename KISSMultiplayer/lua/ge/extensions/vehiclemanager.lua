@@ -54,6 +54,7 @@ local function onUpdate(dt)
       if vehicle then
         send_transform_updates(vehicle)
         vehicle:queueLuaCommand("kiss_electrics.send()")
+        vehicle:queueLuaCommand("kiss_gearbox.send()")
       end
     end
   end
@@ -190,6 +191,11 @@ local function update_vehicle_electrics(data)
   vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(data).."\')")
 end
 
+local function update_vehicle_gearbox(data)
+  local data = messagepack.unpack(data)
+  vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(data).."\')")
+end
+
 local function push_rotation(id, x, y, z, w)
   rotations[id] = {x, y, z, w}
 end
@@ -207,5 +213,7 @@ M.update_vehicle_transform = update_vehicle_transform
 M.spawn_vehicle = spawn_vehicle
 M.push_rotation = push_rotation
 M.set_smoothness = set_smoothness
+M.update_vehicle_electrics = update_vehicle_electrics
+M.update_vehicle_gearbox = update_vehicle_gearbox
 
 return M

@@ -88,6 +88,10 @@ local function onUpdate(dt)
     elseif data_type == 1 then
       local decoded = jsonDecode(data)
       vehiclemanager.spawn_vehicle(decoded)
+    elseif data_type == 2 then
+      vehiclemanger.update_electrics(data)
+    elseif data_type == 3 then
+      vehiclemanager.update_gearbox(data)
     end
   end
 end
