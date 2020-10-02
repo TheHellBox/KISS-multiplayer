@@ -1,6 +1,6 @@
 local M = {}
 
-function send()
+local function send()
   local data = {
     vehicle_id = electrics.values.clutch,
     throttle_input = electrics.values.throttle_input,
@@ -15,5 +15,17 @@ function send()
   }
   obj:queueGameEngineLua("networking.send_messagepack(2, false, \'"..jsonEncode(data)"\')")
 end
+
+local function apply(data)
+  local data = jsonDecode(data)
+  input.event("throttle", data.throttle_input, 1)
+  input.event("brake", data.brake_input, 2)
+  input.event("steering", data.steering_input, 2)
+  input.event("parkingbrake", data.steering_input, 2)
+  input.event("clutch", data.clutch_input, 1)
+end
+
+M.send = send
+M.apply = apply
 
 return M

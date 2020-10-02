@@ -1,4 +1,7 @@
 local M = {}
+
+local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
+
 local timer = 0
 local id_map = {}
 local velocity_map = {}
@@ -40,7 +43,6 @@ local function onUpdate(dt)
     local vehicle = be:getObject(i)
     if vehicle then
       vehicle:queueLuaCommand("kiss_vehicle.update_rotation()")
-      vehicle:queueLuaCommand("kiss_electrics.send()")
     end
   end
   if timer < (1/30) then
@@ -51,6 +53,7 @@ local function onUpdate(dt)
       local vehicle = be:getObjectByID(i)
       if vehicle then
         send_transform_updates(vehicle)
+        vehicle:queueLuaCommand("kiss_electrics.send()")
       end
     end
   end
@@ -180,6 +183,11 @@ local function update_vehicle_transform(transform)
     if transform.generation < transform_buffer[transform.owner].generation then return end
   end
   transforms_buffer[transform.owner] = transform
+end
+
+local function update_vehicle_electrics(data)
+  local data = messagepack.unpack(data)
+  vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(data).."\')")
 end
 
 local function push_rotation(id, x, y, z, w)
