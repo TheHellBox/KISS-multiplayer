@@ -2,7 +2,7 @@ local M = {}
 
 local function send()
   local data = {
-    vehicle_id = electrics.values.clutch,
+    vehicle_id = obj:getID(),
     throttle_input = electrics.values.throttle_input,
     brake_input = electrics.values.brake_input,
     clutch = electrics.values.clutch,
