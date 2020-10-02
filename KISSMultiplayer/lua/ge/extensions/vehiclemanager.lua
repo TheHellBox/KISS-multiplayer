@@ -40,6 +40,7 @@ local function onUpdate(dt)
     local vehicle = be:getObject(i)
     if vehicle then
       vehicle:queueLuaCommand("kiss_vehicle.update_rotation()")
+      vehicle:queueLuaCommand("kiss_electrics.send()")
     end
   end
   if timer < (1/30) then

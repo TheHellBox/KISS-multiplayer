@@ -1,3 +1,9 @@
+pub mod electrics;
+pub mod transform;
+
+use crate::transform::*;
+use crate::electrics::*;
+
 use anyhow::Error;
 use futures::{select, StreamExt, TryStreamExt};
 use quinn::{Certificate, CertificateChain, PrivateKey};
@@ -10,12 +16,14 @@ use tokio::sync::mpsc;
 enum IncomingEvent {
     TransformUpdate(u32, Transform),
     VehicleData(VehicleData),
+    ElectricsUpdate(electrics::Electrics)
 }
 
 #[derive(Debug)]
 enum Outgoing {
     VehicleSpawn(VehicleData),
     PositionUpdate(u32, Transform),
+    ElectricsUpdate(u32, electrics::Electrics)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -30,13 +38,6 @@ pub struct VehicleData {
     owner: Option<u32>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Transform {
-    position: [f32; 3],
-    rotation: [f32; 4],
-    generation: u32
-}
-
 struct Connection {
     pub ordered: mpsc::Sender<Outgoing>,
 }
@@ -44,6 +45,7 @@ struct Connection {
 struct Server {
     connections: HashMap<u32, Connection>,
     transforms: HashMap<u32, Transform>,
+    electrics: HashMap<u32, electrics::Electrics>,
     vehicle_data_storage: HashMap<u32, VehicleData>,
     // Client ID, game_id, server_id
     vehicles: HashMap<u32, HashMap<u32, u32>>,
@@ -119,15 +121,10 @@ impl Server {
                 while let Some((data_type, data)) = cmds.try_next().await.unwrap() {
                     match data_type {
                         0 => {
-                            let result: [f32; 9] = bincode::deserialize(&data).unwrap();
-                            //println!("{}", result[0]);
+                            let (id, transform) = Transform::from_bytes(data);
                             let transform = IncomingEvent::TransformUpdate(
-                                result[0] as u32,
-                                Transform {
-                                    position: [result[1], result[2], result[3]],
-                                    rotation: [result[4], result[5], result[6], result[7]],
-                                    generation: result[8] as u32
-                                },
+                                id,
+                                transform,
                             );
                             client_events_tx.send((id, transform)).await.unwrap();
                         }
@@ -137,6 +134,13 @@ impl Server {
                                 serde_json::from_str(&data_str).unwrap();
                             client_events_tx
                                 .send((id, IncomingEvent::VehicleData(vehicle_data)))
+                                .await
+                                .unwrap()
+                        },
+                        2 => {
+                            let electrics = electrics::Electrics::from_bytes(&data);
+                            client_events_tx
+                                .send((id, IncomingEvent::ElectricsUpdate(electrics)))
                                 .await
                                 .unwrap()
                         }
@@ -159,7 +163,7 @@ impl Server {
         send(&mut stream, 3, &server_info).await;
         for (_, vehicle) in &self.vehicle_data_storage{
             let data = serde_json::to_string(&vehicle).unwrap().into_bytes();
-            send(&mut stream, 1, &data);
+            send(&mut stream, 1, &data).await;
         }
 
         // Sender
@@ -169,24 +173,17 @@ impl Server {
                 let data_type = get_data_type(&command);
                 match command {
                     PositionUpdate(vehicle_id, transform) => {
-                        let data = [
-                            transform.position[0],
-                            transform.position[1],
-                            transform.position[2],
-                            transform.rotation[0],
-                            transform.rotation[1],
-                            transform.rotation[2],
-                            transform.rotation[3],
-                            vehicle_id as f32,
-                            transform.generation as f32,
-                        ];
-                        let data = bincode::serialize(&data).unwrap();
+                        let data = transform.to_bytes(vehicle_id);
                         send(&mut stream, data_type, &data).await;
                     }
                     VehicleSpawn(data) => {
                         let data = serde_json::to_string(&data).unwrap().into_bytes();
                         send(&mut stream, data_type, &data).await;
-                    }
+                    },
+                    ElectricsUpdate(vehicle_id, electrics_data) => {
+                        let data = electrics_data.to_bytes();
+                        send(&mut stream, data_type, &data).await;
+                    },
                 }
             }
         });
@@ -200,6 +197,13 @@ impl Server {
                     .await
                     .unwrap();
             }
+            for (vehicle_id, electrics_data) in &self.electrics {
+                client
+                    .ordered
+                    .send(Outgoing::ElectricsUpdate(*vehicle_id, electrics_data.clone()))
+                    .await
+                    .unwrap();
+            }
         }
     }
 
@@ -209,17 +213,17 @@ impl Server {
             TransformUpdate(vehicle_id, transform) => {
                 if let Some(client_vehicles) = self.vehicles.get(&client_id) {
                     if let Some(server_id) = client_vehicles.get(&vehicle_id) {
-                        self.transforms.insert(*server_id, transform);
+                        if self.client_owns_vehicle(client_id, *server_id) {
+                            self.transforms.insert(*server_id, transform);
+                        }
                     }
                 }
             }
             VehicleData(data) => {
                 let server_id = rand::random::<u16>() as u32;
-                println!("Server ID {}", server_id);
                 let mut data = data.clone();
                 data.server_id = Some(server_id);
                 data.owner = Some(client_id);
-
                 for (_, client) in &mut self.connections {
                     client
                         .ordered
@@ -235,7 +239,23 @@ impl Server {
                     .unwrap()
                     .insert(data.in_game_id, server_id);
                 self.vehicle_data_storage.insert(server_id, data);
+            },
+            ElectricsUpdate(data) => {
+                if let Some(client_vehicles) = self.vehicles.get(&client_id) {
+                    if let Some(server_id) = client_vehicles.get(&data.vehicle_id) {
+                        self.electrics.insert(*server_id, data);
+                    }
+                }
             }
+        }
+    }
+
+    pub fn client_owns_vehicle(&self, client_id: u32, vehicle_id: u32) -> bool {
+        if let Some(vehicles) = self.vehicles.get(&client_id) {
+            vehicles.get(&vehicle_id).is_some()
+        }
+        else{
+            false
         }
     }
 }
@@ -261,9 +281,10 @@ fn generate_certificate() -> (CertificateChain, PrivateKey) {
 async fn main() {
     println!("Gas, Gas, Gas!");
     let server = Server {
-        connections: HashMap::with_capacity(16),
+        connections: HashMap::with_capacity(8),
         transforms: HashMap::with_capacity(64),
         vehicles: HashMap::with_capacity(64),
+        electrics: HashMap::with_capacity(64),
         vehicle_data_storage: HashMap::with_capacity(64),
         name: "KissMP BeanNG Server",
         tickrate: 30,
@@ -276,5 +297,6 @@ fn get_data_type(data: &Outgoing) -> u8 {
     match data {
         PositionUpdate(_, _) => 0,
         VehicleSpawn(_) => 1,
+        ElectricsUpdate(_, _) => 2,
     }
 }
