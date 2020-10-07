@@ -12,11 +12,15 @@ local connection = {
   timeout_buffer = nil
 }
 
-local function connect(addr, port)
+local function connect(addr)
   print("Connecting...")
   connection.tcp = socket.tcp()
   connection.tcp:settimeout(5.0)
-  local connected, err = connection.tcp:connect(addr, port)
+  local connected, err = connection.tcp:connect("127.0.0.1", "7894")
+  -- Send server address to the bridge
+  local addr_lenght = ffi.string(ffi.new("uint32_t[?]", 1, {#addr}), 4)
+  connection.tcp:send(addr_lenght)
+  connection.tcp:send(addr)
   local _ = connection.tcp:receive(1)
   local len, _, _ = connection.tcp:receive(4)
   local len = ffi.cast("uint32_t*", ffi.new("char[?]", #len, len))
@@ -48,7 +52,7 @@ local function send_data(data_type, reliable, data)
   connection.tcp:send(data)
 end
 
-local function send_message_pack(data_type, reliable, data)
+local function send_messagepack(data_type, reliable, data)
   local data = messagepack.pack(jsonDecode(data))
   send_data(data_type, reliable, data)
 end
@@ -89,9 +93,9 @@ local function onUpdate(dt)
       local decoded = jsonDecode(data)
       vehiclemanager.spawn_vehicle(decoded)
     elseif data_type == 2 then
-      vehiclemanger.update_electrics(data)
+      vehiclemanager.update_vehicle_electrics(data)
     elseif data_type == 3 then
-      vehiclemanager.update_gearbox(data)
+      vehiclemanager.update_vehicle_gearbox(data)
     end
   end
 end
@@ -104,5 +108,6 @@ M.get_client_id = get_client_id
 M.connect = connect
 M.send_data = send_data
 M.onUpdate = onUpdate
+M.send_messagepack = send_messagepack
 
 return M

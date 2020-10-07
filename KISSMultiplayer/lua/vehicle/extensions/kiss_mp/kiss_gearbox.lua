@@ -12,14 +12,23 @@ local function send()
     vehicle_id = obj:getID(),
     arcade = M.arcade,
     lock_coef = device.lockCoef,
-    mode = device.mode,
+    mode = device.mode or "none",
     gear_index = device.gearIndex,
   }
-  obj:queueGameEngineLua("networking.send_messagepack(3, false, \'"..jsonEncode(data)"\')")
+
+  if device.mode then
+    data.mode = device.mode
+  end
+  obj:queueGameEngineLua("network.send_messagepack(3, false, \'"..jsonEncode(data).."\')")
 end
 
 local function apply(data)
   local data = jsonDecode(data)
+  local device = powertrain.getDevice("gearbox")
+  device:setGearIndex(data[5])
+  if not data[4] == "none" then
+    device:setMode(data[4])
+  end
 end
 
 M.send = send

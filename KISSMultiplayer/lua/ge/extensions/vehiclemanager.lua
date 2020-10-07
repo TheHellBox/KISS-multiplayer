@@ -55,6 +55,11 @@ local function onUpdate(dt)
         send_transform_updates(vehicle)
         vehicle:queueLuaCommand("kiss_electrics.send()")
         vehicle:queueLuaCommand("kiss_gearbox.send()")
+      else
+        print("fuck, no ownership")
+        for k, v in pairs(ownership) do
+          print(tostring(k)..": "..tostring(v))
+        end
       end
     end
   end
@@ -188,11 +193,18 @@ end
 
 local function update_vehicle_electrics(data)
   local data = messagepack.unpack(data)
+  local id = id_map[data[1] or -1] or -1
+  if ownership[id] then return end
+  local vehicle = be:getObjectByID(id)
   vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(data).."\')")
 end
 
 local function update_vehicle_gearbox(data)
   local data = messagepack.unpack(data)
+  local id = id_map[data[1] or -1] or -1
+  print(id.." "..data[1])
+  if ownership[id] then return end
+  local vehicle = be:getObjectByID(id)
   vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(data).."\')")
 end
 

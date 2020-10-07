@@ -8,10 +8,10 @@ pub struct Electrics{
     pub clutch: f32,
     pub parkingbrake: f32,
     pub steering_input: f32,
-    pub horn: bool,
-    pub toggle_right_signal: bool,
-    pub toggle_left_signal: bool,
-    pub toggle_lights: bool
+    pub horn: f32,
+    pub toggle_right_signal: f32,
+    pub toggle_left_signal: f32,
+    pub toggle_lights: f32
 }
 
 impl Electrics {

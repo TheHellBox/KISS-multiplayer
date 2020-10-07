@@ -63,7 +63,7 @@ impl Server {
         let mut ticks =
             tokio::time::interval(std::time::Duration::from_secs(1) / self.tickrate as u32).fuse();
         let (certificate_chain, key) = generate_certificate();
-        let addr = &"0.0.0.0:1234".parse::<SocketAddr>().unwrap();
+        let addr = &"0.0.0.0:3698".parse::<SocketAddr>().unwrap();
         let mut server_config = quinn::ServerConfigBuilder::default();
         server_config.certificate(certificate_chain, key).unwrap();
         let mut endpoint = quinn::Endpoint::builder();
@@ -284,6 +284,8 @@ impl Server {
     }
 
     pub fn client_owns_vehicle(&self, client_id: u32, vehicle_id: u32) -> bool {
+        // NOTE: Temparery
+        return true;
         if let Some(vehicles) = self.vehicles.get(&client_id) {
             vehicles.get(&vehicle_id).is_some()
         }
