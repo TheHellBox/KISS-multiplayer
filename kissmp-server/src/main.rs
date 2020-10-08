@@ -126,9 +126,9 @@ impl Server {
                 while let Some((data_type, data)) = cmds.try_next().await.unwrap() {
                     match data_type {
                         0 => {
-                            let (id, transform) = Transform::from_bytes(&data);
+                            let (transform_id, transform) = Transform::from_bytes(&data);
                             let transform = IncomingEvent::TransformUpdate(
-                                id,
+                                transform_id,
                                 transform,
                             );
                             client_events_tx.send((id, transform)).await.unwrap();
@@ -284,8 +284,6 @@ impl Server {
     }
 
     pub fn client_owns_vehicle(&self, client_id: u32, vehicle_id: u32) -> bool {
-        // NOTE: Temparery
-        return true;
         if let Some(vehicles) = self.vehicles.get(&client_id) {
             vehicles.get(&vehicle_id).is_some()
         }

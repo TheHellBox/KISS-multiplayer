@@ -7,7 +7,6 @@ M.id_map = {}
 local velocity_map = {}
 M.ownership = {}
 local rotations = {}
-local transforms_buffer = {}
 local extrapolation_enabled = false
 local lerp_smoothness = 2.0
 local generation = 0
@@ -15,7 +14,7 @@ local generation = 0
 local function lerp(a,b,t) return a * (1-t) + b * t end
 
 local function send_transform_updates(obj)
-  if not M.ownership[obj:getID()] then return end
+  --if not M.ownership[obj:getID()] then return end
   if not rotations[obj:getID()] then return end
   local position = obj:getPosition()
   local rotation = obj:getRotation()
@@ -23,7 +22,7 @@ local function send_transform_updates(obj)
 
   local result = {}
   local id = obj:getID()
-
+ 
   generation = generation + 1
   result[1] = obj:getID()
   result[2] = position.x or 0
@@ -55,52 +54,6 @@ local function onUpdate(dt)
         send_transform_updates(vehicle)
         vehicle:queueLuaCommand("kiss_electrics.send()")
         vehicle:queueLuaCommand("kiss_gearbox.send()")
-      end
-    end
-  end
-  for id, transform in pairs(transforms_buffer) do
-    local vehicle = be:getObjectByID(M.id_map[id] or -1)
-    if vehicle then
-      local position = vec3(vehicle:getPosition())
-      if position:squaredDistance(vec3(transform.position)) > 0 then
-        vehicle:setPosRot(
-          transform.position[1],
-          transform.position[2],
-          transform.position[3],
-          transform.rotation[1],
-          transform.rotation[2],
-          transform.rotation[3],
-          transform.rotation[4]
-        )
-      else
-        local rotation = rotations[vehicle:getID()]
-        local quat_buffer = quat(
-          transform.rotation[1],
-          transform.rotation[2],
-          transform.rotation[3],
-          transform.rotation[4]
-        )
-        local quat_current = quat(
-          rotation[1],
-          rotation[2],
-          rotation[3],
-          rotation[4]
-        )
-        local rotation_slerp = quat(0, 0, 0, 0)
-        if quat_current:distance(quat_buffer) > 0.5 then
-          rotation_slerp = quat_buffer
-        else
-          rotation_slerp = quat_current:slerp(quat_buffer, dt * lerp_smoothness)
-        end
-        vehicle:setPosRot(
-          lerp(position.x, transform.position[1], dt * lerp_smoothness),
-          lerp(position.y, transform.position[2], dt * lerp_smoothness),
-          lerp(position.z, transform.position[3], dt * lerp_smoothness),
-          rotation_slerp.x,
-          rotation_slerp.y,
-          rotation_slerp.z,
-          rotation_slerp.w
-        )
       end
     end
   end
@@ -180,10 +133,19 @@ end
 local function update_vehicle_transform(transform)
   local id = M.id_map[transform.owner or -1] or -1
   if M.ownership[id] then return end
-  if transforms_buffer[transform.owner] then
-    if transform.generation < transform_buffer[transform.owner].generation then return end
-  end
-  transforms_buffer[transform.owner] = transform
+  --if transforms_buffer[transform.owner] then
+  --  if transform.generation < transform_buffer[transform.owner].generation then return end
+  --end
+  local vehicle = be:getObjectByID(id)
+  vehicle:setPosRot(
+    transform.position[1],
+    transform.position[2],
+    transform.position[3],
+    transform.rotation[1],
+    transform.rotation[2],
+    transform.rotation[3],
+    transform.rotation[4]
+  )
 end
 
 local function update_vehicle_electrics(data)

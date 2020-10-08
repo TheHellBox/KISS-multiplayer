@@ -86,7 +86,7 @@ local function onUpdate(dt)
       transform.position = {ptr[0], ptr[1], ptr[2]}
       transform.rotation = {ptr[3], ptr[4], ptr[5], ptr[6]}
       transform.owner = ptr[7]
-      tranform.generation = ptr[8]
+      transform.generation = ptr[8]
       --print(ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7])
       vehiclemanager.update_vehicle_transform(transform)
     elseif data_type == 1 then
