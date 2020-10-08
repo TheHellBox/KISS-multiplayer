@@ -10,5 +10,6 @@ edition = "2018"
 futures = "0.3.5"
 quinn = "0.6.1"
 webpki = "0.21.0"
+anyhow = "1.0.32"
 rustls = { version = "0.17.0", features = ["dangerous_configuration"] }
 tokio = { version = "0.2.20", features = ["rt-threaded", "time", "macros", "stream", "sync", "io-util", "tcp"] }

@@ -2,19 +2,19 @@
 pub struct Transform {
     position: [f32; 3],
     rotation: [f32; 4],
-    generation: u32
+    generation: u32,
 }
 
-impl Transform{
+impl Transform {
     pub fn from_bytes(data: &[u8]) -> (u32, Self) {
         let result: [f32; 9] = bincode::deserialize(&data).unwrap();
         (
             result[0] as u32,
-            Self{
+            Self {
                 position: [result[1], result[2], result[3]],
                 rotation: [result[4], result[5], result[6], result[7]],
-                generation: result[8] as u32
-            }
+                generation: result[8] as u32,
+            },
         )
     }
     pub fn to_bytes(&self, vehicle_id: u32) -> Vec<u8> {

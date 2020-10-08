@@ -6,11 +6,11 @@ pub struct Gearbox {
     pub arcade: bool,
     pub lock_coef: f32,
     pub mode: Option<String>,
-    pub gear_index: i8
+    pub gear_index: i8,
 }
 
 impl Gearbox {
-    pub fn from_bytes(data: &[u8]) -> Self{
+    pub fn from_bytes(data: &[u8]) -> Self {
         let decoded: Self = rmp_serde::decode::from_read_ref(data).unwrap();
         decoded
     }

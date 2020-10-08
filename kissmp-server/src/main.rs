@@ -1,10 +1,10 @@
 pub mod electrics;
-pub mod transform;
 pub mod gearbox;
+pub mod transform;
 
-use crate::transform::*;
 use crate::electrics::*;
 use crate::gearbox::*;
+use crate::transform::*;
 
 use anyhow::Error;
 use futures::{select, StreamExt, TryStreamExt};
@@ -19,7 +19,7 @@ enum IncomingEvent {
     TransformUpdate(u32, Transform),
     VehicleData(VehicleData),
     ElectricsUpdate(Electrics),
-    GearboxUpdate(Gearbox)
+    GearboxUpdate(Gearbox),
 }
 
 #[derive(Debug)]
@@ -27,7 +27,7 @@ enum Outgoing {
     VehicleSpawn(VehicleData),
     PositionUpdate(u32, Transform),
     ElectricsUpdate(u32, Electrics),
-    GearboxUpdate(u32, Gearbox)
+    GearboxUpdate(u32, Gearbox),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -127,10 +127,7 @@ impl Server {
                     match data_type {
                         0 => {
                             let (transform_id, transform) = Transform::from_bytes(&data);
-                            let transform = IncomingEvent::TransformUpdate(
-                                transform_id,
-                                transform,
-                            );
+                            let transform = IncomingEvent::TransformUpdate(transform_id, transform);
                             client_events_tx.send((id, transform)).await.unwrap();
                         }
                         1 => {
@@ -141,14 +138,14 @@ impl Server {
                                 .send((id, IncomingEvent::VehicleData(vehicle_data)))
                                 .await
                                 .unwrap();
-                        },
+                        }
                         2 => {
                             let electrics = Electrics::from_bytes(&data);
                             client_events_tx
                                 .send((id, IncomingEvent::ElectricsUpdate(electrics)))
                                 .await
                                 .unwrap();
-                        },
+                        }
                         3 => {
                             let gearbox_state = Gearbox::from_bytes(&data);
                             client_events_tx
@@ -170,17 +167,21 @@ impl Server {
             "name": self.name.clone(),
             "player_count": self.connections.len(),
             "client_id": id
-        }).to_string().into_bytes();
+        })
+        .to_string()
+        .into_bytes();
         send(&mut stream, 3, &server_info).await;
-        for (_, vehicle) in &self.vehicle_data_storage{
+        stream.finish().await.unwrap();
+        /*for (_, vehicle) in &self.vehicle_data_storage{
             let data = serde_json::to_string(&vehicle).unwrap().into_bytes();
             send(&mut stream, 1, &data).await;
-        }
+        }*/
 
         // Sender
         tokio::spawn(async move {
             while let Some(command) = ordered_rx.recv().await {
                 use Outgoing::*;
+                let mut stream = connection.open_uni().await.unwrap();
                 let data_type = get_data_type(&command);
                 match command {
                     PositionUpdate(vehicle_id, transform) => {
@@ -190,20 +191,21 @@ impl Server {
                     VehicleSpawn(data) => {
                         let data = serde_json::to_string(&data).unwrap().into_bytes();
                         send(&mut stream, data_type, &data).await;
-                    },
+                    }
                     ElectricsUpdate(vehicle_id, electrics_data) => {
-                        let mut electrics_data  = electrics_data.clone();
+                        let mut electrics_data = electrics_data.clone();
                         electrics_data.vehicle_id = vehicle_id;
                         let data = electrics_data.to_bytes();
                         send(&mut stream, data_type, &data).await;
-                    },
+                    }
                     GearboxUpdate(vehicle_id, gearbox_state) => {
-                        let mut gearbox_state  = gearbox_state.clone();
+                        let mut gearbox_state = gearbox_state.clone();
                         gearbox_state.vehicle_id = vehicle_id;
                         let data = gearbox_state.to_bytes();
                         send(&mut stream, data_type, &data).await;
-                    },
+                    }
                 }
+                stream.finish().await.unwrap();
             }
         });
     }
@@ -219,7 +221,10 @@ impl Server {
             for (vehicle_id, electrics_data) in &self.electrics {
                 client
                     .ordered
-                    .send(Outgoing::ElectricsUpdate(*vehicle_id, electrics_data.clone()))
+                    .send(Outgoing::ElectricsUpdate(
+                        *vehicle_id,
+                        electrics_data.clone(),
+                    ))
                     .await
                     .unwrap();
             }
@@ -239,9 +244,9 @@ impl Server {
             TransformUpdate(vehicle_id, transform) => {
                 if let Some(client_vehicles) = self.vehicles.get(&client_id) {
                     if let Some(server_id) = client_vehicles.get(&vehicle_id) {
-                        if self.client_owns_vehicle(client_id, *server_id) {
-                            self.transforms.insert(*server_id, transform);
-                        }
+                        //if self.client_owns_vehicle(client_id, *server_id) {
+                        self.transforms.insert(*server_id, transform);
+                        //}
                     }
                 }
             }
@@ -265,14 +270,14 @@ impl Server {
                     .unwrap()
                     .insert(data.in_game_id, server_id);
                 self.vehicle_data_storage.insert(server_id, data);
-            },
+            }
             ElectricsUpdate(data) => {
                 if let Some(client_vehicles) = self.vehicles.get(&client_id) {
                     if let Some(server_id) = client_vehicles.get(&data.vehicle_id) {
                         self.electrics.insert(*server_id, data);
                     }
                 }
-            },
+            }
             GearboxUpdate(gearbox_state) => {
                 if let Some(client_vehicles) = self.vehicles.get(&client_id) {
                     if let Some(server_id) = client_vehicles.get(&gearbox_state.vehicle_id) {
@@ -286,8 +291,7 @@ impl Server {
     pub fn client_owns_vehicle(&self, client_id: u32, vehicle_id: u32) -> bool {
         if let Some(vehicles) = self.vehicles.get(&client_id) {
             vehicles.get(&vehicle_id).is_some()
-        }
-        else{
+        } else {
             false
         }
     }
@@ -295,7 +299,10 @@ impl Server {
 
 async fn send(stream: &mut quinn::SendStream, data_type: u8, message: &[u8]) {
     stream.write_all(&[data_type]).await.unwrap();
-    stream.write_all(&(message.len() as u32).to_le_bytes()).await.unwrap();
+    stream
+        .write_all(&(message.len() as u32).to_le_bytes())
+        .await
+        .unwrap();
     stream.write_all(&message).await.unwrap();
 }
 
@@ -332,6 +339,6 @@ fn get_data_type(data: &Outgoing) -> u8 {
         PositionUpdate(_, _) => 0,
         VehicleSpawn(_) => 1,
         ElectricsUpdate(_, _) => 2,
-        GearboxUpdate(_, _) => 3
+        GearboxUpdate(_, _) => 3,
     }
 }

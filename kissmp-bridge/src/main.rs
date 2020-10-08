@@ -1,6 +1,6 @@
-use std::net::{SocketAddr, Ipv4Addr, IpAddr};
-use futures::{StreamExt};
-use tokio::io::{AsyncWriteExt, AsyncReadExt};
+use futures::{StreamExt, TryStreamExt};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -19,7 +19,7 @@ async fn main() {
         reader.read_exact(&mut addr_buffer).await.unwrap();
         let addr_str = String::from_utf8(addr_buffer).unwrap();
         let addr = &addr_str.parse::<SocketAddr>().unwrap();
-       
+
         let mut endpoint = quinn::Endpoint::builder();
         let mut client_cfg = quinn::ClientConfig::default();
         let tls_cfg = std::sync::Arc::get_mut(&mut client_cfg.crypto).unwrap();
@@ -27,15 +27,10 @@ async fn main() {
             .dangerous()
             .set_certificate_verifier(std::sync::Arc::new(AcceptAnyCertificate));
         endpoint.default_client_config(client_cfg);
-        let (endpoint, _) = endpoint.bind(&SocketAddr::new(IpAddr::from(Ipv4Addr::UNSPECIFIED), 0)).unwrap();
-        let mut connection = endpoint
-            .connect(
-                addr,
-                "kissmp",
-            )
-            .unwrap()
-            .await
+        let (endpoint, _) = endpoint
+            .bind(&SocketAddr::new(IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
             .unwrap();
+        let connection = endpoint.connect(addr, "kissmp").unwrap().await.unwrap();
         // That's some stupid naming
         let stream_connection = connection.connection.clone();
         tokio::spawn(async move {
@@ -57,18 +52,27 @@ async fn main() {
             }
         });
 
-        let mut ordered = connection.uni_streams.next().await.unwrap().unwrap();
+        //let mut ordered = connection.uni_streams.next().await.unwrap().unwrap();
         tokio::spawn(async move {
+            let mut cmds = connection
+                .uni_streams
+                .map(|stream| async {
+                    let mut stream = stream.unwrap();
+                    let mut buffer_a = vec![0; 1];
+                    stream.read_exact(&mut buffer_a).await.unwrap();
+                    let mut len = [0; 4];
+                    stream.read_exact(&mut len).await.unwrap();
+                    let mut buffer_b = vec![0; u32::from_le_bytes(len) as usize];
+                    stream.read_exact(&mut buffer_b).await.unwrap();
+                    buffer_a.append(&mut len.to_vec());
+                    buffer_a.append(&mut buffer_b);
+                    Ok::<_, anyhow::Error>(buffer_a)
+                })
+                .buffer_unordered(16);
             loop {
-                let mut buffer_a = vec![0; 1];
-                ordered.read_exact(&mut buffer_a).await.unwrap();
-                let mut len = [0; 4];
-                ordered.read_exact(&mut len).await.unwrap();
-                let mut buffer_b = vec![0; u32::from_le_bytes(len) as usize];
-                ordered.read_exact(&mut buffer_b).await.unwrap();
-                buffer_a.append(&mut len.to_vec());
-                buffer_a.append(&mut buffer_b);
-                writer.write_all(&buffer_a).await.unwrap();
+                while let Some(data) = cmds.try_next().await.unwrap() {
+                    writer.write_all(&data).await.unwrap();
+                }
             }
         });
     }
