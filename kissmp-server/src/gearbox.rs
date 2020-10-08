@@ -6,7 +6,7 @@ pub struct Gearbox {
     pub arcade: bool,
     pub lock_coef: f32,
     pub mode: Option<String>,
-    pub gear_index: u8
+    pub gear_index: i8
 }
 
 impl Gearbox {

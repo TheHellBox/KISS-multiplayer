@@ -3,9 +3,9 @@ local M = {}
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 
 local timer = 0
-local id_map = {}
+M.id_map = {}
 local velocity_map = {}
-local ownership = {}
+M.ownership = {}
 local rotations = {}
 local transforms_buffer = {}
 local extrapolation_enabled = false
@@ -15,7 +15,7 @@ local generation = 0
 local function lerp(a,b,t) return a * (1-t) + b * t end
 
 local function send_transform_updates(obj)
-  if not ownership[obj:getID()] then return end
+  if not M.ownership[obj:getID()] then return end
   if not rotations[obj:getID()] then return end
   local position = obj:getPosition()
   local rotation = obj:getRotation()
@@ -49,22 +49,17 @@ local function onUpdate(dt)
     timer = timer + dt
   else
     timer = 0
-    for i, v in pairs(ownership) do
+    for i, v in pairs(M.ownership) do
       local vehicle = be:getObjectByID(i)
       if vehicle then
         send_transform_updates(vehicle)
         vehicle:queueLuaCommand("kiss_electrics.send()")
         vehicle:queueLuaCommand("kiss_gearbox.send()")
-      else
-        print("fuck, no ownership")
-        for k, v in pairs(ownership) do
-          print(tostring(k)..": "..tostring(v))
-        end
       end
     end
   end
   for id, transform in pairs(transforms_buffer) do
-    local vehicle = be:getObjectByID(id_map[id] or -1)
+    local vehicle = be:getObjectByID(M.id_map[id] or -1)
     if vehicle then
       local position = vec3(vehicle:getPosition())
       if position:squaredDistance(vec3(transform.position)) > 0 then
@@ -117,7 +112,7 @@ local function send_vehicle_config(vehicle_id)
 end
 
 local function send_vehicle_config_inner(id, parts_config)
-  for k, v in pairs(id_map) do
+  for k, v in pairs(M.id_map) do
     if v == id then return end
   end
 
@@ -146,11 +141,11 @@ local function spawn_vehicle(data)
   print("Trying to spawn vehicle")
   if data.owner == network.get_client_id() then
     print("Vehicle belongs to local client, setting ownership")
-    id_map[data.server_id] = data.in_game_id
-    ownership[data.in_game_id] = data.server_id
+    M.id_map[data.server_id] = data.in_game_id
+    M.ownership[data.in_game_id] = data.server_id
     return
   end
-  if id_map[data.server_id] then return end
+  if M.id_map[data.server_id] then return end
   local current_vehicle = be:getPlayerVehicle(0)
   local parts_config = jsonDecode(data.parts_config)
   local c = data.color
@@ -168,7 +163,7 @@ local function spawn_vehicle(data)
     ColorF(cp1[1],cp1[2],cp1[3],cp1[4])
   )
   if data.server_id then
-    id_map[data.server_id] = spawned:getID()
+    M.id_map[data.server_id] = spawned:getID()
   else
     print("ERROR: Server ID is invalid")
   end
@@ -183,8 +178,8 @@ local function onVehicleSpawned(gameVehicleID)
 end
 
 local function update_vehicle_transform(transform)
-  local id = id_map[transform.owner or -1] or -1
-  if ownership[id] then return end
+  local id = M.id_map[transform.owner or -1] or -1
+  if M.ownership[id] then return end
   if transforms_buffer[transform.owner] then
     if transform.generation < transform_buffer[transform.owner].generation then return end
   end
@@ -193,17 +188,16 @@ end
 
 local function update_vehicle_electrics(data)
   local data = messagepack.unpack(data)
-  local id = id_map[data[1] or -1] or -1
-  if ownership[id] then return end
+  local id = M.id_map[data[1] or -1] or -1
+  if M.ownership[id] then return end
   local vehicle = be:getObjectByID(id)
   vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(data).."\')")
 end
 
 local function update_vehicle_gearbox(data)
   local data = messagepack.unpack(data)
-  local id = id_map[data[1] or -1] or -1
-  print(id.." "..data[1])
-  if ownership[id] then return end
+  local id = M.id_map[data[1] or -1] or -1
+  if M.ownership[id] then return end
   local vehicle = be:getObjectByID(id)
   vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(data).."\')")
 end

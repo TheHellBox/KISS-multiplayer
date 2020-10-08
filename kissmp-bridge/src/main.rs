@@ -58,17 +58,19 @@ async fn main() {
         });
 
         let mut ordered = connection.uni_streams.next().await.unwrap().unwrap();
-        loop {
-            let mut buffer_a = vec![0; 1];
-            ordered.read_exact(&mut buffer_a).await.unwrap();
-            let mut len = [0; 4];
-            ordered.read_exact(&mut len).await.unwrap();
-            let mut buffer_b = vec![0; u32::from_le_bytes(len) as usize];
-            ordered.read_exact(&mut buffer_b).await.unwrap();
-            buffer_a.append(&mut len.to_vec());
-            buffer_a.append(&mut buffer_b);
-            writer.write_all(&buffer_a).await.unwrap();
-        }
+        tokio::spawn(async move {
+            loop {
+                let mut buffer_a = vec![0; 1];
+                ordered.read_exact(&mut buffer_a).await.unwrap();
+                let mut len = [0; 4];
+                ordered.read_exact(&mut len).await.unwrap();
+                let mut buffer_b = vec![0; u32::from_le_bytes(len) as usize];
+                ordered.read_exact(&mut buffer_b).await.unwrap();
+                buffer_a.append(&mut len.to_vec());
+                buffer_a.append(&mut buffer_b);
+                writer.write_all(&buffer_a).await.unwrap();
+            }
+        });
     }
 }
 
