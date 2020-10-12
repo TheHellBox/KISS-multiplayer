@@ -1,9 +1,11 @@
 pub mod electrics;
 pub mod gearbox;
+pub mod nodes;
 pub mod transform;
 
 use crate::electrics::*;
 use crate::gearbox::*;
+use crate::nodes::*;
 use crate::transform::*;
 
 use anyhow::Error;
@@ -20,6 +22,7 @@ enum IncomingEvent {
     VehicleData(VehicleData),
     ElectricsUpdate(Electrics),
     GearboxUpdate(Gearbox),
+    NodesUpdate(Nodes),
 }
 
 #[derive(Debug)]
@@ -28,6 +31,7 @@ enum Outgoing {
     PositionUpdate(u32, Transform),
     ElectricsUpdate(u32, Electrics),
     GearboxUpdate(u32, Gearbox),
+    NodesUpdate(u32, Nodes),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -43,7 +47,7 @@ pub struct VehicleData {
 }
 
 struct Connection {
-    pub ordered: mpsc::Sender<Outgoing>,
+    pub unordered: mpsc::Sender<Outgoing>,
 }
 
 struct Server {
@@ -51,6 +55,7 @@ struct Server {
     transforms: HashMap<u32, Transform>,
     electrics: HashMap<u32, Electrics>,
     gearbox_states: HashMap<u32, Gearbox>,
+    nodes: HashMap<u32, Nodes>,
     vehicle_data_storage: HashMap<u32, VehicleData>,
     // Client ID, game_id, server_id
     vehicles: HashMap<u32, HashMap<u32, u32>>,
@@ -101,7 +106,7 @@ impl Server {
         let id = rand::random::<u32>();
         let (ordered_tx, mut ordered_rx) = mpsc::channel(128);
         let client_connection = Connection {
-            ordered: ordered_tx,
+            unordered: ordered_tx,
         };
         self.connections.insert(id, client_connection);
         println!("Client has connected to the server");
@@ -141,15 +146,27 @@ impl Server {
                         }
                         2 => {
                             let electrics = Electrics::from_bytes(&data);
-                            client_events_tx
-                                .send((id, IncomingEvent::ElectricsUpdate(electrics)))
-                                .await
-                                .unwrap();
+                            if let Ok(electrics) = electrics {
+                                client_events_tx
+                                    .send((id, IncomingEvent::ElectricsUpdate(electrics)))
+                                    .await
+                                    .unwrap();
+                            }
                         }
                         3 => {
                             let gearbox_state = Gearbox::from_bytes(&data);
+                            if let Ok(gearbox_state) = gearbox_state {
+                                client_events_tx
+                                    .send((id, IncomingEvent::GearboxUpdate(gearbox_state)))
+                                    .await
+                                    .unwrap();
+                            }
+                        }
+                        4 => {
+                            println!("{}", data.len());
+                            let nodes = Nodes::from_bytes(&data);
                             client_events_tx
-                                .send((id, IncomingEvent::GearboxUpdate(gearbox_state)))
+                                .send((id, IncomingEvent::NodesUpdate(nodes)))
                                 .await
                                 .unwrap();
                         }
@@ -204,8 +221,13 @@ impl Server {
                         let data = gearbox_state.to_bytes();
                         send(&mut stream, data_type, &data).await;
                     }
+                    NodesUpdate(vehicle_id, nodes) => {
+                        let mut nodes = nodes.clone();
+                        nodes.vehicle_id = vehicle_id;
+                        let data = nodes.to_bytes();
+                        send(&mut stream, data_type, &data).await;
+                    }
                 }
-                stream.finish().await.unwrap();
             }
         });
     }
@@ -213,14 +235,14 @@ impl Server {
         for (_, client) in &mut self.connections {
             for (vehicle_id, transform) in &self.transforms {
                 client
-                    .ordered
+                    .unordered
                     .send(Outgoing::PositionUpdate(*vehicle_id, transform.clone()))
                     .await
                     .unwrap();
             }
             for (vehicle_id, electrics_data) in &self.electrics {
                 client
-                    .ordered
+                    .unordered
                     .send(Outgoing::ElectricsUpdate(
                         *vehicle_id,
                         electrics_data.clone(),
@@ -230,11 +252,18 @@ impl Server {
             }
             for (vehicle_id, gearbox_state) in &self.gearbox_states {
                 client
-                    .ordered
+                    .unordered
                     .send(Outgoing::GearboxUpdate(*vehicle_id, gearbox_state.clone()))
                     .await
                     .unwrap();
             }
+            /*for (vehicle_id, nodes) in &self.nodes {
+                client
+                    .unordered
+                    .send(Outgoing::NodesUpdate(*vehicle_id, nodes.clone()))
+                    .await
+                    .unwrap();
+            }*/
         }
     }
 
@@ -257,7 +286,7 @@ impl Server {
                 data.owner = Some(client_id);
                 for (_, client) in &mut self.connections {
                     client
-                        .ordered
+                        .unordered
                         .send(Outgoing::VehicleSpawn(data.clone()))
                         .await
                         .unwrap();
@@ -282,6 +311,13 @@ impl Server {
                 if let Some(client_vehicles) = self.vehicles.get(&client_id) {
                     if let Some(server_id) = client_vehicles.get(&gearbox_state.vehicle_id) {
                         self.gearbox_states.insert(*server_id, gearbox_state);
+                    }
+                }
+            }
+            NodesUpdate(nodes) => {
+                if let Some(client_vehicles) = self.vehicles.get(&client_id) {
+                    if let Some(server_id) = client_vehicles.get(&nodes.vehicle_id) {
+                        self.nodes.insert(*server_id, nodes.clone());
                     }
                 }
             }
@@ -325,10 +361,11 @@ async fn main() {
         transforms: HashMap::with_capacity(64),
         vehicles: HashMap::with_capacity(64),
         electrics: HashMap::with_capacity(64),
+        nodes: HashMap::with_capacity(64),
         gearbox_states: HashMap::with_capacity(64),
         vehicle_data_storage: HashMap::with_capacity(64),
-        name: "KissMP BeanNG Server",
-        tickrate: 30,
+        name: "KissMP BeamNG Server",
+        tickrate: 66,
     };
     server.run().await;
 }
@@ -340,5 +377,6 @@ fn get_data_type(data: &Outgoing) -> u8 {
         VehicleSpawn(_) => 1,
         ElectricsUpdate(_, _) => 2,
         GearboxUpdate(_, _) => 3,
+        NodesUpdate(_, _) => 4,
     }
 }

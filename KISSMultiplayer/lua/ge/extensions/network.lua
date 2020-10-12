@@ -79,15 +79,15 @@ local function onUpdate(dt)
     end
     connection.tcp:settimeout(0.0)
     if data_type == 0 then
+      local data = data..string.char(0)..string.char(0)..string.char(0)..string.char(1)
       local p = ffi.new("char[?]", #data, data)
       local ptr = ffi.cast("float*", p)
-      --ptr = {0, 0, 0, 0, 0, 0, 0, 0, 0}
       local transform = {}
       transform.position = {ptr[0], ptr[1], ptr[2]}
       transform.rotation = {ptr[3], ptr[4], ptr[5], ptr[6]}
-      transform.owner = ptr[7]
-      transform.generation = ptr[8]
-      --print(ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7])
+      transform.velocity = {ptr[7], ptr[8], ptr[9]}
+      transform.owner = ptr[10]
+      transform.generation = ptr[11]
       vehiclemanager.update_vehicle_transform(transform)
     elseif data_type == 1 then
       local decoded = jsonDecode(data)
@@ -96,6 +96,8 @@ local function onUpdate(dt)
       vehiclemanager.update_vehicle_electrics(data)
     elseif data_type == 3 then
       vehiclemanager.update_vehicle_gearbox(data)
+    elseif data_type == 4 then
+      vehiclemanager.update_vehicle_nodes(data)
     end
   end
 end

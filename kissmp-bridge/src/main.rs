@@ -48,7 +48,7 @@ async fn main() {
                 buffer_a.append(&mut len_buf.to_vec());
                 buffer_a.append(&mut buffer_b);
                 stream.write_all(&buffer_a).await.unwrap();
-                stream.finish().await.unwrap();
+                //stream.finish().await.unwrap();
             }
         });
 

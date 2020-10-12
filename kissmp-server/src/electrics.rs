@@ -15,9 +15,8 @@ pub struct Electrics {
 }
 
 impl Electrics {
-    pub fn from_bytes(data: &[u8]) -> Self {
-        let decoded: Electrics = rmp_serde::decode::from_read_ref(data).unwrap();
-        decoded
+    pub fn from_bytes(data: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::decode::from_read_ref(data)
     }
     pub fn to_bytes(&self) -> Vec<u8> {
         rmp_serde::encode::to_vec(self).unwrap()
