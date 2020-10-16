@@ -1,11 +1,14 @@
 local M = {}
 
-local generation = 0
-
--- Wtf I need to do this. BeamNG devs, that's crap!
-local function update_rotation()
+local function update_transform_info()
   local r = obj:getRotation()
-  obj:queueGameEngineLua("vehiclemanager.push_rotation("..obj:getID()..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
+  local transform = {
+    rotation  = {r.x, r.y, r.z, r.w},
+    vel_pitch = obj:getPitchAngularVelocity(),
+    vel_roll  = obj:getRollAngularVelocity(),
+    vel_yaw   = obj:getYawAngularVelocity(),
+  }
+  obj:queueGameEngineLua("kisstransform.push_transform("..obj:getID()..", \'"..jsonEncode(transform).."\')")
 end
 
   -- Experemental.
@@ -19,24 +22,38 @@ local function set_rotation(x, y, z, w)
   obj:queueGameEngineLua("vehiclemanager.rotate_nodes(\'"..jsonEncode(nodes_table).."\', "..obj:getID()..", "..x..", "..y..", "..z..", "..w..")")
 end
 
-local function apply_velocity(x, y, z, force)
+local function apply_velocity(x, y, z)
   local velocity = vec3(x, y, z)
+  local force = obj:getPhysicsFPS()
   for _, node in pairs(v.data.nodes) do
     local force = velocity * obj:getNodeMass(node.cid) * force
     obj:applyForceVector(node.cid, force:toFloat3())
   end
 end
 
-local function kill_velocity(strength)
+local function apply_angular_velocity(pitch, roll, yaw)
+  local velocity = vec3(x, y, z)
+  local force = obj:getPhysicsFPS()
+  local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation()))
   for _, node in pairs(v.data.nodes) do
-    local force = vec3(obj:getNodeVelocityVector(node.cid)) * -2000 * (strength or 1)
+    local node_position = vec3(obj:getNodePosition(node.cid))
+    local force = node_position:cross(rot) * obj:getNodeMass(node.cid) * force
     obj:applyForceVector(node.cid, force:toFloat3())
   end
 end
 
-M.update_rotation = update_rotation
+local function kill_velocity(strength)
+  local fps = obj:getPhysicsFPS()
+  for _, node in pairs(v.data.nodes) do
+    local force = vec3(obj:getNodeVelocityVector(node.cid)) * obj:getNodeMass(node.cid) * -fps * (strength or 1)
+    obj:applyForceVector(node.cid, force:toFloat3())
+  end
+end
+
+M.update_transform_info = update_transform_info
 M.set_rotation = set_rotation
 M.apply_velocity = apply_velocity
+M.apply_angular_velocity = apply_angular_velocity
 M.kill_velocity = kill_velocity
 
 return M
