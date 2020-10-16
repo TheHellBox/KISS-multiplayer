@@ -18,8 +18,7 @@ local MESSAGETYPE_ELECTRICS = 2
 local MESSAGETYPE_GEARBOX = 3
 local MESSAGETYPE_NODES = 4
 local MESSAGETYPE_VEHICLE_REMOVE = 5
-local MESSAGETYPE_VEHICLE_CFG_CHANGED = 6
-local MESSAGETYPE_VEHICLE_RESET = 7
+local MESSAGETYPE_VEHICLE_RESET = 6
 
 local function connect(addr)
   print("Connecting...")
@@ -49,6 +48,9 @@ local function connect(addr)
   connection.tcp:settimeout(0.0)
   connection.connected = true
   connection.client_id = server_info.client_id
+  if be:getPlayerVehicle(0) then
+    --vehiclemanager.send_vehicle_config(be:getPlayerVehicle(0):getID())
+  end
 end
 
 local function send_data(data_type, reliable, data)
@@ -87,7 +89,7 @@ local function onUpdate(dt)
     local data_type = string.byte(received)
     local data = connection.tcp:receive(4)
 
-    local len = ffi.cast("uint32_t*", ffi.new("char[?]", #data, data))
+    local len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))
     local data, _, _ = connection.tcp:receive(len[0])
 
     connection.tcp:settimeout(0.0)
@@ -112,6 +114,10 @@ local function onUpdate(dt)
       vehiclemanager.update_vehicle_gearbox(data)
     elseif data_type == MESSAGETYPE_NODES then
       vehiclemanager.update_vehicle_nodes(data)
+    elseif data_type == MESSAGETYPE_VEHICLE_REMOVE then
+      vehiclemanager.remove_vehicle(ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0])
+    elseif data_type == MESSAGETYPE_VEHICLE_REMOVE then
+      vehiclemanager.reset_vehicle(ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0])
     end
 
   end

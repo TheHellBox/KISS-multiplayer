@@ -11,11 +11,13 @@ M.packet_gen_buffer = {}
 local function onUpdate(dt)
   for id, updates in pairs(M.vehicle_updates_buffer) do
     local vehicle = be:getObjectByID(id)
-    if updates.electronics then
-      vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(updates.electrics).."\')")
-    end
-    if updates.gearbox then
-      vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(updates.gearbox).."\')")
+    if vehicle then
+      if updates.electronics then
+        vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(updates.electrics).."\')")
+      end
+      if updates.gearbox then
+        vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(updates.gearbox).."\')")
+      end
     end
   end
 end
@@ -29,7 +31,6 @@ local function send_vehicle_config_inner(id, parts_config)
   for k, v in pairs(M.id_map) do
     if v == id then return end
   end
-
   local vehicle = be:getObjectByID(id)
   local parts_config = parts_config
   local color = vehicle.color
@@ -84,13 +85,6 @@ local function spawn_vehicle(data)
   if current_vehicle then be:enterVehicle(0, current_vehicle) end
 end
 
-local function onVehicleSpawned(gameVehicleID)
-  local vehicle = be:getObjectByID(gameVehicleID)
-  vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
-  vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
-  send_vehicle_config(gameVehicleID)
-end
-
 local function update_vehicle_electrics(data)
   local data = messagepack.unpack(data)
   local id = M.id_map[data[1] or -1] or -1
@@ -130,13 +124,56 @@ local function rotate_nodes(nodes, id, x, y, z, w)
   vehicle:queueLuaCommand("kiss_nodes.apply(\'"..jsonEncode(result).."\')")
 end
 
+local function remove_vehicle(id)
+  local id = M.id_map[id] or -1
+  local vehicle = be:getObjectByID(id)
+  if vehicle then
+    commands.setFreeCamera()
+    vehicle:delete()
+    if commands.isFreeCamera(player) then commands.setGameCamera() end
+    M.id_map[id] = nil
+    M.vehicle_updates_buffer[id] = nil
+    kisstransform.received_transforms[id] = nil
+  end
+end
+
+local function reset_vehicle(id)
+  local id = M.id_map[id] or -1
+  local vehicle = be:getObjectByID(id)
+  if vehicle then
+    vehicle:reset()
+  end
+end
+
+
+local function onVehicleSpawned(id)
+  local vehicle = be:getObjectByID(id)
+  vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
+  vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
+  send_vehicle_config(id)
+end
+
+local function onVehicleDestroyed(id)
+  local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
+  network.send_data(5, true, packed)
+end
+
+local function onVehicleResetted(id)
+  local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
+  network.send_data(6, true, packed)
+end
+
 M.onUpdate = onUpdate
-M.onVehicleSpawned = onVehicleSpawned
 M.send_vehicle_config = send_vehicle_config
 M.send_vehicle_config_inner = send_vehicle_config_inner
 M.spawn_vehicle = spawn_vehicle
 M.update_vehicle_electrics = update_vehicle_electrics
 M.update_vehicle_gearbox = update_vehicle_gearbox
 M.rotate_nodes = rotate_nodes
+M.remove_vehicle = remove_vehicle
+M.reset_vehicle = reset_vehicle
+M.onVehicleDestroyed = onVehicleDestroyed
+M.onVehicleResetted = onVehicleResetted
+M.onVehicleSpawned = onVehicleSpawned
 
 return M

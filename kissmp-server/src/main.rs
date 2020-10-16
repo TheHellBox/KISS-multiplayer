@@ -18,11 +18,15 @@ use tokio::sync::mpsc;
 
 #[derive(Debug)]
 enum IncomingEvent {
+    ClientConnected,
+    ConnectionLost,
     TransformUpdate(u32, Transform),
     VehicleData(VehicleData),
     ElectricsUpdate(Electrics),
     GearboxUpdate(Gearbox),
     NodesUpdate(Nodes),
+    RemoveVehicle(u32),
+    ResetVehicle(u32)
 }
 
 #[derive(Debug)]
@@ -31,7 +35,9 @@ enum Outgoing {
     PositionUpdate(u32, Transform),
     ElectricsUpdate(u32, Electrics),
     GearboxUpdate(u32, Gearbox),
-    NodesUpdate(u32, Nodes),
+    _NodesUpdate(u32, Nodes),
+    RemoveVehicle(u32),
+    ResetVehicle(u32)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -112,70 +118,15 @@ impl Server {
         println!("Client has connected to the server");
         // Receiver
         tokio::spawn(async move {
-            let mut cmds = new_connection
-                .uni_streams
-                .map(|stream| async {
-                    let mut stream = stream.unwrap();
-                    let mut data_type = [0; 1];
-                    stream.read_exact(&mut data_type).await.unwrap();
-                    let data_type = data_type[0];
-                    let mut buf = [0; 4];
-                    stream.read_exact(&mut buf[0..4]).await.unwrap();
-                    let len = u32::from_le_bytes(buf) as usize;
-                    let mut buf: Vec<u8> = vec![0; len];
-                    stream.read_exact(&mut buf).await.unwrap();
-                    Ok::<_, Error>((data_type, buf))
-                })
-                .buffer_unordered(16);
-            loop {
-                while let Some((data_type, data)) = cmds.try_next().await.unwrap() {
-                    match data_type {
-                        0 => {
-                            let (transform_id, transform) = Transform::from_bytes(&data);
-                            let transform = IncomingEvent::TransformUpdate(transform_id, transform);
-                            client_events_tx.send((id, transform)).await.unwrap();
-                        }
-                        1 => {
-                            let data_str = String::from_utf8(data.to_vec()).unwrap();
-                            let vehicle_data: VehicleData =
-                                serde_json::from_str(&data_str).unwrap();
-                            client_events_tx
-                                .send((id, IncomingEvent::VehicleData(vehicle_data)))
-                                .await
-                                .unwrap();
-                        }
-                        2 => {
-                            let electrics = Electrics::from_bytes(&data);
-                            if let Ok(electrics) = electrics {
-                                client_events_tx
-                                    .send((id, IncomingEvent::ElectricsUpdate(electrics)))
-                                    .await
-                                    .unwrap();
-                            }
-                        }
-                        3 => {
-                            let gearbox_state = Gearbox::from_bytes(&data);
-                            if let Ok(gearbox_state) = gearbox_state {
-                                client_events_tx
-                                    .send((id, IncomingEvent::GearboxUpdate(gearbox_state)))
-                                    .await
-                                    .unwrap();
-                            }
-                        }
-                        4 => {
-                            println!("{}", data.len());
-                            let nodes = Nodes::from_bytes(&data);
-                            client_events_tx
-                                .send((id, IncomingEvent::NodesUpdate(nodes)))
-                                .await
-                                .unwrap();
-                        }
-                        254 => {
-                            // heartbeat
-                        }
-                        _ => println!("Warning: Client sent unknown data type"),
-                    }
-                }
+            client_events_tx
+                .send((id, IncomingEvent::ClientConnected))
+                .await
+                .unwrap();
+            if let Err(_e) = Self::drive_receive(id, new_connection.uni_streams, client_events_tx.clone()).await {
+                 client_events_tx
+                    .send((id, IncomingEvent::ConnectionLost))
+                    .await
+                    .unwrap();
             }
         });
 
@@ -187,12 +138,8 @@ impl Server {
         })
         .to_string()
         .into_bytes();
-        send(&mut stream, 3, &server_info).await;
+        send(&mut stream, 3, &server_info).await.unwrap();
         stream.finish().await.unwrap();
-        /*for (_, vehicle) in &self.vehicle_data_storage{
-            let data = serde_json::to_string(&vehicle).unwrap().into_bytes();
-            send(&mut stream, 1, &data).await;
-        }*/
 
         // Sender
         tokio::spawn(async move {
@@ -200,36 +147,122 @@ impl Server {
                 use Outgoing::*;
                 let mut stream = connection.open_uni().await.unwrap();
                 let data_type = get_data_type(&command);
-                match command {
+                let _ = match command {
                     PositionUpdate(vehicle_id, transform) => {
                         let data = transform.to_bytes(vehicle_id);
-                        send(&mut stream, data_type, &data).await;
+                        send(&mut stream, data_type, &data).await
                     }
                     VehicleSpawn(data) => {
                         let data = serde_json::to_string(&data).unwrap().into_bytes();
-                        send(&mut stream, data_type, &data).await;
+                        send(&mut stream, data_type, &data).await
                     }
                     ElectricsUpdate(vehicle_id, electrics_data) => {
                         let mut electrics_data = electrics_data.clone();
                         electrics_data.vehicle_id = vehicle_id;
                         let data = electrics_data.to_bytes();
-                        send(&mut stream, data_type, &data).await;
+                        send(&mut stream, data_type, &data).await
                     }
                     GearboxUpdate(vehicle_id, gearbox_state) => {
                         let mut gearbox_state = gearbox_state.clone();
                         gearbox_state.vehicle_id = vehicle_id;
                         let data = gearbox_state.to_bytes();
-                        send(&mut stream, data_type, &data).await;
+                        send(&mut stream, data_type, &data).await
                     }
-                    NodesUpdate(vehicle_id, nodes) => {
+                    _NodesUpdate(vehicle_id, nodes) => {
                         let mut nodes = nodes.clone();
                         nodes.vehicle_id = vehicle_id;
                         let data = nodes.to_bytes();
-                        send(&mut stream, data_type, &data).await;
+                        send(&mut stream, data_type, &data).await
+                    },
+                    RemoveVehicle(id) => {
+                        let data = id.to_le_bytes();
+                        send(&mut stream, data_type, &data).await
+                    },
+                    ResetVehicle(id) => {
+                        let data = id.to_le_bytes();
+                        send(&mut stream, data_type, &data).await
                     }
-                }
+                };
             }
         });
+    }
+    async fn drive_receive(id: u32, streams: quinn::IncomingUniStreams, mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>) -> anyhow::Result<()>{
+        let mut cmds = streams
+            .map(|stream| async {
+                let mut stream = stream?;
+                let mut data_type = [0; 1];
+                stream.read_exact(&mut data_type).await?;
+                let data_type = data_type[0];
+                let mut buf = [0; 4];
+                stream.read_exact(&mut buf[0..4]).await?;
+                let len = u32::from_le_bytes(buf) as usize;
+                let mut buf: Vec<u8> = vec![0; len];
+                stream.read_exact(&mut buf).await?;
+                Ok::<_, Error>((data_type, buf))
+            })
+            .buffer_unordered(16);
+        while let Some((data_type, data)) = cmds.try_next().await? {
+            match data_type {
+                0 => {
+                    let (transform_id, transform) = Transform::from_bytes(&data);
+                    let transform = IncomingEvent::TransformUpdate(transform_id, transform);
+                    client_events_tx.send((id, transform)).await.unwrap();
+                }
+                1 => {
+                    let data_str = String::from_utf8(data.to_vec()).unwrap();
+                    let vehicle_data: VehicleData =
+                        serde_json::from_str(&data_str).unwrap();
+                    client_events_tx
+                        .send((id, IncomingEvent::VehicleData(vehicle_data)))
+                        .await
+                        .unwrap();
+                }
+                2 => {
+                    let electrics = Electrics::from_bytes(&data);
+                    if let Ok(electrics) = electrics {
+                        client_events_tx
+                            .send((id, IncomingEvent::ElectricsUpdate(electrics)))
+                            .await
+                            .unwrap();
+                    }
+                }
+                3 => {
+                    let gearbox_state = Gearbox::from_bytes(&data);
+                    if let Ok(gearbox_state) = gearbox_state {
+                        client_events_tx
+                            .send((id, IncomingEvent::GearboxUpdate(gearbox_state)))
+                            .await
+                            .unwrap();
+                    }
+                }
+                4 => {
+                    let nodes = Nodes::from_bytes(&data);
+                    client_events_tx
+                        .send((id, IncomingEvent::NodesUpdate(nodes)))
+                        .await
+                        .unwrap();
+                },
+                5 => {
+                    let vehicle_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+                    client_events_tx
+                        .send((id, IncomingEvent::RemoveVehicle(vehicle_id)))
+                        .await
+                        .unwrap();
+                },
+                6 => {
+                    let vehicle_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+                    client_events_tx
+                        .send((id, IncomingEvent::ResetVehicle(vehicle_id)))
+                        .await
+                        .unwrap();
+                },
+                254 => {
+                    // heartbeat
+                }
+                _ => println!("Warning: Client sent unknown data type"),
+            }
+        }
+        Ok(())
     }
     async fn tick(&mut self) {
         for (_, client) in &mut self.connections {
@@ -257,19 +290,42 @@ impl Server {
                     .await
                     .unwrap();
             }
-            /*for (vehicle_id, nodes) in &self.nodes {
-                client
-                    .unordered
-                    .send(Outgoing::NodesUpdate(*vehicle_id, nodes.clone()))
-                    .await
-                    .unwrap();
-            }*/
         }
     }
 
     async fn on_client_event(&mut self, client_id: u32, event: IncomingEvent) {
         use IncomingEvent::*;
         match event {
+            ClientConnected => {
+                for (_, vehicle) in &self.vehicle_data_storage {
+                    self.connections.get_mut(&client_id).unwrap()
+                        .unordered
+                        .send(Outgoing::VehicleSpawn(vehicle.clone()))
+                        .await
+                        .unwrap();
+                }
+            }
+            ConnectionLost => {
+                self.connections.remove(&client_id);
+                if let Some(client_vehicles) = self.vehicles.get(&client_id) {
+                    for (_, id) in client_vehicles {
+                        self.vehicle_data_storage.remove(&id);
+                        self.transforms.remove(&id);
+                        self.electrics.remove(&id);
+                        self.gearbox_states.remove(&id);
+                        self.nodes.remove(&id);
+                        for (_, client) in &mut self.connections {
+                            client
+                                .unordered
+                                .send(Outgoing::RemoveVehicle(*id))
+                                .await
+                                .unwrap();
+                        }
+                    }
+                }
+                self.vehicles.remove(&client_id);
+                println!("Client has disconnected from the server");
+            }
             TransformUpdate(vehicle_id, transform) => {
                 if let Some(client_vehicles) = self.vehicles.get(&client_id) {
                     if let Some(server_id) = client_vehicles.get(&vehicle_id) {
@@ -299,6 +355,7 @@ impl Server {
                     .unwrap()
                     .insert(data.in_game_id, server_id);
                 self.vehicle_data_storage.insert(server_id, data);
+                println!("Vehicle {} spawned!", server_id);
             }
             ElectricsUpdate(data) => {
                 if let Some(client_vehicles) = self.vehicles.get(&client_id) {
@@ -321,6 +378,41 @@ impl Server {
                     }
                 }
             }
+            RemoveVehicle(id) => {
+                if let Some(client_vehicles) = self.vehicles.get(&client_id) {
+                    if let Some(server_id) = client_vehicles.get(&id) {
+                        self.vehicle_data_storage.remove(&server_id);
+                        self.transforms.remove(&server_id);
+                        self.electrics.remove(&server_id);
+                        self.gearbox_states.remove(&server_id);
+                        self.nodes.remove(&server_id);
+                        println!("Vehicle {} removed!", server_id);
+                        for (cid, client) in &mut self.connections {
+                            if *cid == client_id { continue; }
+                            client
+                                .unordered
+                                .send(Outgoing::RemoveVehicle(*server_id))
+                                .await
+                                .unwrap();
+                        }
+                    }
+                }
+            },
+            ResetVehicle(id) => {
+                if let Some(client_vehicles) = self.vehicles.get(&client_id) {
+                    if let Some(server_id) = client_vehicles.get(&id) {
+                        println!("Vehicle {} resseted!", server_id);
+                        for (cid, client) in &mut self.connections {
+                            if *cid == client_id { continue; }
+                            client
+                                .unordered
+                                .send(Outgoing::ResetVehicle(*server_id))
+                                .await
+                                .unwrap();
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -333,13 +425,13 @@ impl Server {
     }
 }
 
-async fn send(stream: &mut quinn::SendStream, data_type: u8, message: &[u8]) {
-    stream.write_all(&[data_type]).await.unwrap();
+async fn send(stream: &mut quinn::SendStream, data_type: u8, message: &[u8]) -> anyhow::Result<()> {
+    stream.write_all(&[data_type]).await?;
     stream
         .write_all(&(message.len() as u32).to_le_bytes())
-        .await
-        .unwrap();
-    stream.write_all(&message).await.unwrap();
+        .await?;
+    stream.write_all(&message).await?;
+    Ok(())
 }
 
 fn generate_certificate() -> (CertificateChain, PrivateKey) {
@@ -377,6 +469,8 @@ fn get_data_type(data: &Outgoing) -> u8 {
         VehicleSpawn(_) => 1,
         ElectricsUpdate(_, _) => 2,
         GearboxUpdate(_, _) => 3,
-        NodesUpdate(_, _) => 4,
+        _NodesUpdate(_, _) => 4,
+        RemoveVehicle(_) => 5,
+        ResetVehicle(_) => 6
     }
 }

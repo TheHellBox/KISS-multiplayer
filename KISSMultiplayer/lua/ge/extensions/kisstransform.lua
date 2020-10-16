@@ -5,7 +5,7 @@ local timer = 0
 M.received_transforms = {}
 M.local_transforms = {}
 M.threshold = 4
-M.rot_threshold = 1
+M.rot_threshold = 1.5
 
 local function send_transform_updates(obj)
   --if not M.ownership[obj:getID()] then return end
@@ -76,6 +76,7 @@ local function update(dt)
     if vehicle then
       local position_error = predicted_position - vec3(vehicle:getPosition())
       local rotation_error = predicted_rotation / quat(M.local_transforms[id].rotation)
+      local rotation_error_euler = rotation_error:toEulerYXZ()
       if position_error:length() > M.threshold then
         vehicle:setPosition(
           Point3F(
@@ -85,7 +86,7 @@ local function update(dt)
           )
         )
       end
-      if rotation_error:norm() > M.rot_threshold then
+      if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 25) then
         vehicle:setPosRot(
           predicted_position.x,
           predicted_position.y,
@@ -106,7 +107,6 @@ local function update(dt)
         vehicle:queueLuaCommand("kiss_vehicle.apply_angular_velocity("..a_p..", "..a_r..", "..a_y..")")
       end
 
-      local rotation_error_euler = rotation_error:toEulerYXZ()
       local velocity_error = vec3(transform.velocity) - vec3(vehicle:getVelocity())
       local local_ang_vel = vec3(
         M.local_transforms[id].vel_yaw,
