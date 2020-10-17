@@ -26,7 +26,9 @@ enum IncomingEvent {
     GearboxUpdate(Gearbox),
     NodesUpdate(Nodes),
     RemoveVehicle(u32),
-    ResetVehicle(u32)
+    ResetVehicle(u32),
+    UpdateClientInfo(ClientInfo),
+    Chat(String)
 }
 
 #[derive(Debug)]
@@ -37,7 +39,8 @@ enum Outgoing {
     GearboxUpdate(u32, Gearbox),
     _NodesUpdate(u32, Nodes),
     RemoveVehicle(u32),
-    ResetVehicle(u32)
+    ResetVehicle(u32),
+    Chat(String)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -54,6 +57,20 @@ pub struct VehicleData {
 
 struct Connection {
     pub unordered: mpsc::Sender<Outgoing>,
+    pub client_info: ClientInfo
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct ClientInfo {
+    pub name: String
+}
+
+impl Default for ClientInfo {
+    fn default() -> Self{
+        Self{
+            name: String::from("Unknown")
+        }
+    }
 }
 
 struct Server {
@@ -113,6 +130,7 @@ impl Server {
         let (ordered_tx, mut ordered_rx) = mpsc::channel(128);
         let client_connection = Connection {
             unordered: ordered_tx,
+            client_info: ClientInfo::default()
         };
         self.connections.insert(id, client_connection);
         println!("Client has connected to the server");
@@ -180,6 +198,10 @@ impl Server {
                     },
                     ResetVehicle(id) => {
                         let data = id.to_le_bytes();
+                        send(&mut stream, data_type, &data).await
+                    }
+                    Chat(message) => {
+                        let data = message.into_bytes();
                         send(&mut stream, data_type, &data).await
                     }
                 };
@@ -256,6 +278,23 @@ impl Server {
                         .await
                         .unwrap();
                 },
+                7 => {
+                    let data_str = String::from_utf8(data.to_vec()).unwrap();
+                    let info: ClientInfo =
+                        serde_json::from_str(&data_str).unwrap();
+                     client_events_tx
+                        .send((id, IncomingEvent::UpdateClientInfo(info)))
+                        .await
+                        .unwrap();
+                },
+                8 => {
+                    let mut chat_message = String::from_utf8(data.to_vec()).unwrap();
+                    chat_message.truncate(256);
+                    client_events_tx
+                        .send((id, IncomingEvent::Chat(chat_message)))
+                        .await
+                        .unwrap();
+                }
                 254 => {
                     // heartbeat
                 }
@@ -325,6 +364,21 @@ impl Server {
                 }
                 self.vehicles.remove(&client_id);
                 println!("Client has disconnected from the server");
+            }
+            UpdateClientInfo(info) => {
+                if let Some(connection) = self.connections.get_mut(&client_id) {
+                    connection.client_info = info;
+                }
+            },
+            Chat(message) => {
+                for (_, client) in &mut self.connections {
+                    let message = format!("{}: {}", client.client_info.name, message);
+                    client
+                        .unordered
+                        .send(Outgoing::Chat(message))
+                        .await
+                        .unwrap();
+                }
             }
             TransformUpdate(vehicle_id, transform) => {
                 if let Some(client_vehicles) = self.vehicles.get(&client_id) {
@@ -471,6 +525,7 @@ fn get_data_type(data: &Outgoing) -> u8 {
         GearboxUpdate(_, _) => 3,
         _NodesUpdate(_, _) => 4,
         RemoveVehicle(_) => 5,
-        ResetVehicle(_) => 6
+        ResetVehicle(_) => 6,
+        Chat(_) => 8,
     }
 }

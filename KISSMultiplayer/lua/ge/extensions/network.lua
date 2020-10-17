@@ -19,8 +19,23 @@ local MESSAGETYPE_GEARBOX = 3
 local MESSAGETYPE_NODES = 4
 local MESSAGETYPE_VEHICLE_REMOVE = 5
 local MESSAGETYPE_VEHICLE_RESET = 6
+local MESSAGETYPE_CLIENT_INFO= 7
+local MESSAGETYPE_CHAT = 8
 
-local function connect(addr)
+local function send_data(data_type, reliable, data)
+  if not connection.connected then return -1 end
+  local len = #data
+  local len = ffi.string(ffi.new("uint32_t[?]", 1, {len}), 4)
+  if reliable then
+    reliable = 1
+  else
+    reliable = 0
+  end
+  connection.tcp:send(string.char(reliable)..string.char(data_type)..len)
+  connection.tcp:send(data)
+end
+
+local function connect(addr, player_name)
   print("Connecting...")
   connection.tcp = socket.tcp()
   connection.tcp:settimeout(5.0)
@@ -48,22 +63,14 @@ local function connect(addr)
   connection.tcp:settimeout(0.0)
   connection.connected = true
   connection.client_id = server_info.client_id
-  if be:getPlayerVehicle(0) then
-    --vehiclemanager.send_vehicle_config(be:getPlayerVehicle(0):getID())
-  end
-end
 
-local function send_data(data_type, reliable, data)
-  if not connection.connected then return -1 end
-  local len = #data
-  local len = ffi.string(ffi.new("uint32_t[?]", 1, {len}), 4)
-  if reliable then
-    reliable = 1
-  else
-    reliable = 0
+  local client_info = {
+    name = player_name
+  }
+  send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
+  if be:getPlayerVehicle(0) then
+    vehiclemanager.send_vehicle_config(be:getPlayerVehicle(0):getID())
   end
-  connection.tcp:send(string.char(reliable)..string.char(data_type)..len)
-  connection.tcp:send(data)
 end
 
 local function send_messagepack(data_type, reliable, data)
@@ -118,8 +125,9 @@ local function onUpdate(dt)
       vehiclemanager.remove_vehicle(ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0])
     elseif data_type == MESSAGETYPE_VEHICLE_REMOVE then
       vehiclemanager.reset_vehicle(ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0])
+    elseif data_type == MESSAGETYPE_CHAT then
+      kissui.add_message(data)
     end
-
   end
 end
 

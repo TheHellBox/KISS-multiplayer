@@ -6,3 +6,6 @@ registerCoreModule("vehiclemanager")
 
 load("kisstransform")
 registerCoreModule("kisstransform")
+
+load("kissui")
+registerCoreModule("kissui")
