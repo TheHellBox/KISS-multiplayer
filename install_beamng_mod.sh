@@ -1,7 +1,6 @@
 #!/bin/sh
 set -e
 
-
 MODSDIR="${HOME}/.steam/steam/steamapps/compatdata/284160/pfx/drive_c/users/steamuser/My Documents/BeamNG.drive/mods/"
 MODFILE="KISSMultiplayer.zip"
 
@@ -16,6 +15,6 @@ if [ -d "$MODSDIR" ]; then
   cp $MODFILE "${MODSDIR}"
   echo "SUCCESS"
 else
-  echo "ERROR: Can't find mod folder!"
+  echo "ERROR: Can't find mods folder!"
   exit 1
 fi
