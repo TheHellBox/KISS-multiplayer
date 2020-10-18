@@ -5,12 +5,28 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
+    // Master server proxy
+    tokio::spawn(async {
+        let server = tiny_http::Server::http("0.0.0.0:3693").unwrap();
+        for request in server.incoming_requests() {
+            let mut url = request.url().to_string();
+            url.remove(0);
+            if url == "check" {
+                let response = tiny_http::Response::from_string("ok");
+                request.respond(response).unwrap();
+                continue;
+            }
+            let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
+            let response = tiny_http::Response::from_string(response);
+            request.respond(response).unwrap();
+        }
+    });
+
     let addr = &"0.0.0.0:7894".parse::<SocketAddr>().unwrap();
     let mut listener = TcpListener::bind(addr).await.unwrap();
     while let Ok(conn) = listener.accept().await {
         let stream = conn.0;
         let (mut reader, mut writer) = tokio::io::split(stream);
-
         // Receive addr from client
         let mut addr_len = [0; 4];
         reader.read_exact(&mut addr_len).await.unwrap();

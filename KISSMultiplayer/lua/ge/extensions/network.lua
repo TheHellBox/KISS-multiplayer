@@ -92,11 +92,11 @@ local function onUpdate(dt)
     local received, _, _ = connection.tcp:receive(1)
     if not received then break end
     connection.tcp:settimeout(5.0)
-
     local data_type = string.byte(received)
-    local data = connection.tcp:receive(4)
 
+    local data = connection.tcp:receive(4)
     local len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))
+
     local data, _, _ = connection.tcp:receive(len[0])
 
     connection.tcp:settimeout(0.0)

@@ -1,8 +1,13 @@
 local M = {}
+local http = require("socket.http")
+
 M.dependencies = {"ui_imgui"}
 M.chat = {
   "KissMP chat"
 }
+M.server_list = {}
+M.master_addr = "http://185.87.49.206:3692/"
+M.bridge_launched = false
 
 local gui_module = require("ge/extensions/editor/api/gui")
 local gui = {setupEditorGuiTheme = nop}
@@ -11,7 +16,19 @@ local addr = imgui.ArrayChar(128)
 local player_name = imgui.ArrayChar(128)
 local message_buffer = imgui.ArrayChar(128)
 
+local function refresh_server_list()
+  local b, _, _  = http.request("http://127.0.0.1:3693/check")
+  if b and b == "ok" then
+    M.bridge_launched = true
+  end
+  local b, _, _  = http.request("http://127.0.0.1:3693/"..M.master_addr)
+  if b then
+    M.server_list = jsonDecode(b) or {}
+  end
+end
+
 local function open_ui()
+  refresh_server_list()
   gui_module.initialize(gui)
   gui.registerWindow("KissMP", imgui.ImVec2(128, 128))
   gui.showWindow("KissMP")
@@ -32,6 +49,26 @@ local function draw_menu()
       local player_name = ffi.string(player_name)
       network.connect(addr, player_name)
     end
+    imgui.Spacing()
+    if imgui.Button("Refresh list") then
+      refresh_server_list()
+    end
+    imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
+
+    if not M.bridge_launched then
+      imgui.Text("Bridge is not launched. Please, launch the bridge and then hit 'Refresh list' button")
+    elseif #M.server_list == 0 then
+      imgui.Text("No servers found")
+    end
+    for addr, server in pairs(M.server_list) do
+      if imgui.Button(server.name..": "..server.player_count.." players") then
+        local player_name = ffi.string(player_name)
+        print(addr)
+        network.connect(addr, player_name)
+      end
+    end
+
+    imgui.EndChild()
   end
   imgui.End()
 end

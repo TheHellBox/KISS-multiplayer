@@ -80,6 +80,7 @@ struct Server {
     gearbox_states: HashMap<u32, Gearbox>,
     nodes: HashMap<u32, Nodes>,
     vehicle_data_storage: HashMap<u32, VehicleData>,
+    reqwest_client: reqwest::Client,
     // Client ID, game_id, server_id
     vehicles: HashMap<u32, HashMap<u32, u32>>,
     name: &'static str,
@@ -90,6 +91,9 @@ impl Server {
     async fn run(mut self) {
         let mut ticks =
             tokio::time::interval(std::time::Duration::from_secs(1) / self.tickrate as u32).fuse();
+        let mut send_info_ticks =
+            tokio::time::interval(std::time::Duration::from_secs(1)).fuse();
+
         let (certificate_chain, key) = generate_certificate();
         let addr = &"0.0.0.0:3698".parse::<SocketAddr>().unwrap();
         let mut server_config = quinn::ServerConfigBuilder::default();
@@ -109,6 +113,9 @@ impl Server {
                 _ = ticks.next() => {
                     self.tick().await;
                 },
+                _ = send_info_ticks.next() => {
+                    self.send_server_info().await;
+                }
                 conn = incoming.select_next_some() => {
                     self.on_connect(conn.unwrap(), client_events_tx.clone()).await;
                 },
@@ -117,6 +124,20 @@ impl Server {
                 }
             }
         }
+    }
+
+    async fn send_server_info(&self) -> anyhow::Result<()>{
+        let server_info = serde_json::json!({
+            "name": self.name.clone(),
+            "player_count": self.connections.len(),
+            "port": 3698
+        }).to_string();
+        self.reqwest_client
+            .post("http://185.87.49.206:3692")
+            .body(server_info)
+            .send()
+            .await?;
+        Ok(())
     }
 
     async fn on_connect(
@@ -504,6 +525,7 @@ async fn main() {
     println!("Gas, Gas, Gas!");
     let server = Server {
         connections: HashMap::with_capacity(8),
+        reqwest_client: reqwest::Client::new(),
         transforms: HashMap::with_capacity(64),
         vehicles: HashMap::with_capacity(64),
         electrics: HashMap::with_capacity(64),
