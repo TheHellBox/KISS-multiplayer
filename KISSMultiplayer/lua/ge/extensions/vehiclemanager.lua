@@ -103,7 +103,7 @@ local function update_vehicle_gearbox(data)
   local id = M.id_map[data[1] or -1] or -1
   if M.ownership[id] then return end
   local vehicle = be:getObjectByID(id)
-  if not vehicle then return en
+  if not vehicle then return end
   if not M.vehicle_updates_buffer[id] then M.vehicle_updates_buffer[id] = {} end
   M.vehicle_updates_buffer[id].gearbox = data
   vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(data).."\')")
