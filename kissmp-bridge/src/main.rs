@@ -52,17 +52,22 @@ async fn main() {
         tokio::spawn(async move {
             let mut buffer = [0; 1];
             while let Ok(_) = reader.read_exact(&mut buffer).await {
-                let mut stream = stream_connection.open_uni().await.unwrap();
-                // buffer_a represents data_type. I named it so it's more convinient to merge with buffer_b
+                let reliable = buffer[0] == 1;
                 let mut buffer_a = vec![0; 1];
                 reader.read_exact(&mut buffer_a).await.unwrap();
                 let mut len_buf = [0; 4];
                 reader.read_exact(&mut len_buf).await.unwrap();
                 let len = i32::from_le_bytes(len_buf) as usize;
-                let mut buffer_b = vec![0; len];
-                reader.read_exact(&mut buffer_b).await.unwrap();
+                let mut data = vec![0; len];
+                reader.read_exact(&mut data).await.unwrap();
+                if !reliable {
+                    buffer_a.append(&mut data);
+                    stream_connection.send_datagram(buffer_a.into()).unwrap();
+                    continue
+                }
                 buffer_a.append(&mut len_buf.to_vec());
-                buffer_a.append(&mut buffer_b);
+                buffer_a.append(&mut data);
+                let mut stream = stream_connection.open_uni().await.unwrap();
                 stream.write_all(&buffer_a).await.unwrap();
                 //stream.finish().await.unwrap();
             }
@@ -85,9 +90,27 @@ async fn main() {
                     Ok::<_, anyhow::Error>(buffer_a)
                 })
                 .buffer_unordered(16);
+            let mut datagrams = connection
+                .datagrams
+                .map(|data| async {
+                    let mut data: Vec<u8> = data.unwrap().to_vec();
+                    let mut result = vec![data.remove(0)];
+                    let data_len = (data.len() as u32).to_le_bytes();
+                    result.append(&mut data_len.to_vec());
+                    result.append(&mut data);
+                    Ok::<_, anyhow::Error>(result)
+                })
+                .buffer_unordered(32);
             loop {
-                while let Some(data) = cmds.try_next().await.unwrap() {
-                    writer.write_all(&data).await.unwrap();
+                tokio::select! {
+                    data = cmds.select_next_some() => {
+                        let data = data.unwrap();
+                        writer.write_all(&data).await.unwrap();
+                    }
+                    data = datagrams.select_next_some() => {
+                        let data = data.unwrap();
+                        writer.write_all(&data).await.unwrap();
+                    }
                 }
             }
         });

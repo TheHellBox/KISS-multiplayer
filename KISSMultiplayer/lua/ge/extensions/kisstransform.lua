@@ -51,7 +51,7 @@ local function update(dt)
     end
   end
 
-  if timer < (1/60) then
+  if timer < (1/30) then
     timer = timer + dt
   else
     timer = 0
@@ -118,8 +118,12 @@ local function update(dt)
       local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 5, 1)
       local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 5, 1)
 
-      vehicle:queueLuaCommand("kiss_vehicle.apply_velocity("..required_acceleration.x..", "..required_acceleration.y..", "..required_acceleration.z..")")
-      vehicle:queueLuaCommand("kiss_vehicle.apply_angular_velocity("..required_angular_acceleration.y..", "..required_angular_acceleration.z..", "..required_angular_acceleration.x..")")
+      if required_acceleration:length() < 500 then
+        vehicle:queueLuaCommand("kiss_vehicle.apply_velocity("..required_acceleration.x..", "..required_acceleration.y..", "..required_acceleration.z..")")
+      end
+      if required_angular_acceleration:length() < 500 then
+        vehicle:queueLuaCommand("kiss_vehicle.apply_angular_velocity("..required_angular_acceleration.y..", "..required_angular_acceleration.z..", "..required_angular_acceleration.x..")")
+      end
     end
   end
 end
