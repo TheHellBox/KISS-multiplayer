@@ -6,7 +6,9 @@ use tiny_http::{Server, Response};
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServerInfo {
     name: String,
-    player_count: u16,
+    player_count: u8,
+    max_players: u8,
+    description: String,
     port: u16,
     #[serde(skip)]
     update_time: Option<std::time::Instant>
@@ -31,6 +33,7 @@ fn main() {
             request.as_reader().read_to_string(&mut content).unwrap();
             if let Ok(server_info) = serde_json::from_str(&content) {
                 let mut server_info: ServerInfo = server_info;
+                server_info.description.truncate(256);
                 let addr = SocketAddr::new(addr.ip(), server_info.port);
                 println!("Server update received: {:?} from {}", server_info, addr);
                 server_info.update_time = Some(std::time::Instant::now());

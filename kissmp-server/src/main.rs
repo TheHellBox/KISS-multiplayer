@@ -84,6 +84,7 @@ struct Server {
     // Client ID, game_id, server_id
     vehicles: HashMap<u32, HashMap<u32, u32>>,
     name: &'static str,
+    description: &'static str,
     tickrate: u8,
 }
 
@@ -114,7 +115,7 @@ impl Server {
                     self.tick().await;
                 },
                 _ = send_info_ticks.next() => {
-                    self.send_server_info().await;
+                    self.send_server_info().await.unwrap();
                 }
                 conn = incoming.select_next_some() => {
                     self.on_connect(conn.unwrap(), client_events_tx.clone()).await;
@@ -130,6 +131,8 @@ impl Server {
         let server_info = serde_json::json!({
             "name": self.name.clone(),
             "player_count": self.connections.len(),
+            "max_players": 16,
+            "description": self.description.clone(),
             "port": 3698
         }).to_string();
         self.reqwest_client
@@ -532,7 +535,8 @@ async fn main() {
         nodes: HashMap::with_capacity(64),
         gearbox_states: HashMap::with_capacity(64),
         vehicle_data_storage: HashMap::with_capacity(64),
-        name: "KissMP BeamNG Server",
+        name: "KissMP Vanilla Server",
+        description: "Vanilla KissMP server. Nothing fancy.",
         tickrate: 66,
     };
     server.run().await;

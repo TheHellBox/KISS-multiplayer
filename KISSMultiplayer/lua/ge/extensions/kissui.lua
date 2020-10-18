@@ -40,33 +40,44 @@ local function draw_menu()
   if not gui.isWindowVisible("KissMP") then return end
   gui.setupWindow("KissMP")
   if imgui.Begin("KissMP", gui.getWindowVisibleBoolPtr("KissMP")) then
-    imgui.InputText("Player name", player_name)
-    imgui.Spacing()
-    imgui.InputText("", addr)
+    imgui.Text("Player name:")
+    imgui.InputText("##name", player_name)
+    imgui.Text("Server address:")
+    imgui.InputText("##addr", addr)
     imgui.SameLine()
     if imgui.Button("Connect") then
       local addr = ffi.string(addr)
       local player_name = ffi.string(player_name)
       network.connect(addr, player_name)
     end
-    imgui.Spacing()
+    imgui.Text("Server list:")
     if imgui.Button("Refresh list") then
       refresh_server_list()
     end
     imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
 
-    if not M.bridge_launched then
-      imgui.Text("Bridge is not launched. Please, launch the bridge and then hit 'Refresh list' button")
-    elseif #M.server_list == 0 then
-      imgui.Text("No servers found")
-    end
+    local server_count = 0
     for addr, server in pairs(M.server_list) do
-      if imgui.Button(server.name..": "..server.player_count.." players") then
-        local player_name = ffi.string(player_name)
-        print(addr)
-        network.connect(addr, player_name)
+      server_count = server_count + 1
+      if imgui.CollapsingHeader1(server.name.." ["..server.player_count.."/"..server.max_players.."]") then
+        imgui.PushTextWrapPos(0)
+        imgui.Text("Address: "..addr)
+        imgui.Text(server.description)
+        imgui.PopTextWrapPos()
+        if imgui.Button("Connect") then
+          local player_name = ffi.string(player_name)
+          network.connect(addr, player_name)
+        end
       end
     end
+
+    imgui.PushTextWrapPos(0)
+    if not M.bridge_launched then
+      imgui.Text("Bridge is not launched. Please, launch the bridge and then hit 'Refresh list' button")
+    elseif server_count == 0 then
+      imgui.Text("Server list is empty")
+    end
+    imgui.PopTextWrapPos()
 
     imgui.EndChild()
   end
