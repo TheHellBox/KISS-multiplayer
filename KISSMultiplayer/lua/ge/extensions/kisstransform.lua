@@ -130,8 +130,10 @@ local function update_vehicle_transform(transform)
   if transform.generation < (vehiclemanager.packet_gen_buffer[id] or -1) then return end
   vehiclemanager.packet_gen_buffer[id] = transform.generation
   local vehicle = be:getObjectByID(id)
-  local position = vec3(vehicle:getPosition())
-  M.received_transforms[id] = transform
+  if vehicle then
+    local position = vec3(vehicle:getPosition())
+    M.received_transforms[id] = transform
+  end
 end
 
 local function push_transform(id, t)

@@ -9,6 +9,7 @@ pub struct ServerInfo {
     player_count: u8,
     max_players: u8,
     description: String,
+    map: String,
     port: u16,
     #[serde(skip)]
     update_time: Option<std::time::Instant>

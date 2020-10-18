@@ -85,6 +85,7 @@ struct Server {
     vehicles: HashMap<u32, HashMap<u32, u32>>,
     name: &'static str,
     description: &'static str,
+    map: &'static str,
     tickrate: u8,
 }
 
@@ -133,6 +134,7 @@ impl Server {
             "player_count": self.connections.len(),
             "max_players": 16,
             "description": self.description.clone(),
+            "map": self.map.clone(),
             "port": 3698
         }).to_string();
         self.reqwest_client
@@ -176,7 +178,8 @@ impl Server {
         let server_info = serde_json::json!({
             "name": self.name.clone(),
             "player_count": self.connections.len(),
-            "client_id": id
+            "client_id": id,
+            "map": self.map.clone()
         })
         .to_string()
         .into_bytes();
@@ -537,6 +540,7 @@ async fn main() {
         vehicle_data_storage: HashMap::with_capacity(64),
         name: "KissMP Vanilla Server",
         description: "Vanilla KissMP server. Nothing fancy.",
+        map: "any",
         tickrate: 66,
     };
     server.run().await;

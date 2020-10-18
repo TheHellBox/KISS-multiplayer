@@ -37,6 +37,7 @@ end
 
 local function connect(addr, player_name)
   print("Connecting...")
+  kissui.add_message("Connecting to "..addr.."...")
   connection.tcp = socket.tcp()
   connection.tcp:settimeout(5.0)
   local connected, err = connection.tcp:connect("127.0.0.1", "7894")
@@ -63,11 +64,14 @@ local function connect(addr, player_name)
   connection.tcp:settimeout(0.0)
   connection.connected = true
   connection.client_id = server_info.client_id
-
+  kissui.add_message("Connected!");
   local client_info = {
     name = player_name
   }
   send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
+  if not server_info.map == "any" then
+    freeroam_freeroam.startFreeroam(server_info.map)
+  end
   if be:getPlayerVehicle(0) then
     vehiclemanager.send_vehicle_config(be:getPlayerVehicle(0):getID())
   end
@@ -123,7 +127,7 @@ local function onUpdate(dt)
       vehiclemanager.update_vehicle_nodes(data)
     elseif data_type == MESSAGETYPE_VEHICLE_REMOVE then
       vehiclemanager.remove_vehicle(ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0])
-    elseif data_type == MESSAGETYPE_VEHICLE_REMOVE then
+    elseif data_type == MESSAGETYPE_VEHICLE_RESET then
       vehiclemanager.reset_vehicle(ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0])
     elseif data_type == MESSAGETYPE_CHAT then
       kissui.add_message(data)
