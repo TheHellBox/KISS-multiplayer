@@ -9,3 +9,6 @@ registerCoreModule("kisstransform")
 
 load("kissui")
 registerCoreModule("kissui")
+
+load("kissmods")
+registerCoreModule("kissmods")

@@ -4,8 +4,16 @@ local generation = 0
 local timer = 0
 M.received_transforms = {}
 M.local_transforms = {}
+M.acceleration_buffer = {}
+
 M.threshold = 4
 M.rot_threshold = 1.5
+M.acceleration_smoothing_coef = 2
+
+function lerp(a,b,t)
+  local t = math.min(t, 1)
+  return a * (1-t) + b * t
+end
 
 local function send_transform_updates(obj)
   --if not M.ownership[obj:getID()] then return end
@@ -51,7 +59,7 @@ local function update(dt)
     end
   end
 
-  if timer < (1/30) then
+  if timer < (1/network.connection.tickrate) then
     timer = timer + dt
   else
     timer = 0
@@ -96,15 +104,6 @@ local function update(dt)
           predicted_rotation.z,
           predicted_rotation.w
         )
-        -- setPosRot kills velocity, so we have to reapply it
-        local x = transform.velocity[1]
-        local y = transform.velocity[2]
-        local z = transform.velocity[3]
-        vehicle:queueLuaCommand("kiss_vehicle.apply_velocity("..x..", "..y..", "..z..")")
-        local a_p = transform.angular_velocity[1]
-        local a_r = transform.angular_velocity[2]
-        local a_y = transform.angular_velocity[3]
-        vehicle:queueLuaCommand("kiss_vehicle.apply_angular_velocity("..a_p..", "..a_r..", "..a_y..")")
       end
 
       local velocity_error = vec3(transform.velocity) - vec3(vehicle:getVelocity())
@@ -115,15 +114,16 @@ local function update(dt)
       )
       local angular_velocity_error = vec3(transform.angular_velocity) - local_ang_vel
 
-      local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 5, 1)
-      local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 5, 1)
+      local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 9, 1)
+      local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 9, 1)
 
-      if required_acceleration:length() < 500 then
-        vehicle:queueLuaCommand("kiss_vehicle.apply_velocity("..required_acceleration.x..", "..required_acceleration.y..", "..required_acceleration.z..")")
-      end
-      if required_angular_acceleration:length() < 500 then
-        vehicle:queueLuaCommand("kiss_vehicle.apply_angular_velocity("..required_angular_acceleration.y..", "..required_angular_acceleration.z..", "..required_angular_acceleration.x..")")
-      end
+      vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
+                                ..required_acceleration.x..","
+                                ..required_acceleration.y..","
+                                ..required_acceleration.z..","
+                                ..required_angular_acceleration.y..","
+                                ..required_angular_acceleration.z..","
+                                ..required_angular_acceleration.x..")")
     end
   end
 end

@@ -9,6 +9,9 @@ M.server_list = {}
 M.master_addr = "http://185.87.49.206:3692/"
 M.bridge_launched = false
 
+M.show_download = false
+M.download_progress = 0
+
 local gui_module = require("ge/extensions/editor/api/gui")
 local gui = {setupEditorGuiTheme = nop}
 local imgui = ui_imgui
@@ -30,10 +33,12 @@ end
 local function open_ui()
   refresh_server_list()
   gui_module.initialize(gui)
-  gui.registerWindow("KissMP", imgui.ImVec2(128, 128))
+  gui.registerWindow("KissMP", imgui.ImVec2(256, 256))
   gui.showWindow("KissMP")
-  gui.registerWindow("Chat", imgui.ImVec2(128, 128))
+  gui.registerWindow("Chat", imgui.ImVec2(256, 256))
   gui.showWindow("Chat")
+  gui.registerWindow("Download", imgui.ImVec2(256, 128))
+  gui.showWindow("Download")
 end
 
 local function draw_menu()
@@ -62,6 +67,7 @@ local function draw_menu()
       if imgui.CollapsingHeader1(server.name.." ["..server.player_count.."/"..server.max_players.."]") then
         imgui.PushTextWrapPos(0)
         imgui.Text("Address: "..addr)
+        imgui.Text("Map: "..server.map)
         imgui.Text(server.description)
         imgui.PopTextWrapPos()
         if imgui.Button("Connect") then
@@ -96,13 +102,30 @@ local function draw_chat()
     end
     imgui.EndChild()
     imgui.Spacing()
-    if imgui.InputText("", message_buffer, 128, imgui.InputTextFlags_EnterReturnsTrue) then
+    if imgui.InputText("##chat", message_buffer, 128, imgui.InputTextFlags_EnterReturnsTrue) then
       local message = ffi.string(message_buffer)
       network.send_data(8, true, message)
       imgui.SetKeyboardFocusHere(-1)
-      -- idk if that's a correct way to do that
       message_buffer = imgui.ArrayChar(128)
     end
+    imgui.SameLine()
+    if imgui.Button("Send") then
+      local message = ffi.string(message_buffer)
+      network.send_data(8, true, message)
+      message_buffer = imgui.ArrayChar(128)
+    end
+  end
+  imgui.End()
+end
+
+local function draw_download()
+  if not M.show_download then return end
+  if not gui.isWindowVisible("Download") then return end
+  if imgui.Begin("Download", gui.getWindowVisibleBoolPtr("Download")) then
+    --local draw_list = imgui.GetOverlayDrawList1()
+    --imgui.ImDrawList_AddRectFilled(draw_list, imgui.ImVec2(30, 30), imgui.ImVec2(30 + M.download_progress * 200, 60), imgui.Col_ButtonHovered)
+    imgui.Text("Downloading "..network.download_info.file_name.."...")
+    imgui.Text("Progress: "..math.floor(M.download_progress * 100).."/100")
   end
   imgui.End()
 end
@@ -110,6 +133,7 @@ end
 local function onUpdate()
   draw_menu()
   draw_chat()
+  draw_download()
 end
 
 local function add_message(message)
@@ -119,5 +143,6 @@ end
 M.onExtensionLoaded = open_ui
 M.onUpdate = onUpdate
 M.add_message = add_message
+M.draw_download = draw_download
 
 return M

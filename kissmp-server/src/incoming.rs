@@ -1,7 +1,12 @@
 use crate::*;
 
 impl Server {
-    pub async fn handle_incoming_data(id: u32, data_type: u8, data: Vec<u8>, client_events_tx: &mut mpsc::Sender<(u32, IncomingEvent)>) -> anyhow::Result<()>{
+    pub async fn handle_incoming_data(
+        id: u32,
+        data_type: u8,
+        data: Vec<u8>,
+        client_events_tx: &mut mpsc::Sender<(u32, IncomingEvent)>,
+    ) -> anyhow::Result<()> {
         match data_type {
             0 => {
                 let (transform_id, transform) = Transform::from_bytes(&data);
@@ -10,8 +15,7 @@ impl Server {
             }
             1 => {
                 let data_str = String::from_utf8(data.to_vec()).unwrap();
-                let vehicle_data: VehicleData =
-                    serde_json::from_str(&data_str).unwrap();
+                let vehicle_data: VehicleData = serde_json::from_str(&data_str).unwrap();
                 client_events_tx
                     .send((id, IncomingEvent::VehicleData(vehicle_data)))
                     .await
@@ -35,36 +39,31 @@ impl Server {
                         .unwrap();
                 }
             }
-            4 => {
-                let nodes = Nodes::from_bytes(&data);
-                client_events_tx
-                    .send((id, IncomingEvent::NodesUpdate(nodes)))
-                    .await
-                    .unwrap();
-            },
+            4 => {}
             5 => {
                 let vehicle_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
                     .send((id, IncomingEvent::RemoveVehicle(vehicle_id)))
                     .await
                     .unwrap();
-            },
+            }
             6 => {
                 let vehicle_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
                     .send((id, IncomingEvent::ResetVehicle(vehicle_id)))
                     .await
                     .unwrap();
-            },
+            }
             7 => {
                 let data_str = String::from_utf8(data.to_vec()).unwrap();
-                let info: ClientInfo =
-                    serde_json::from_str(&data_str).unwrap();
-                client_events_tx
-                    .send((id, IncomingEvent::UpdateClientInfo(info)))
-                    .await
-                    .unwrap();
-            },
+                let info = serde_json::from_str(&data_str);
+                if let Ok(info) = info {
+                    client_events_tx
+                        .send((id, IncomingEvent::UpdateClientInfo(info)))
+                        .await
+                        .unwrap();
+                }
+            }
             8 => {
                 let mut chat_message = String::from_utf8(data.to_vec()).unwrap();
                 chat_message.truncate(256);
@@ -72,6 +71,16 @@ impl Server {
                     .send((id, IncomingEvent::Chat(chat_message)))
                     .await
                     .unwrap();
+            },
+            9 => {
+                let data_str = String::from_utf8(data.to_vec()).unwrap();
+                let files = serde_json::from_str(&data_str);
+                if let Ok(files) = files {
+                    client_events_tx
+                        .send((id, IncomingEvent::RequestMods(files)))
+                        .await
+                        .unwrap();
+                }
             }
             254 => {
                 // heartbeat

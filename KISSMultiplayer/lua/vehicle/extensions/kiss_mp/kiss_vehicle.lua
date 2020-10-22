@@ -22,22 +22,13 @@ local function set_rotation(x, y, z, w)
   obj:queueGameEngineLua("vehiclemanager.rotate_nodes(\'"..jsonEncode(nodes_table).."\', "..obj:getID()..", "..x..", "..y..", "..z..", "..w..")")
 end
 
-local function apply_velocity(x, y, z)
-  local velocity = vec3(x, y, z)
-  local force = obj:getPhysicsFPS()
-  for _, node in pairs(v.data.nodes) do
-    local force = velocity * obj:getNodeMass(node.cid) * force
-    obj:applyForceVector(node.cid, force:toFloat3())
-  end
-end
-
-local function apply_angular_velocity(pitch, roll, yaw)
+local function apply_full_velocity(x, y, z, pitch, roll, yaw)
   local velocity = vec3(x, y, z)
   local force = obj:getPhysicsFPS()
   local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation()))
   for _, node in pairs(v.data.nodes) do
     local node_position = vec3(obj:getNodePosition(node.cid))
-    local force = node_position:cross(rot) * obj:getNodeMass(node.cid) * force
+    local force = (velocity + node_position:cross(rot)) * obj:getNodeMass(node.cid) * force
     obj:applyForceVector(node.cid, force:toFloat3())
   end
 end
@@ -52,8 +43,8 @@ end
 
 M.update_transform_info = update_transform_info
 M.set_rotation = set_rotation
-M.apply_velocity = apply_velocity
-M.apply_angular_velocity = apply_angular_velocity
+M.apply_full_velocity = apply_full_velocity
 M.kill_velocity = kill_velocity
+M.onInit = init
 
 return M

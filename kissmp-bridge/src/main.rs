@@ -38,6 +38,13 @@ async fn main() {
 
         let mut endpoint = quinn::Endpoint::builder();
         let mut client_cfg = quinn::ClientConfig::default();
+
+        let mut transport = quinn::TransportConfig::default();
+        transport
+            .max_idle_timeout(Some(std::time::Duration::from_secs(120)))
+            .unwrap();
+        client_cfg.transport = std::sync::Arc::new(transport);
+
         let tls_cfg = std::sync::Arc::get_mut(&mut client_cfg.crypto).unwrap();
         tls_cfg
             .dangerous()
@@ -46,7 +53,7 @@ async fn main() {
         let (endpoint, _) = endpoint
             .bind(&SocketAddr::new(IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
             .unwrap();
-        let connection = endpoint.connect(addr, "kissmp").unwrap().await.unwrap();
+        let mut connection = endpoint.connect(addr, "kissmp").unwrap().await.unwrap();
         // That's some stupid naming
         let stream_connection = connection.connection.clone();
         tokio::spawn(async move {
@@ -63,7 +70,7 @@ async fn main() {
                 if !reliable {
                     buffer_a.append(&mut data);
                     stream_connection.send_datagram(buffer_a.into()).unwrap();
-                    continue
+                    continue;
                 }
                 buffer_a.append(&mut len_buf.to_vec());
                 buffer_a.append(&mut data);
@@ -75,19 +82,19 @@ async fn main() {
 
         //let mut ordered = connection.uni_streams.next().await.unwrap().unwrap();
         tokio::spawn(async move {
-            let mut cmds = connection
+            /*let mut cmds = connection
                 .uni_streams
                 .map(|stream| async {
-                    let mut stream = stream.unwrap();
-                    let mut buffer_a = vec![0; 1];
-                    stream.read_exact(&mut buffer_a).await.unwrap();
-                    let mut len = [0; 4];
-                    stream.read_exact(&mut len).await.unwrap();
-                    let mut buffer_b = vec![0; u32::from_le_bytes(len) as usize];
-                    stream.read_exact(&mut buffer_b).await.unwrap();
-                    buffer_a.append(&mut len.to_vec());
-                    buffer_a.append(&mut buffer_b);
-                    Ok::<_, anyhow::Error>(buffer_a)
+                    let mut stream = stream?;
+                    let mut buf = [0; 1024];
+                    let mut result = vec![];
+                    while let Some(n) = stream.read(&mut buf).await? {
+                        println!("read {}", n);
+                        result = buf[0..n].to_vec();
+                        writer.write_all(&result).await.unwrap();
+                        break;
+                    }
+                    Ok::<_, anyhow::Error>(result)
                 })
                 .buffer_unordered(16);
             let mut datagrams = connection
@@ -105,8 +112,37 @@ async fn main() {
                 tokio::select! {
                     data = cmds.select_next_some() => {
                         let data = data.unwrap();
+                        //writer.write_all(&data).await.unwrap();
+                    }
+                    data = datagrams.select_next_some() => {
+                        let data = data.unwrap();
                         writer.write_all(&data).await.unwrap();
                     }
+                }
+        }*/
+            let mut datagrams = connection
+                .datagrams
+                .map(|data| async {
+                    let mut data: Vec<u8> = data.unwrap().to_vec();
+                    let mut result = vec![data.remove(0)];
+                    let data_len = (data.len() as u32).to_le_bytes();
+                    result.append(&mut data_len.to_vec());
+                    result.append(&mut data);
+                    Ok::<_, anyhow::Error>(result)
+                })
+                .buffer_unordered(32);
+            loop{
+                tokio::select!{
+                    stream = connection.uni_streams.try_next() => {
+                        let mut stream = stream.unwrap().unwrap();
+                        let mut buf = [0; 1024];
+                        while let Some(n) = stream.read(&mut buf).await.unwrap() {
+                            if n == 0 {
+                                break
+                            }
+                            writer.write_all(&buf[0..n].to_vec()).await.unwrap();
+                        }
+                    },
                     data = datagrams.select_next_some() => {
                         let data = data.unwrap();
                         writer.write_all(&data).await.unwrap();

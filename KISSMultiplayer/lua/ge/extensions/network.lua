@@ -1,14 +1,18 @@
 local M = {}
+M.downloading = false
+M.download_info = {}
 
 local socket = require("socket")
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 
-local connection = {
+M.connection = {
   tcp = nil,
   connected = false,
   client_id = 0,
   heartbeat_time = 1,
   timer = 0,
+  tickrate = 33,
+  mods_left = 0,
   timeout_buffer = nil
 }
 
@@ -21,9 +25,10 @@ local MESSAGETYPE_VEHICLE_REMOVE = 5
 local MESSAGETYPE_VEHICLE_RESET = 6
 local MESSAGETYPE_CLIENT_INFO= 7
 local MESSAGETYPE_CHAT = 8
+local FILE_TRANSFER = 9
 
 local function send_data(data_type, reliable, data)
-  if not connection.connected then return -1 end
+  if not M.connection.connected then return -1 end
   local len = #data
   local len = ffi.string(ffi.new("uint32_t[?]", 1, {len}), 4)
   if reliable then
@@ -31,28 +36,28 @@ local function send_data(data_type, reliable, data)
   else
     reliable = 0
   end
-  connection.tcp:send(string.char(reliable)..string.char(data_type)..len)
-  connection.tcp:send(data)
+  M.connection.tcp:send(string.char(reliable)..string.char(data_type)..len)
+  M.connection.tcp:send(data)
 end
 
 local function connect(addr, player_name)
   print("Connecting...")
   kissui.add_message("Connecting to "..addr.."...")
-  connection.tcp = socket.tcp()
-  connection.tcp:settimeout(5.0)
-  local connected, err = connection.tcp:connect("127.0.0.1", "7894")
+  M.connection.tcp = socket.tcp()
+  M.connection.tcp:settimeout(5.0)
+  local connected, err = M.connection.tcp:connect("127.0.0.1", "7894")
 
   -- Send server address to the bridge
   local addr_lenght = ffi.string(ffi.new("uint32_t[?]", 1, {#addr}), 4)
-  connection.tcp:send(addr_lenght)
-  connection.tcp:send(addr)
+  M.connection.tcp:send(addr_lenght)
+  M.connection.tcp:send(addr)
 
-  local _ = connection.tcp:receive(1)
-  local len, _, _ = connection.tcp:receive(4)
+  local _ = M.connection.tcp:receive(1)
+  local len, _, _ = M.connection.tcp:receive(4)
   local len = ffi.cast("uint32_t*", ffi.new("char[?]", #len, len))
   local len = len[0]
 
-  local received, _, _ = connection.tcp:receive(len)
+  local received, _, _ = M.connection.tcp:receive(len)
   local server_info = jsonDecode(received)
   if not server_info then
     print("Failed to fetch server info")
@@ -61,15 +66,32 @@ local function connect(addr, player_name)
   print("Server name: "..server_info.name)
   print("Player count: "..server_info.player_count)
 
-  connection.tcp:settimeout(0.0)
-  connection.connected = true
-  connection.client_id = server_info.client_id
+  M.connection.tcp:settimeout(0.0)
+  M.connection.connected = true
+  M.connection.client_id = server_info.client_id
+  M.connection.server_info = server_info
+  M.connection.tickrate = server_info.tickrate
+
   kissui.add_message("Connected!");
+
   local client_info = {
     name = player_name
   }
+
+  local mod_list = {}
+  for k, v in pairs(server_info.mods) do
+    table.insert(mod_list, v[1])
+  end
+  M.connection.mods_left = #mod_list
+ 
+  kissmods.deactivate_all_mods()
+  kissmods.mount_mods(mod_list)
+  local missing_mods = kissmods.check_mods(server_info.mods)
+  -- Request mods
+  send_data(9, true, jsonEncode(missing_mods))
+
   send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
-  if not server_info.map == "any" then
+  if server_info.map ~= "any" and #missing_mods == 0 then
     freeroam_freeroam.startFreeroam(server_info.map)
   end
   if be:getPlayerVehicle(0) then
@@ -82,28 +104,65 @@ local function send_messagepack(data_type, reliable, data)
   send_data(data_type, reliable, data)
 end
 
-local function onUpdate(dt)
-  if not connection.connected then return end
+local function on_finished_download()
+  if M.connection.server_info.map ~= "any" then
+    freeroam_freeroam.startFreeroam(M.connection.server_info.map)
+  end
+end
 
-  if connection.timer < connection.heartbeat_time then
-    connection.timer = connection.timer + dt
+local function continue_download()
+  send_data(254, false, "hi")
+  kissui.show_download = true
+  local packets = 0
+  while M.download_info.current_chunk < M.download_info.chunks do
+    kissui.download_progress = M.download_info.current_chunk / M.download_info.chunks
+    M.connection.tcp:settimeout(2.0)
+    local data, _, _ = M.connection.tcp:receive(4096)
+    M.download_info.file:write(data or "")
+    M.download_info.current_chunk =  M.download_info.current_chunk + 1
+    packets = packets + 1
+    if packets > 10 then
+      return
+    end
+  end
+  local data, _, _ = M.connection.tcp:receive(M.download_info.last_chunk)
+  M.download_info.file:write(data)
+  kissui.show_download = false
+  M.downloading = false
+  M.download_info.file:close()
+  kissmods.mount_mod(M.download_info.file_name)
+  M.connection.tcp:settimeout(0.0)
+  M.connection.mods_left = M.connection.mods_left - 1
+  if M.connection.mods_left < 1 then
+    on_finished_download()
+  end
+end
+
+local function onUpdate(dt)
+  if not M.connection.connected then return end
+  if M.downloading then
+    continue_download()
+    return
+  end
+  if M.connection.timer < M.connection.heartbeat_time then
+    M.connection.timer = M.connection.timer + dt
   else
-    connection.timer = 0
+    M.connection.timer = 0
     send_data(254, false, "hi")
   end
 
   while true do
-    local received, _, _ = connection.tcp:receive(1)
+    local received, _, _ = M.connection.tcp:receive(1)
     if not received then break end
-    connection.tcp:settimeout(5.0)
+    M.connection.tcp:settimeout(5.0)
     local data_type = string.byte(received)
-
-    local data = connection.tcp:receive(4)
+    --print(data_type)
+    local data = M.connection.tcp:receive(4)
     local len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))
 
-    local data, _, _ = connection.tcp:receive(len[0])
+    local data, _, _ = M.connection.tcp:receive(len[0])
 
-    connection.tcp:settimeout(0.0)
+    M.connection.tcp:settimeout(0.0)
 
     if data_type == MESSAGETYPE_TRANSFORM then
       local p = ffi.new("char[?]", #data, data)
@@ -131,12 +190,23 @@ local function onUpdate(dt)
       vehiclemanager.reset_vehicle(ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0])
     elseif data_type == MESSAGETYPE_CHAT then
       kissui.add_message(data)
+    elseif data_type == FILE_TRANSFER then
+      kissui.show_download = true
+      local file_len = data:sub(1, 4)
+      M.download_info.file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, file_len))[0]
+      M.download_info.file_name = data:sub(5, #data)
+      M.download_info.chunks = math.floor(M.download_info.file_len / 4096)
+      M.download_info.last_chunk = M.download_info.file_len - M.download_info.chunks * 4096
+      M.download_info.current_chunk = 0
+      M.download_info.file = kissmods.open_file(M.download_info.file_name)
+      M.downloading = true
+      break
     end
   end
 end
 
 local function get_client_id()
-  return connection.client_id
+  return M.connection.client_id
 end
 
 M.get_client_id = get_client_id
