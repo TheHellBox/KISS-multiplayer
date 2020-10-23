@@ -31,7 +31,7 @@ end
 
 local function send_vehicle_config_inner(id, parts_config)
   for k, v in pairs(M.id_map) do
-    if v == id then return end
+    if v == id and not M.ownership[id] then return end
   end
   local vehicle = be:getObjectByID(id)
   local parts_config = parts_config

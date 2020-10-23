@@ -1,11 +1,14 @@
-#![recursion_limit="256"]
+#![recursion_limit = "256"]
 
-pub mod vehicle;
 pub mod events;
-pub mod incoming;
-pub mod outgoing;
 pub mod file_transfer;
+pub mod incoming;
+pub mod lua;
+pub mod outgoing;
+pub mod vehicle;
 
+use incoming::IncomingEvent;
+use outgoing::Outgoing;
 use vehicle::*;
 
 use anyhow::Error;
@@ -16,53 +19,23 @@ use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use tokio::sync::mpsc;
 
-#[derive(Debug)]
-enum IncomingEvent {
-    ClientConnected,
-    ConnectionLost,
-    TransformUpdate(u32, Transform),
-    VehicleData(VehicleData),
-    ElectricsUpdate(Electrics),
-    GearboxUpdate(Gearbox),
-    RemoveVehicle(u32),
-    ResetVehicle(u32),
-    UpdateClientInfo(ClientInfo),
-    Chat(String),
-    RequestMods(Vec<String>)
-}
-
-#[derive(Debug)]
-enum Outgoing {
-    VehicleSpawn(VehicleData),
-    PositionUpdate(u32, Transform),
-    ElectricsUpdate(u32, Electrics),
-    GearboxUpdate(u32, Gearbox),
-    RemoveVehicle(u32),
-    ResetVehicle(u32),
-    Chat(String),
-    TransferFile(String)
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct VehicleData {
-    parts_config: String,
-    in_game_id: u32,
-    color: [f32; 4],
-    palete_0: [f32; 4],
-    palete_1: [f32; 4],
-    name: String,
-    server_id: Option<u32>,
-    owner: Option<u32>,
-}
-
 struct Connection {
     pub unordered: mpsc::Sender<Outgoing>,
     pub unreliable: mpsc::Sender<Outgoing>,
     pub client_info: ClientInfo,
 }
 
+impl Connection {
+    pub async fn send_chat_message(&mut self, message: String) {
+        self.unordered
+            .send(Outgoing::Chat(message.clone()))
+            .await
+            .unwrap();
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct ClientInfo {
+pub struct ClientInfo {
     pub name: String,
 }
 
@@ -84,6 +57,8 @@ struct Server {
     description: &'static str,
     map: &'static str,
     tickrate: u8,
+    lua: rlua::Lua,
+    lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
 }
 
 impl Server {
@@ -206,7 +181,7 @@ impl Server {
         .into_bytes();
         send(&mut stream, 3, &server_info).await?;
         stream.finish().await?;
-       
+
         // Sender
         tokio::spawn(async move {
             let mut unordered_rx = unordered_rx.fuse();
@@ -281,7 +256,7 @@ impl Server {
             }
         }
     }
-   
+
     async fn tick(&mut self) {
         for (_, client) in &mut self.connections {
             for (vehicle_id, vehicle) in &self.vehicles {
@@ -295,10 +270,7 @@ impl Server {
                 if let Some(electrics) = &vehicle.electrics {
                     client
                         .unreliable
-                        .send(Outgoing::ElectricsUpdate(
-                            *vehicle_id,
-                            electrics.clone(),
-                        ))
+                        .send(Outgoing::ElectricsUpdate(*vehicle_id, electrics.clone()))
                         .await
                         .unwrap();
                 }
@@ -311,6 +283,7 @@ impl Server {
                 }
             }
         }
+        self.lua_tick().await.unwrap();
     }
 
     pub fn client_owns_vehicle(&self, client_id: u32, vehicle_id: u32) -> bool {
@@ -351,6 +324,7 @@ fn generate_certificate() -> (CertificateChain, PrivateKey) {
 #[tokio::main]
 async fn main() {
     println!("Gas, Gas, Gas!");
+    let (lua, receiver) = lua::setup_lua();
     let server = Server {
         connections: HashMap::with_capacity(8),
         reqwest_client: reqwest::Client::new(),
@@ -360,6 +334,8 @@ async fn main() {
         description: "Vanilla KissMP server. Nothing fancy.",
         map: "/levels/fujigoko/info.json",
         tickrate: 33,
+        lua: lua,
+        lua_commands: receiver,
     };
     server.run().await;
 }
@@ -378,12 +354,14 @@ fn get_data_type(data: &Outgoing) -> u8 {
     }
 }
 
-fn list_mods() -> anyhow::Result<Vec<(String, u32)>>{
+fn list_mods() -> anyhow::Result<Vec<(String, u32)>> {
     let mut result = vec![];
     let paths = std::fs::read_dir("./mods/").unwrap();
     for path in paths {
         let path = path.unwrap().path();
-        if path.is_dir() { continue; }
+        if path.is_dir() {
+            continue;
+        }
         let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
         let file = std::fs::File::open(path)?;
         let metadata = file.metadata()?;

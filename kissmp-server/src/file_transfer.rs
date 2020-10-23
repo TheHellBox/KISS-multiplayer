@@ -3,7 +3,10 @@ use std::io::Read;
 
 const CHUNK_SIZE: usize = 4096;
 
-pub async fn transfer_file(stream: &mut quinn::SendStream, path: &std::path::Path) -> anyhow::Result<()>{
+pub async fn transfer_file(
+    stream: &mut quinn::SendStream,
+    path: &std::path::Path,
+) -> anyhow::Result<()> {
     let mut file = std::fs::File::open(path)?;
     let metadata = file.metadata()?;
 
@@ -15,7 +18,9 @@ pub async fn transfer_file(stream: &mut quinn::SendStream, path: &std::path::Pat
 
     let mut buf = [0; CHUNK_SIZE];
     while let Ok(n) = file.read(&mut buf) {
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         stream.write_all(&buf[0..n]).await?;
     }
     Ok(())

@@ -1,5 +1,17 @@
 use crate::*;
 
+#[derive(Debug)]
+pub enum Outgoing {
+    VehicleSpawn(VehicleData),
+    PositionUpdate(u32, Transform),
+    ElectricsUpdate(u32, Electrics),
+    GearboxUpdate(u32, Gearbox),
+    RemoveVehicle(u32),
+    ResetVehicle(u32),
+    Chat(String),
+    TransferFile(String),
+}
+
 impl Server {
     pub fn handle_outgoing_data(command: Outgoing) -> Vec<u8> {
         use Outgoing::*;
@@ -19,7 +31,7 @@ impl Server {
             RemoveVehicle(id) => id.to_le_bytes().to_vec(),
             ResetVehicle(id) => id.to_le_bytes().to_vec(),
             Chat(message) => message.into_bytes(),
-            _  => {vec![]}
+            _ => vec![],
         }
     }
 }

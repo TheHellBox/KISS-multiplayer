@@ -1,5 +1,20 @@
 use crate::*;
 
+#[derive(Debug)]
+pub enum IncomingEvent {
+    ClientConnected,
+    ConnectionLost,
+    TransformUpdate(u32, Transform),
+    VehicleData(VehicleData),
+    ElectricsUpdate(Electrics),
+    GearboxUpdate(Gearbox),
+    RemoveVehicle(u32),
+    ResetVehicle(u32),
+    UpdateClientInfo(ClientInfo),
+    Chat(String),
+    RequestMods(Vec<String>),
+}
+
 impl Server {
     pub async fn handle_incoming_data(
         id: u32,
@@ -71,7 +86,7 @@ impl Server {
                     .send((id, IncomingEvent::Chat(chat_message)))
                     .await
                     .unwrap();
-            },
+            }
             9 => {
                 let data_str = String::from_utf8(data.to_vec()).unwrap();
                 let files = serde_json::from_str(&data_str);
