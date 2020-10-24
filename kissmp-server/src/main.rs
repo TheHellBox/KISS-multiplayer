@@ -20,14 +20,15 @@ use std::net::{SocketAddr, UdpSocket};
 use tokio::sync::mpsc;
 
 struct Connection {
-    pub unordered: mpsc::Sender<Outgoing>,
+    pub ordered: mpsc::Sender<Outgoing>,
     pub unreliable: mpsc::Sender<Outgoing>,
     pub client_info: ClientInfo,
+    pub current_vehicle: u32,
 }
 
 impl Connection {
     pub async fn send_chat_message(&mut self, message: String) {
-        self.unordered
+        self.ordered
             .send(Outgoing::Chat(message.clone()))
             .await
             .unwrap();
@@ -92,18 +93,27 @@ impl Server {
             .inspect(|_conn| println!("Client is trying to connect to the server"))
             .buffer_unordered(16);
 
+        let stdin = tokio::io::stdin();
+        let reader =
+            tokio_util::codec::FramedRead::new(stdin, tokio_util::codec::LinesCodec::new());
+        let mut reader = reader.fuse();
+        self.load_lua_addons();
+
         loop {
             select! {
                 _ = ticks.next() => {
                     self.tick().await;
                 },
                 _ = send_info_ticks.next() => {
-                    self.send_server_info().await.unwrap();
+                    let _ = self.send_server_info().await;
                 }
                 conn = incoming.select_next_some() => {
                     if let Err(e) = self.on_connect(conn.unwrap(), client_events_tx.clone()).await {
                         println!("Client has failed to connect to the server");
                     }
+                },
+                stdin_input = reader.next() => {
+                    self.on_console_input(stdin_input.unwrap().unwrap()).await;
                 },
                 e = client_events_rx.select_next_some() => {
                     self.on_client_event(e.0, e.1).await;
@@ -138,12 +148,13 @@ impl Server {
         let connection = new_connection.connection.clone();
         // Should be strong enough for our targets. TODO: Check for collisions
         let id = rand::random::<u32>();
-        let (unordered_tx, unordered_rx) = mpsc::channel(128);
+        let (ordered_tx, ordered_rx) = mpsc::channel(128);
         let (unreliable_tx, unreliable_rx) = mpsc::channel(128);
         let client_connection = Connection {
-            unordered: unordered_tx,
+            ordered: ordered_tx,
             unreliable: unreliable_tx,
             client_info: ClientInfo::default(),
+            current_vehicle: 0,
         };
         self.connections.insert(id, client_connection);
         println!("Client has connected to the server");
@@ -184,11 +195,12 @@ impl Server {
 
         // Sender
         tokio::spawn(async move {
-            let mut unordered_rx = unordered_rx.fuse();
+            let mut ordered_rx = ordered_rx.fuse();
             let mut unreliable_rx = unreliable_rx.fuse();
+
             loop {
                 select! {
-                    command = unordered_rx.select_next_some() => {
+                    command = ordered_rx.select_next_some() => {
                         let mut stream = connection.open_uni().await.unwrap();
                         // Kinda ugly and hacky tbh
                         match command {
@@ -204,7 +216,7 @@ impl Server {
                     command = unreliable_rx.select_next_some() => {
                         let mut data = vec![get_data_type(&command)];
                         data.append(&mut Self::handle_outgoing_data(command));
-                        connection.send_datagram(data.into()).unwrap();
+                        let _ = connection.send_datagram(data.into());
                     }
                     complete => {
                         break;
@@ -298,6 +310,12 @@ impl Server {
         } else {
             false
         }
+    }
+
+    async fn on_console_input(&self, input: String) {
+        self.lua.context(|lua_ctx| {
+            let _ = lua::run_hook::<String, ()>(lua_ctx, String::from("OnStdIn"), input);
+        });
     }
 }
 

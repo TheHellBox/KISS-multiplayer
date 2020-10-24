@@ -1,3 +1,8 @@
+/*
+Lua is not really designed to be used with rust. And async stuff only makes things worse
+This API is probably the best I can do without using unsafe.
+*/
+
 use crate::*;
 use std::sync::mpsc;
 
@@ -10,35 +15,29 @@ pub enum LuaCommand {
     SendLua(u32, String),
 }
 
-impl<'lua> rlua::ToLua<'lua> for Transform {
-    fn to_lua(self, lua_ctx: rlua::Context<'lua>) -> rlua::Result<rlua::Value> {
-        let t = lua_ctx.create_table()?;
-        t.set(
-            "position",
-            vec![self.position[0], self.position[1], self.position[2]],
-        )?;
-        t.set(
-            "rotation",
-            vec![
-                self.rotation[0],
-                self.rotation[1],
-                self.rotation[2],
-                self.rotation[3],
-            ],
-        )?;
-        t.set(
-            "velocity",
-            vec![self.velocity[0], self.velocity[1], self.velocity[2]],
-        )?;
-        t.set(
-            "angular_velocity",
-            vec![
-                self.angular_velocity[0],
-                self.angular_velocity[1],
-                self.angular_velocity[2],
-            ],
-        )?;
-        Ok(rlua::Value::Table(t))
+impl rlua::UserData for Transform {
+    fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("getPosition", |_, this, _: ()| {
+            Ok(vec!(this.position[0], this.position[1], this.position[2]))
+        });
+        methods.add_method("getRotation", |_, this, _: ()| {
+            Ok(vec!(
+                this.rotation[0],
+                this.rotation[1],
+                this.rotation[2],
+                this.rotation[3],
+            ))
+        });
+        methods.add_method("getVelocity", |_, this, _: ()| {
+            Ok(vec!(this.velocity[0], this.velocity[1], this.velocity[2]))
+        });
+        methods.add_method("getAngularVelocity", |_, this, _: ()| {
+            Ok(vec!(
+                this.angular_velocity[0],
+                this.angular_velocity[1],
+                this.angular_velocity[2],
+            ))
+        });
     }
 }
 
@@ -67,7 +66,7 @@ impl<'lua> rlua::ToLua<'lua> for Vehicle {
             })?,
         )?;
         t.set(
-            "set_position_rotation",
+            "setPositionRotation",
             lua_ctx.create_function(
                 move |lua_ctx, (x, y, z, xr, yr, zr, w): (f32, f32, f32, f32, f32, f32, f32)| {
                     let globals = lua_ctx.globals();
@@ -90,17 +89,23 @@ impl<'lua> rlua::ToLua<'lua> for Vehicle {
     }
 }
 
-struct LuaConnection(u32);
+struct LuaConnection {
+    id: u32,
+    current_vehicle: u32,
+}
 
 impl rlua::UserData for LuaConnection {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_id", |_, this, _: ()| Ok(this.0));
-        methods.add_method("send_chat_message", |lua_ctx, this, message: String| {
+        methods.add_method("getID", |_, this, _: ()| Ok(this.id));
+        methods.add_method("getCurrentVehicle", |_, this, _: ()| {
+            Ok(this.current_vehicle)
+        });
+        methods.add_method("sendChatMessage", |lua_ctx, this, message: String| {
             let globals = lua_ctx.globals();
             let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
             sender
                 .0
-                .send(LuaCommand::ChatMessage(this.0, message))
+                .send(LuaCommand::ChatMessage(this.id, message))
                 .unwrap();
             Ok(())
         });
@@ -132,15 +137,18 @@ impl<'lua> rlua::ToLua<'lua> for Connections {
 }
 
 impl Server {
-    pub async fn run_hook(&mut self, name: String) -> rlua::Result<()> {
-        Ok(())
-    }
     pub async fn lua_tick(&mut self) -> rlua::Result<()> {
         // Kinda expensive... At least I think so
         let vehicles = Vehicles(self.vehicles.clone());
         let mut connections = Connections(HashMap::new());
-        for (id, _) in &self.connections {
-            connections.0.insert(*id, LuaConnection(*id));
+        for (id, connection) in &self.connections {
+            connections.0.insert(
+                *id,
+                LuaConnection {
+                    id: *id,
+                    current_vehicle: connection.current_vehicle,
+                },
+            );
         }
         self.lua.context(|lua_ctx| {
             let globals = lua_ctx.globals();
@@ -167,10 +175,35 @@ impl Server {
                     self.remove_vehicle(id, None).await;
                 }
                 ResetVehicle(id) => self.reset_vehicle(id, None).await,
-                SendLua(id, lua) => {}
+                SendLua(_id, _lua) => {
+                    unimplemented!();
+                }
             }
         }
+        self.lua.context(|lua_ctx| {
+            let _ = run_hook::<(), ()>(lua_ctx, String::from("Tick"), ());
+        });
         Ok(())
+    }
+    pub fn load_lua_addon(&mut self, path: &std::path::Path) {
+        use std::io::Read;
+        let mut file = std::fs::File::open(path).unwrap();
+        let mut buf = String::new();
+        file.read_to_string(&mut buf).unwrap();
+        self.lua.context(|lua_ctx| {
+            lua_ctx.load(&buf).eval::<()>().unwrap();
+        });
+    }
+    pub fn load_lua_addons(&mut self) {
+        let paths = std::fs::read_dir("./addons/").unwrap();
+        for path in paths {
+            let path = path.unwrap().path();
+            if !path.is_dir() {
+                continue;
+            }
+            let path = path.join("main.lua");
+            self.load_lua_addon(&path);
+        }
     }
 }
 
@@ -185,14 +218,27 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
     lua.context(|lua_ctx| {
         let globals = lua_ctx.globals();
         let hooks_table = lua_ctx.create_table().unwrap();
-        hooks_table.set("register", lua_ctx.create_function(|lua_ctx, (hook, function): (String, rlua::Function)| {
-            let globals = lua_ctx.globals();
-            let hooks_table: rlua::Table = globals.get("hooks_table").unwrap();
-            if let Ok::<rlua::Table, _>(hooks) = hooks_table.get(hook) {
+        hooks_table
+            .set(
+                "register",
+                lua_ctx
+                    .create_function(|lua_ctx, (hook, function): (String, rlua::Function)| {
+                        let globals = lua_ctx.globals();
+                        let hooks_table: rlua::Table = globals.get("hooks").unwrap();
+                        if !hooks_table.contains_key(hook.clone()).unwrap() {
+                            hooks_table
+                                .set(hook.clone(), Vec::new() as Vec<rlua::Function>)
+                                .unwrap();
+                        }
+                        let hooks: rlua::Table = hooks_table.get(hook.clone()).unwrap();
+                        hooks.set(hooks.len().unwrap(), function).unwrap();
+                        Ok(())
+                    })
+                    .unwrap(),
+            )
+            .unwrap();
+        globals.set("hooks", hooks_table).unwrap();
 
-            };
-            Ok(())
-        }).unwrap()).unwrap();
         let tx_clone = tx.clone();
         globals
             .set("MPSC_CHANNEL_SENDER", MpscChannelSender(tx_clone))
@@ -210,19 +256,30 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
         globals
             .set("send_message_broadcast", send_message_broadcast)
             .unwrap();
-
-        let tx_clone = tx.clone();
-        let send_message_to_client = lua_ctx
-            .create_function(move |_, (client_id, message): (u32, String)| {
-                tx_clone
-                    .send(LuaCommand::ChatMessage(client_id, message))
-                    .unwrap();
-                Ok(())
-            })
-            .unwrap();
-        globals
-            .set("send_message_to_client", send_message_to_client)
-            .unwrap();
     });
     (lua, rx)
+}
+
+pub fn run_hook<
+    'lua,
+    A: std::clone::Clone + rlua::ToLuaMulti<'lua>,
+    R: rlua::FromLuaMulti<'lua>,
+>(
+    lua_ctx: rlua::Context<'lua>,
+    name: String,
+    args: A,
+) -> Option<R> {
+    let globals = lua_ctx.globals();
+    let hooks_table: rlua::Table = globals.get("hooks").unwrap();
+    let hooks = hooks_table.get(name);
+    if let Ok::<rlua::Table, _>(hooks) = hooks {
+        for pair in hooks.pairs() {
+            let (_, function): (usize, rlua::Function) = pair.unwrap();
+            match function.call::<A, R>(args.clone()) {
+                Ok(r) => return Some(r),
+                Err(r) => println!("{}", r)
+            }
+        }
+    }
+    None
 }

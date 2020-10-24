@@ -2,13 +2,18 @@ local M = {}
 
 local generation = 0
 local timer = 0
+local buffered_position_errors = {}
+local buffered_rotation_errors = {}
+
 M.received_transforms = {}
 M.local_transforms = {}
-M.acceleration_buffer = {}
 
 M.threshold = 4
 M.rot_threshold = 1.5
-M.acceleration_smoothing_coef = 2
+M.smoothing_coef = 4
+
+-- FIXME: remove rotation smoothingg
+M.smoothing_coef_rot = 1000
 
 function lerp(a,b,t)
   local t = math.min(t, 1)
@@ -81,7 +86,7 @@ local function update(dt)
     local predicted_rotation = quat(transform.rotation) * quatFromEuler(rotation_delta.x, rotation_delta.y, rotation_delta.z)
 
     local vehicle = be:getObjectByID(id)
-    if vehicle then
+    if vehicle and M.local_transforms[id] then
       local position_error = predicted_position - vec3(vehicle:getPosition())
       local rotation_error = predicted_rotation / quat(M.local_transforms[id].rotation)
       local rotation_error_euler = rotation_error:toEulerYXZ()
@@ -93,6 +98,7 @@ local function update(dt)
             predicted_position.z
           )
         )
+        goto continue
       end
       if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 25) then
         vehicle:setPosRot(
@@ -104,18 +110,38 @@ local function update(dt)
           predicted_rotation.z,
           predicted_rotation.w
         )
+        goto continue
       end
 
+      --position_error = lerp(buffered_position_errors[id] or position_error, position_error, dt * M.smoothing_coef)
+      --buffered_position_errors[id] = position_error
+
+      --rotation_error_euler = lerp(buffered_rotation_errors[id] or position_error, rotation_error_euler, dt * M.smoothing_coef_rot)
+      --buffered_rotation_errors[id] = rotation_error_euler
+
       local velocity_error = vec3(transform.velocity) - vec3(vehicle:getVelocity())
+      local error_length = velocity_error:length()
+      -- The value is so high is bacause of the breaking.
+      -- When vehicle break, it's accelearion is actually quite high
+      if error_length > 20 then
+        velocity_error:normalize()
+        velocity_error = velocity_error * 20
+      end
+
       local local_ang_vel = vec3(
         M.local_transforms[id].vel_yaw,
         M.local_transforms[id].vel_pitch,
         M.local_transforms[id].vel_roll
       )
       local angular_velocity_error = vec3(transform.angular_velocity) - local_ang_vel
+      local error_length = angular_velocity_error:length()
+      if error_length > 0.5 then
+        angular_velocity_error:normalize()
+        angular_velocity_error = velocity_error * 0.5
+      end
 
-      local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 9, 1)
-      local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 9, 1)
+      local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 8, 1)
+      local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 8, 1)
 
       vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
                                 ..required_acceleration.x..","
@@ -125,6 +151,7 @@ local function update(dt)
                                 ..required_angular_acceleration.z..","
                                 ..required_angular_acceleration.x..")")
     end
+    ::continue::
   end
 end
 

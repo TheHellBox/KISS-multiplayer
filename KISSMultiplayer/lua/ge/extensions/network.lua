@@ -26,6 +26,7 @@ local MESSAGETYPE_VEHICLE_RESET = 6
 local MESSAGETYPE_CLIENT_INFO= 7
 local MESSAGETYPE_CHAT = 8
 local FILE_TRANSFER = 9
+local DISCONNECTED = 10
 
 local function send_data(data_type, reliable, data)
   if not M.connection.connected then return -1 end
@@ -201,6 +202,8 @@ local function onUpdate(dt)
       M.download_info.file = kissmods.open_file(M.download_info.file_name)
       M.downloading = true
       break
+    elseif data_type == DISCONNECTED then
+      kissui.add_message("Disconnected.")
     end
   end
 end

@@ -9,7 +9,7 @@ impl Server {
                     self.connections
                         .get_mut(&client_id)
                         .unwrap()
-                        .unordered
+                        .ordered
                         .send(Outgoing::VehicleSpawn(vehicle.data.clone()))
                         .await
                         .unwrap();
@@ -30,11 +30,23 @@ impl Server {
                     connection.client_info = info;
                 }
             }
-            Chat(message) => {
-                let message = format!(
+            Chat(initial_message) => {
+                let mut message = format!(
                     "{}: {}",
-                    self.connections[&client_id].client_info.name, message
+                    self.connections[&client_id].client_info.name,
+                    initial_message.clone()
                 );
+
+                self.lua.context(|lua_ctx| {
+                    if let Some(result) = crate::lua::run_hook::<(u32, String), String>(
+                        lua_ctx,
+                        String::from("OnChat"),
+                        (client_id, initial_message.clone()),
+                    ) {
+                        message = result;
+                    }
+                });
+
                 for (_, client) in &mut self.connections {
                     client.send_chat_message(message.clone()).await;
                 }
@@ -53,7 +65,7 @@ impl Server {
                 data.owner = Some(client_id);
                 for (_, client) in &mut self.connections {
                     client
-                        .unordered
+                        .ordered
                         .send(Outgoing::VehicleSpawn(data.clone()))
                         .await
                         .unwrap();
@@ -75,6 +87,10 @@ impl Server {
                         transform: None,
                     },
                 );
+                self.connections
+                    .get_mut(&client_id)
+                    .unwrap()
+                    .current_vehicle = server_id;
                 println!("Vehicle {} spawned!", server_id);
             }
             ElectricsUpdate(electrics) => {
@@ -96,18 +112,30 @@ impl Server {
                 }
             }
             RemoveVehicle(id) => {
-                if let Some(client_vehicles) = self.vehicle_ids.clone().get(&client_id) {
-                    if let Some(server_id) = client_vehicles.get(&id) {
-                        if !self.client_owns_vehicle(client_id, *server_id) {
-                            return;
-                        }
-                        self.remove_vehicle(*server_id, Some(client_id)).await;
+                if let Some(server_id) = self.get_server_id_from_game_id(client_id, id) {
+                    if !self.client_owns_vehicle(client_id, server_id) {
+                        return;
                     }
+                    self.remove_vehicle(server_id, Some(client_id)).await;
+                    self.lua.context(|lua_ctx| {
+                        let _ = crate::lua::run_hook::<(u32, u32), ()>(
+                            lua_ctx,
+                            String::from("OnVehicleRemoved"),
+                            (client_id, server_id),
+                        );
+                    });
                 }
             }
             ResetVehicle(id) => {
                 if let Some(server_id) = self.get_server_id_from_game_id(client_id, id) {
                     self.reset_vehicle(server_id, Some(client_id)).await;
+                    self.lua.context(|lua_ctx| {
+                        let _ = crate::lua::run_hook::<(u32, u32), ()>(
+                            lua_ctx,
+                            String::from("OnVehicleReset"),
+                            (client_id, server_id),
+                        );
+                    });
                 }
             }
             RequestMods(files) => {
@@ -125,7 +153,7 @@ impl Server {
                     self.connections
                         .get_mut(&client_id)
                         .unwrap()
-                        .unordered
+                        .ordered
                         .send(Outgoing::TransferFile(path))
                         .await
                         .unwrap();

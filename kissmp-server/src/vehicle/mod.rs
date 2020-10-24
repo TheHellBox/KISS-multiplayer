@@ -33,7 +33,7 @@ impl crate::Server {
         self.vehicles.remove(&id);
         for (_, client) in &mut self.connections {
             client
-                .unordered
+                .ordered
                 .send(crate::Outgoing::RemoveVehicle(id))
                 .await
                 .unwrap();
@@ -48,7 +48,7 @@ impl crate::Server {
                 continue;
             }
             client
-                .unordered
+                .ordered
                 .send(crate::Outgoing::ResetVehicle(server_id))
                 .await
                 .unwrap();
