@@ -38,7 +38,7 @@ impl crate::Server {
                 .await
                 .unwrap();
         }
-        if let Some(client_id) = client_id {
+        if let Some(_client_id) = client_id {
             // FIXME: Remove vehicle id from ids list
             //self.vehicle_ids.get_mut(&client_id).unwrap().remove(&id);
         }
@@ -55,6 +55,19 @@ impl crate::Server {
                 .unwrap();
         }
     }
+
+    pub async fn set_current_vehicle(&mut self, client_id: u32, vehicle_id: u32) {
+        let connection = self.connections.get_mut(&client_id).unwrap();
+        connection
+            .client_info
+            .current_vehicle = vehicle_id;
+        connection
+            .ordered
+            .send(crate::Outgoing::PlayerInfoUpdate(connection.client_info.clone()))
+            .await
+            .unwrap();
+    }
+
     pub fn get_server_id_from_game_id(&self, client_id: u32, game_id: u32) -> Option<u32> {
         if let Some(client_vehicles) = self.vehicle_ids.get(&client_id) {
             if let Some(server_id) = client_vehicles.get(&game_id) {

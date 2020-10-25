@@ -24,7 +24,6 @@ struct Connection {
     pub ordered: mpsc::Sender<Outgoing>,
     pub unreliable: mpsc::Sender<Outgoing>,
     pub client_info: ClientInfo,
-    pub current_vehicle: u32,
 }
 
 impl Connection {
@@ -45,12 +44,30 @@ impl Connection {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientInfo {
     pub name: String,
+    #[serde(skip_deserializing)]
+    pub id: u32,
+    #[serde(skip_deserializing)]
+    pub current_vehicle: u32
+}
+
+impl ClientInfo {
+    pub fn new(id: u32) -> Self{
+        Self{
+            id,
+            ..Default::default()
+        }
+    }
+    pub fn to_bytes(&self) -> Vec<u8>{
+        rmp_serde::encode::to_vec(self).unwrap()
+    }
 }
 
 impl Default for ClientInfo {
     fn default() -> Self {
         Self {
             name: String::from("Unknown"),
+            id: 0,
+            current_vehicle: 0
         }
     }
 }
@@ -153,7 +170,7 @@ impl Server {
         mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
         let connection = new_connection.connection.clone();
-        // Should be strong enough for our targets. TODO: Check for collisions
+        // Should be strong enough for our targets. TODO: Check for collisions anyway
         let id = rand::random::<u32>();
         let (ordered_tx, ordered_rx) = mpsc::channel(128);
         let (unreliable_tx, unreliable_rx) = mpsc::channel(128);
@@ -161,8 +178,7 @@ impl Server {
             conn: connection.clone(),
             ordered: ordered_tx,
             unreliable: unreliable_tx,
-            client_info: ClientInfo::default(),
-            current_vehicle: 0,
+            client_info: ClientInfo::new(id),
         };
         self.connections.insert(id, client_connection);
         println!("Client has connected to the server");

@@ -5,6 +5,8 @@ M.download_info = {}
 local socket = require("socket")
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 
+M.players = {}
+
 M.connection = {
   tcp = nil,
   connected = false,
@@ -28,6 +30,7 @@ local MESSAGETYPE_CHAT = 8
 local FILE_TRANSFER = 9
 local DISCONNECTED = 10
 local MESSAGETYPE_LUA = 11
+local MESSAGETYPE_PLAYERINFO = 12
 
 local function send_data(data_type, reliable, data)
   if not M.connection.connected then return -1 end
@@ -204,6 +207,17 @@ local function onUpdate(dt)
       kissui.add_message("Disconnected.")
     elseif data_type == MESSAGETYPE_LUA then
       Lua:queueLuaCommand(data)
+    elseif MESSAGETYPE_PLAYERINFO then
+      local player_info = messagepack.unpack(data)
+      if player_info then
+        local player_info = {
+          name = player_info[1],
+          id = player_info[2],
+          current_vehicle = player_info[3]
+        }
+        print("received "..player_info.name..player_info.id.." "..player_info.current_vehicle)
+        M.players[player_info.id] = player_info
+      end
     end
   end
 end

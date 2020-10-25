@@ -5,10 +5,14 @@ impl Server {
         use IncomingEvent::*;
         match event {
             ClientConnected => {
+                let connection = self.connections.get_mut(&client_id).unwrap();
+                connection
+                    .ordered
+                    .send(Outgoing::PlayerInfoUpdate(connection.client_info.clone()))
+                    .await
+                    .unwrap();
                 for (_, vehicle) in &self.vehicles {
-                    self.connections
-                        .get_mut(&client_id)
-                        .unwrap()
+                    connection
                         .ordered
                         .send(Outgoing::VehicleSpawn(vehicle.data.clone()))
                         .await
@@ -16,19 +20,27 @@ impl Server {
                 }
             }
             ConnectionLost => {
+                let player_name = self.connections.get(&client_id).unwrap().client_info.name.clone();
                 self.connections.get_mut(&client_id).unwrap().conn.close(0u32.into(), b"");
                 self.connections.remove(&client_id);
-                // this clone() kinda sucks
                 if let Some(client_vehicles) = self.vehicle_ids.clone().get(&client_id) {
                     for (_, id) in client_vehicles {
                         self.remove_vehicle(*id, Some(client_id)).await;
                     }
+                }
+                for (_, client) in &mut self.connections {
+                    client.send_chat_message(format!("Player {} has left the server", player_name)).await;
                 }
                 println!("Client has disconnected from the server");
             }
             UpdateClientInfo(info) => {
                 if let Some(connection) = self.connections.get_mut(&client_id) {
                     connection.client_info = info;
+                    connection
+                        .ordered
+                        .send(Outgoing::PlayerInfoUpdate(connection.client_info.clone()))
+                        .await
+                        .unwrap();
                 }
             }
             Chat(initial_message) => {
@@ -95,10 +107,7 @@ impl Server {
                         transform: None,
                     },
                 );
-                self.connections
-                    .get_mut(&client_id)
-                    .unwrap()
-                    .current_vehicle = server_id;
+                self.set_current_vehicle(client_id, server_id).await;
             }
             ElectricsUpdate(electrics) => {
                 if let Some(server_id) =

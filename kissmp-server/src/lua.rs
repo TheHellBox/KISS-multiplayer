@@ -146,7 +146,7 @@ impl Server {
                 *id,
                 LuaConnection {
                     id: *id,
-                    current_vehicle: connection.current_vehicle,
+                    current_vehicle: connection.client_info.current_vehicle,
                 },
             );
         }

@@ -10,7 +10,8 @@ pub enum Outgoing {
     ResetVehicle(u32),
     Chat(String),
     TransferFile(String),
-    SendLua(String)
+    SendLua(String),
+    PlayerInfoUpdate(ClientInfo)
 }
 
 impl Server {
@@ -33,6 +34,7 @@ impl Server {
             ResetVehicle(id) => id.to_le_bytes().to_vec(),
             Chat(message) => message.into_bytes(),
             SendLua(lua) => lua.into_bytes(),
+            PlayerInfoUpdate(player_info) => player_info.to_bytes(),
             _ => vec![],
         }
     }
@@ -50,5 +52,6 @@ pub fn get_data_type(data: &Outgoing) -> u8 {
         Chat(_) => 8,
         TransferFile(_) => 9,
         SendLua(_) => 11,
+        PlayerInfoUpdate(_) => 12
     }
 }
