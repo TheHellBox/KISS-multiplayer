@@ -129,9 +129,6 @@ impl Server {
             }
             RemoveVehicle(id) => {
                 if let Some(server_id) = self.get_server_id_from_game_id(client_id, id) {
-                    if !self.client_owns_vehicle(client_id, server_id) {
-                        return;
-                    }
                     self.remove_vehicle(server_id, Some(client_id)).await;
                     self.lua.context(|lua_ctx| {
                         let _ = crate::lua::run_hook::<(u32, u32), ()>(

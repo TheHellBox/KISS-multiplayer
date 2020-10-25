@@ -1,0 +1,7 @@
+{
+    "server_name": "KissMP Vanilla Server",
+    "description": "Vanilla KissMP server",
+    "map": "/levels/fujigoko/info.json",
+    "tickrate": 33,
+    "max_players": 8
+}

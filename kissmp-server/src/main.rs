@@ -6,6 +6,7 @@ pub mod incoming;
 pub mod lua;
 pub mod outgoing;
 pub mod vehicle;
+pub mod config;
 
 use incoming::IncomingEvent;
 use outgoing::Outgoing;
@@ -78,9 +79,9 @@ struct Server {
     // Client ID, game_id, server_id
     vehicle_ids: HashMap<u32, HashMap<u32, u32>>,
     reqwest_client: reqwest::Client,
-    name: &'static str,
-    description: &'static str,
-    map: &'static str,
+    name: String,
+    description: String,
+    map: String,
     tickrate: u8,
     lua: rlua::Lua,
     lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
@@ -370,16 +371,17 @@ fn generate_certificate() -> (CertificateChain, PrivateKey) {
 #[tokio::main]
 async fn main() {
     println!("Gas, Gas, Gas!");
+    let config = config::Config::load(std::path::Path::new("./config.json"));
     let (lua, receiver) = lua::setup_lua();
     let server = Server {
         connections: HashMap::with_capacity(8),
         reqwest_client: reqwest::Client::new(),
         vehicles: HashMap::with_capacity(64),
         vehicle_ids: HashMap::with_capacity(64),
-        name: "KissMP Vanilla Server",
-        description: "Vanilla KissMP server. Nothing fancy.",
-        map: "/levels/fujigoko/info.json",
-        tickrate: 33,
+        name: config.server_name,
+        description: config.description,
+        map: config.map,
+        tickrate: config.tickrate,
         lua: lua,
         lua_commands: receiver,
     };

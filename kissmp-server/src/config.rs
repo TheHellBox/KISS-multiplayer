@@ -1,6 +1,18 @@
+use serde::Deserialize;
+
+#[derive(Deserialize)]
 pub struct Config{
-    server_name: String,
-    map: String,
-    max_players: u8,
-    tickrate: u8,
+    pub server_name: String,
+    pub description: String,
+    pub map: String,
+    pub max_players: u8,
+    pub tickrate: u8,
+}
+
+impl Config{
+    pub fn load(path: &std::path::Path) -> Self{
+        let config_file = std::fs::File::open(path).unwrap();
+        let reader = std::io::BufReader::new(config_file);
+        serde_json::from_reader(reader).unwrap()
+    }
 }
