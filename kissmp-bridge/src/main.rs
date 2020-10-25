@@ -41,7 +41,7 @@ async fn main() {
 
         let mut transport = quinn::TransportConfig::default();
         transport
-            .max_idle_timeout(Some(std::time::Duration::from_secs(120)))
+            .max_idle_timeout(Some(std::time::Duration::from_secs(60)))
             .unwrap();
         client_cfg.transport = std::sync::Arc::new(transport);
 
@@ -53,7 +53,7 @@ async fn main() {
         let (endpoint, _) = endpoint
             .bind(&SocketAddr::new(IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
             .unwrap();
-        let mut connection = endpoint.connect(addr, "kissmp").unwrap().await.unwrap();
+        let connection = endpoint.connect(addr, "kissmp").unwrap().await.unwrap();
         // That's some stupid naming
         let stream_connection = connection.connection.clone();
         tokio::spawn(async move {

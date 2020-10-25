@@ -113,11 +113,10 @@ local function update(dt)
         goto continue
       end
 
-      --position_error = lerp(buffered_position_errors[id] or position_error, position_error, dt * M.smoothing_coef)
-      --buffered_position_errors[id] = position_error
-
-      --rotation_error_euler = lerp(buffered_rotation_errors[id] or position_error, rotation_error_euler, dt * M.smoothing_coef_rot)
-      --buffered_rotation_errors[id] = rotation_error_euler
+      if position_error:length() > 5 then
+        position_error:normalize()
+        position_error = position_error * 5
+      end
 
       local velocity_error = vec3(transform.velocity) - vec3(vehicle:getVelocity())
       local error_length = velocity_error:length()
@@ -134,11 +133,6 @@ local function update(dt)
         M.local_transforms[id].vel_roll
       )
       local angular_velocity_error = vec3(transform.angular_velocity) - local_ang_vel
-      local error_length = angular_velocity_error:length()
-      if error_length > 0.5 then
-        angular_velocity_error:normalize()
-        angular_velocity_error = velocity_error * 0.5
-      end
 
       local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 8, 1)
       local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 8, 1)

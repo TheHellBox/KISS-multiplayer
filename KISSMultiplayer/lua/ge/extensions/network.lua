@@ -27,6 +27,7 @@ local MESSAGETYPE_CLIENT_INFO= 7
 local MESSAGETYPE_CHAT = 8
 local FILE_TRANSFER = 9
 local DISCONNECTED = 10
+local MESSAGETYPE_LUA = 11
 
 local function send_data(data_type, reliable, data)
   if not M.connection.connected then return -1 end
@@ -94,9 +95,6 @@ local function connect(addr, player_name)
   send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
   if server_info.map ~= "any" and #missing_mods == 0 then
     freeroam_freeroam.startFreeroam(server_info.map)
-  end
-  if be:getPlayerVehicle(0) then
-    vehiclemanager.send_vehicle_config(be:getPlayerVehicle(0):getID())
   end
 end
 
@@ -204,6 +202,8 @@ local function onUpdate(dt)
       break
     elseif data_type == DISCONNECTED then
       kissui.add_message("Disconnected.")
+    elseif data_type == MESSAGETYPE_LUA then
+      Lua:queueLuaCommand(data)
     end
   end
 end

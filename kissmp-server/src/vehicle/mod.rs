@@ -39,7 +39,8 @@ impl crate::Server {
                 .unwrap();
         }
         if let Some(client_id) = client_id {
-            self.vehicle_ids.remove(&client_id);
+            // FIXME: Remove vehicle id from ids list
+            //self.vehicle_ids.get_mut(&client_id).unwrap().remove(&id);
         }
     }
     pub async fn reset_vehicle(&mut self, server_id: u32, client_id: Option<u32>) {

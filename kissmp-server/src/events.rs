@@ -16,6 +16,7 @@ impl Server {
                 }
             }
             ConnectionLost => {
+                self.connections.get_mut(&client_id).unwrap().conn.close(0u32.into(), b"");
                 self.connections.remove(&client_id);
                 // this clone() kinda sucks
                 if let Some(client_vehicles) = self.vehicle_ids.clone().get(&client_id) {
@@ -74,6 +75,13 @@ impl Server {
                     self.vehicle_ids
                         .insert(client_id, HashMap::with_capacity(16));
                 }
+
+                if let Some(server_id) =
+                    self.get_server_id_from_game_id(client_id, data.in_game_id)
+                {
+                    self.remove_vehicle(server_id, Some(client_id)).await;
+                }
+
                 self.vehicle_ids
                     .get_mut(&client_id)
                     .unwrap()
@@ -91,7 +99,6 @@ impl Server {
                     .get_mut(&client_id)
                     .unwrap()
                     .current_vehicle = server_id;
-                println!("Vehicle {} spawned!", server_id);
             }
             ElectricsUpdate(electrics) => {
                 if let Some(server_id) =

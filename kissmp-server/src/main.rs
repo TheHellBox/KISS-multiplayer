@@ -20,6 +20,7 @@ use std::net::{SocketAddr, UdpSocket};
 use tokio::sync::mpsc;
 
 struct Connection {
+    pub conn: quinn::Connection,
     pub ordered: mpsc::Sender<Outgoing>,
     pub unreliable: mpsc::Sender<Outgoing>,
     pub client_info: ClientInfo,
@@ -30,6 +31,12 @@ impl Connection {
     pub async fn send_chat_message(&mut self, message: String) {
         self.ordered
             .send(Outgoing::Chat(message.clone()))
+            .await
+            .unwrap();
+    }
+    pub async fn send_lua(&mut self, lua: String) {
+        self.ordered
+            .send(Outgoing::SendLua(lua.clone()))
             .await
             .unwrap();
     }
@@ -151,6 +158,7 @@ impl Server {
         let (ordered_tx, ordered_rx) = mpsc::channel(128);
         let (unreliable_tx, unreliable_rx) = mpsc::channel(128);
         let client_connection = Connection {
+            conn: connection.clone(),
             ordered: ordered_tx,
             unreliable: unreliable_tx,
             client_info: ClientInfo::default(),
@@ -195,35 +203,39 @@ impl Server {
 
         // Sender
         tokio::spawn(async move {
-            let mut ordered_rx = ordered_rx.fuse();
-            let mut unreliable_rx = unreliable_rx.fuse();
+            let _ = Self::drive_send(connection, ordered_rx, unreliable_rx).await;
+        });
+        Ok(())
+    }
 
-            loop {
-                select! {
-                    command = ordered_rx.select_next_some() => {
-                        let mut stream = connection.open_uni().await.unwrap();
-                        // Kinda ugly and hacky tbh
-                        match command {
-                            Outgoing::TransferFile(file) => {
-                                let _ = file_transfer::transfer_file(&mut stream, std::path::Path::new(&file)).await;
-                                continue;
-                            }
-                            _ => {}
+    async fn drive_send(connection: quinn::Connection, ordered: mpsc::Receiver<Outgoing>, unreliable: mpsc::Receiver<Outgoing>) -> anyhow::Result<()>{
+        let mut ordered = ordered.fuse();
+        let mut unreliable = unreliable.fuse();
+        loop {
+            select! {
+                command = ordered.select_next_some() => {
+                    let mut stream = connection.open_uni().await?;
+                    // Kinda ugly and hacky tbh
+                    match command {
+                        Outgoing::TransferFile(file) => {
+                            file_transfer::transfer_file(&mut stream, std::path::Path::new(&file)).await?;
+                            continue;
                         }
-                        let data_type = get_data_type(&command);
-                        let _ = send(&mut stream, data_type, &Self::handle_outgoing_data(command)).await;
+                        _ => {}
                     }
-                    command = unreliable_rx.select_next_some() => {
-                        let mut data = vec![get_data_type(&command)];
-                        data.append(&mut Self::handle_outgoing_data(command));
-                        let _ = connection.send_datagram(data.into());
-                    }
-                    complete => {
-                        break;
-                    }
+                    let data_type = outgoing::get_data_type(&command);
+                    send(&mut stream, data_type, &Self::handle_outgoing_data(command)).await?;
+                }
+                command = unreliable.select_next_some() => {
+                    let mut data = vec![outgoing::get_data_type(&command)];
+                    data.append(&mut Self::handle_outgoing_data(command));
+                    connection.send_datagram(data.into())?;
+                }
+                complete => {
+                    break;
                 }
             }
-        });
+        }
         Ok(())
     }
 
@@ -356,20 +368,6 @@ async fn main() {
         lua_commands: receiver,
     };
     server.run().await;
-}
-
-fn get_data_type(data: &Outgoing) -> u8 {
-    use Outgoing::*;
-    match data {
-        PositionUpdate(_, _) => 0,
-        VehicleSpawn(_) => 1,
-        ElectricsUpdate(_, _) => 2,
-        GearboxUpdate(_, _) => 3,
-        RemoveVehicle(_) => 5,
-        ResetVehicle(_) => 6,
-        Chat(_) => 8,
-        TransferFile(_) => 9,
-    }
 }
 
 fn list_mods() -> anyhow::Result<Vec<(String, u32)>> {

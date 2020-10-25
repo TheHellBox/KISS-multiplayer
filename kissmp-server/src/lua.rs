@@ -175,8 +175,12 @@ impl Server {
                     self.remove_vehicle(id, None).await;
                 }
                 ResetVehicle(id) => self.reset_vehicle(id, None).await,
-                SendLua(_id, _lua) => {
-                    unimplemented!();
+                SendLua(id, lua) => {
+                    self.connections
+                        .get_mut(&id)
+                        .unwrap()
+                        .send_lua(lua)
+                        .await;
                 }
             }
         }
