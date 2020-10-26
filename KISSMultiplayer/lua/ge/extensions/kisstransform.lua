@@ -56,6 +56,7 @@ local function send_transform_updates(obj)
 end
 
 local function update(dt)
+  if not network.connection.connected then return end
     -- Get rotation/angular velocity from vehicle lua
   for i = 0, be:getObjectCount() do
     local vehicle = be:getObject(i)

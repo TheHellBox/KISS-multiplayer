@@ -1,12 +1,12 @@
 #![recursion_limit = "256"]
 
+pub mod config;
 pub mod events;
 pub mod file_transfer;
 pub mod incoming;
 pub mod lua;
 pub mod outgoing;
 pub mod vehicle;
-pub mod config;
 
 use incoming::IncomingEvent;
 use outgoing::Outgoing;
@@ -48,17 +48,17 @@ pub struct ClientInfo {
     #[serde(skip_deserializing)]
     pub id: u32,
     #[serde(skip_deserializing)]
-    pub current_vehicle: u32
+    pub current_vehicle: u32,
 }
 
 impl ClientInfo {
-    pub fn new(id: u32) -> Self{
-        Self{
+    pub fn new(id: u32) -> Self {
+        Self {
             id,
             ..Default::default()
         }
     }
-    pub fn to_bytes(&self) -> Vec<u8>{
+    pub fn to_bytes(&self) -> Vec<u8> {
         rmp_serde::encode::to_vec(self).unwrap()
     }
 }
@@ -68,7 +68,7 @@ impl Default for ClientInfo {
         Self {
             name: String::from("Unknown"),
             id: 0,
-            current_vehicle: 0
+            current_vehicle: 0,
         }
     }
 }
@@ -83,6 +83,7 @@ struct Server {
     description: String,
     map: String,
     tickrate: u8,
+    max_players: u8,
     lua: rlua::Lua,
     lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
 }
@@ -151,7 +152,7 @@ impl Server {
         let server_info = serde_json::json!({
             "name": self.name.clone(),
             "player_count": self.connections.len(),
-            "max_players": 16,
+            "max_players": self.max_players,
             "description": self.description.clone(),
             "map": self.map.clone(),
             "port": 3698
@@ -171,6 +172,10 @@ impl Server {
         mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
         let connection = new_connection.connection.clone();
+        if self.connections.len() >= self.max_players.into() {
+            connection.close(0u32.into(), b"Server is full");
+            return Err(anyhow::Error::msg("Server is full"));
+        }
         // Should be strong enough for our targets. TODO: Check for collisions anyway
         let id = rand::random::<u32>();
         let (ordered_tx, ordered_rx) = mpsc::channel(128);
@@ -225,7 +230,11 @@ impl Server {
         Ok(())
     }
 
-    async fn drive_send(connection: quinn::Connection, ordered: mpsc::Receiver<Outgoing>, unreliable: mpsc::Receiver<Outgoing>) -> anyhow::Result<()>{
+    async fn drive_send(
+        connection: quinn::Connection,
+        ordered: mpsc::Receiver<Outgoing>,
+        unreliable: mpsc::Receiver<Outgoing>,
+    ) -> anyhow::Result<()> {
         let mut ordered = ordered.fuse();
         let mut unreliable = unreliable.fuse();
         loop {
@@ -382,6 +391,7 @@ async fn main() {
         description: config.description,
         map: config.map,
         tickrate: config.tickrate,
+        max_players: config.max_players,
         lua: lua,
         lua_commands: receiver,
     };

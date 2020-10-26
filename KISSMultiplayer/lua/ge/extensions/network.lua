@@ -98,6 +98,7 @@ local function connect(addr, player_name)
   send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
   if server_info.map ~= "any" and #missing_mods == 0 then
     freeroam_freeroam.startFreeroam(server_info.map)
+    vehiclemanager.loading_map = true
   end
 end
 
@@ -108,6 +109,7 @@ end
 
 local function on_finished_download()
   if M.connection.server_info.map ~= "any" then
+    vehiclemanager.loading_map = true
     freeroam_freeroam.startFreeroam(M.connection.server_info.map)
   end
 end
@@ -142,10 +144,12 @@ end
 
 local function onUpdate(dt)
   if not M.connection.connected then return end
+
   if M.downloading then
     continue_download()
     return
   end
+
   if M.connection.timer < M.connection.heartbeat_time then
     M.connection.timer = M.connection.timer + dt
   else
@@ -205,6 +209,7 @@ local function onUpdate(dt)
       break
     elseif data_type == DISCONNECTED then
       kissui.add_message("Disconnected.")
+      M.connection.connected = false
     elseif data_type == MESSAGETYPE_LUA then
       Lua:queueLuaCommand(data)
     elseif MESSAGETYPE_PLAYERINFO then

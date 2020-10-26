@@ -81,7 +81,7 @@ async fn main() {
 
         //let mut ordered = connection.uni_streams.next().await.unwrap().unwrap();
         tokio::spawn(async move {
-            if let Err(r) = drive_receive(connection, &mut writer).await{
+            if let Err(r) = drive_receive(connection, &mut writer).await {
                 println!("Disconnected!");
                 // Send message type 10(Disconnected) to the game
                 writer.write_all(&[10, 0, 0, 0, 1, 0]).await.unwrap();
@@ -90,7 +90,10 @@ async fn main() {
     }
 }
 
-pub async fn drive_receive(mut connection: quinn::NewConnection, mut writer: &mut tokio::io::WriteHalf<tokio::net::TcpStream>) -> anyhow::Result<()>{
+pub async fn drive_receive(
+    mut connection: quinn::NewConnection,
+    mut writer: &mut tokio::io::WriteHalf<tokio::net::TcpStream>,
+) -> anyhow::Result<()> {
     let mut datagrams = connection
         .datagrams
         .map(|data| async {
@@ -102,8 +105,8 @@ pub async fn drive_receive(mut connection: quinn::NewConnection, mut writer: &mu
             Ok::<_, anyhow::Error>(result)
         })
         .buffer_unordered(32);
-    loop{
-        tokio::select!{
+    loop {
+        tokio::select! {
             stream = connection.uni_streams.try_next() => {
                 let mut stream = stream?.unwrap();
                 let mut buf = [0; 1024];

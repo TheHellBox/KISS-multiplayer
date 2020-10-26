@@ -13,30 +13,31 @@ pub enum LuaCommand {
     RemoveVehicle(u32),
     ResetVehicle(u32),
     SendLua(u32, String),
+    Kick(u32, String),
 }
 
 impl rlua::UserData for Transform {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("getPosition", |_, this, _: ()| {
-            Ok(vec!(this.position[0], this.position[1], this.position[2]))
+            Ok(vec![this.position[0], this.position[1], this.position[2]])
         });
         methods.add_method("getRotation", |_, this, _: ()| {
-            Ok(vec!(
+            Ok(vec![
                 this.rotation[0],
                 this.rotation[1],
                 this.rotation[2],
                 this.rotation[3],
-            ))
+            ])
         });
         methods.add_method("getVelocity", |_, this, _: ()| {
-            Ok(vec!(this.velocity[0], this.velocity[1], this.velocity[2]))
+            Ok(vec![this.velocity[0], this.velocity[1], this.velocity[2]])
         });
         methods.add_method("getAngularVelocity", |_, this, _: ()| {
-            Ok(vec!(
+            Ok(vec![
                 this.angular_velocity[0],
                 this.angular_velocity[1],
                 this.angular_velocity[2],
-            ))
+            ])
         });
     }
 }
@@ -109,6 +110,12 @@ impl rlua::UserData for LuaConnection {
                 .unwrap();
             Ok(())
         });
+        methods.add_method("kick", |lua_ctx, this, reason: String| {
+            let globals = lua_ctx.globals();
+            let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
+            sender.0.send(LuaCommand::Kick(this.id, reason)).unwrap();
+            Ok(())
+        });
     }
 }
 
@@ -176,12 +183,14 @@ impl Server {
                 }
                 ResetVehicle(id) => self.reset_vehicle(id, None).await,
                 SendLua(id, lua) => {
-                    self.connections
-                        .get_mut(&id)
-                        .unwrap()
-                        .send_lua(lua)
-                        .await;
+                    self.connections.get_mut(&id).unwrap().send_lua(lua).await;
                 }
+                Kick(id, reason) => self
+                    .connections
+                    .get_mut(&id)
+                    .unwrap()
+                    .conn
+                    .close(1u32.into(), &reason.into_bytes()),
             }
         }
         self.lua.context(|lua_ctx| {
@@ -281,7 +290,7 @@ pub fn run_hook<
             let (_, function): (usize, rlua::Function) = pair.unwrap();
             match function.call::<A, R>(args.clone()) {
                 Ok(r) => return Some(r),
-                Err(r) => println!("{}", r)
+                Err(r) => println!("{}", r),
             }
         }
     }

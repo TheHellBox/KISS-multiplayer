@@ -20,8 +20,18 @@ impl Server {
                 }
             }
             ConnectionLost => {
-                let player_name = self.connections.get(&client_id).unwrap().client_info.name.clone();
-                self.connections.get_mut(&client_id).unwrap().conn.close(0u32.into(), b"");
+                let player_name = self
+                    .connections
+                    .get(&client_id)
+                    .unwrap()
+                    .client_info
+                    .name
+                    .clone();
+                self.connections
+                    .get_mut(&client_id)
+                    .unwrap()
+                    .conn
+                    .close(0u32.into(), b"");
                 self.connections.remove(&client_id);
                 if let Some(client_vehicles) = self.vehicle_ids.clone().get(&client_id) {
                     for (_, id) in client_vehicles {
@@ -29,7 +39,9 @@ impl Server {
                     }
                 }
                 for (_, client) in &mut self.connections {
-                    client.send_chat_message(format!("Player {} has left the server", player_name)).await;
+                    client
+                        .send_chat_message(format!("Player {} has left the server", player_name))
+                        .await;
                 }
                 println!("Client has disconnected from the server");
             }
@@ -88,8 +100,7 @@ impl Server {
                         .insert(client_id, HashMap::with_capacity(16));
                 }
 
-                if let Some(server_id) =
-                    self.get_server_id_from_game_id(client_id, data.in_game_id)
+                if let Some(server_id) = self.get_server_id_from_game_id(client_id, data.in_game_id)
                 {
                     self.remove_vehicle(server_id, Some(client_id)).await;
                 }

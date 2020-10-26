@@ -11,7 +11,7 @@ pub enum Outgoing {
     Chat(String),
     TransferFile(String),
     SendLua(String),
-    PlayerInfoUpdate(ClientInfo)
+    PlayerInfoUpdate(ClientInfo),
 }
 
 impl Server {
@@ -52,6 +52,6 @@ pub fn get_data_type(data: &Outgoing) -> u8 {
         Chat(_) => 8,
         TransferFile(_) => 9,
         SendLua(_) => 11,
-        PlayerInfoUpdate(_) => 12
+        PlayerInfoUpdate(_) => 12,
     }
 }

@@ -3,12 +3,16 @@ local M = {}
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 
 local timer = 0
+local vehicle_buffer = {}
+
+M.loading_map = false
 M.id_map = {}
 M.ownership = {}
 M.vehicle_updates_buffer = {}
 M.packet_gen_buffer = {}
 
 local function onUpdate(dt)
+  if not network.connection.connected then return end
   for id, updates in pairs(M.vehicle_updates_buffer) do
     local vehicle = be:getObjectByID(id)
     if vehicle then
@@ -55,6 +59,12 @@ local function send_vehicle_config_inner(id, parts_config)
 end
 
 local function spawn_vehicle(data)
+  -- Buffer the vehicles if map is not loaded yet
+  if M.loading_map then
+    table.insert(vehicle_buffer, data)
+    return
+  end
+
   print("Trying to spawn vehicle")
   if data.owner == network.get_client_id() then
     print("Vehicle belongs to local client, setting ownership")
@@ -151,6 +161,7 @@ end
 
 
 local function onVehicleSpawned(id)
+  if not network.connection.connected then return end
   local vehicle = be:getObjectByID(id)
   vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
@@ -158,13 +169,29 @@ local function onVehicleSpawned(id)
 end
 
 local function onVehicleDestroyed(id)
+  if not network.connection.connected then return end
   local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
   network.send_data(5, true, packed)
 end
 
 local function onVehicleResetted(id)
+  if not network.connection.connected then return end
   local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
   network.send_data(6, true, packed)
+end
+
+local function onFreeroamLoaded(mission)
+  if not network.connection.connected then return end
+  if mission ~= network.connection.server_info.map then
+    M.loading_map = true
+    freeroam_freeroam.startFreeroam(network.connection.server_info.map)
+  end
+
+  for _, data in vehicle_buffer do
+    spawn_vehicle(data)
+  end
+  vehicle_buffer = {}
+  M.loading_map = false
 end
 
 M.onUpdate = onUpdate
@@ -179,5 +206,6 @@ M.reset_vehicle = reset_vehicle
 M.onVehicleDestroyed = onVehicleDestroyed
 M.onVehicleResetted = onVehicleResetted
 M.onVehicleSpawned = onVehicleSpawned
+M.onFreeroamLoaded = onFreeroamLoaded
 
 return M
