@@ -53,7 +53,16 @@ async fn main() {
         let (endpoint, _) = endpoint
             .bind(&SocketAddr::new(IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
             .unwrap();
-        let connection = endpoint.connect(addr, "kissmp").unwrap().await.unwrap();
+        let connection = endpoint.connect(addr, "kissmp").unwrap().await;
+        if connection.is_err() {
+            // Send connection failed message to the client
+            let _ = writer.write_all(&[0]).await;
+            continue;
+        }
+        // Confirm that connection is established
+        let _ = writer.write_all(&[1]).await;
+
+        let connection = connection.unwrap();
         // That's some stupid naming
         let stream_connection = connection.connection.clone();
         tokio::spawn(async move {
@@ -77,14 +86,15 @@ async fn main() {
                 let mut stream = stream_connection.open_uni().await.unwrap();
                 let _ = stream.write_all(&buffer_a).await;
             }
+            println!("Connection with game is closed");
         });
 
         //let mut ordered = connection.uni_streams.next().await.unwrap().unwrap();
         tokio::spawn(async move {
-            if let Err(r) = drive_receive(connection, &mut writer).await {
+            if let Err(_r) = drive_receive(connection, &mut writer).await {
                 println!("Disconnected!");
                 // Send message type 10(Disconnected) to the game
-                writer.write_all(&[10, 0, 0, 0, 1, 0]).await.unwrap();
+                let _ = writer.write_all(&[10, 0, 0, 0, 1, 0]).await;
             }
         });
     }
@@ -92,7 +102,7 @@ async fn main() {
 
 pub async fn drive_receive(
     mut connection: quinn::NewConnection,
-    mut writer: &mut tokio::io::WriteHalf<tokio::net::TcpStream>,
+    writer: &mut tokio::io::WriteHalf<tokio::net::TcpStream>,
 ) -> anyhow::Result<()> {
     let mut datagrams = connection
         .datagrams

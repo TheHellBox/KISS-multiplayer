@@ -49,13 +49,24 @@ local function connect(addr, player_name)
   print("Connecting...")
   kissui.add_message("Connecting to "..addr.."...")
   M.connection.tcp = socket.tcp()
-  M.connection.tcp:settimeout(5.0)
+  M.connection.tcp:settimeout(3.0)
   local connected, err = M.connection.tcp:connect("127.0.0.1", "7894")
 
   -- Send server address to the bridge
   local addr_lenght = ffi.string(ffi.new("uint32_t[?]", 1, {#addr}), 4)
   M.connection.tcp:send(addr_lenght)
   M.connection.tcp:send(addr)
+
+  local connection_confirmed = M.connection.tcp:receive(1)
+  if connection_confirmed then
+    if connection_confirmed ~= string.char(1) then
+      kissui.add_message("Connection failed.")
+      return
+    end
+  else
+    kissui.add_message("Failed to confirm connection. Check if bridge is running.")
+    return
+  end
 
   local _ = M.connection.tcp:receive(1)
   local len, _, _ = M.connection.tcp:receive(4)
