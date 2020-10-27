@@ -50,7 +50,7 @@ end
 
 local function vehicleResseted()
   if parts_config ~= v.config then
-    obj:queueGameEngineLua("vehiclemanager.send_vehicle_data(\'"..v.config.."\', \'"..obj:getID().."\')")
+    --obj:queueGameEngineLua("vehiclemanager.send_vehicle_data(\'"..v.config.."\', \'"..obj:getID().."\')")
     parts_config = v.config
   end
 end

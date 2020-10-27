@@ -35,16 +35,15 @@ pub struct Vehicle {
 impl crate::Server {
     pub async fn remove_vehicle(&mut self, id: u32, client_id: Option<u32>) {
         self.vehicles.remove(&id);
-        for (_, client) in &mut self.connections {
+        for (cid, client) in &mut self.connections {
+            if Some(*cid) == client_id {
+                continue
+            }
             client
                 .ordered
                 .send(crate::Outgoing::RemoveVehicle(id))
                 .await
                 .unwrap();
-        }
-        if let Some(_client_id) = client_id {
-            // FIXME: Remove vehicle id from ids list
-            //self.vehicle_ids.get_mut(&client_id).unwrap().remove(&id);
         }
     }
     pub async fn reset_vehicle(&mut self, server_id: u32, client_id: Option<u32>) {
@@ -61,15 +60,19 @@ impl crate::Server {
     }
 
     pub async fn set_current_vehicle(&mut self, client_id: u32, vehicle_id: u32) {
-        let connection = self.connections.get_mut(&client_id).unwrap();
-        connection.client_info.current_vehicle = vehicle_id;
-        connection
-            .ordered
-            .send(crate::Outgoing::PlayerInfoUpdate(
-                connection.client_info.clone(),
-            ))
-            .await
-            .unwrap();
+        {
+            let connection = self.connections.get_mut(&client_id).unwrap();
+            connection.client_info.current_vehicle = vehicle_id;
+        }
+        for (cid, client) in &mut self.connections {
+            client
+                .ordered
+                .send(crate::Outgoing::PlayerInfoUpdate(
+                    client.client_info.clone(),
+                ))
+                .await
+                .unwrap();
+        }
     }
 
     pub fn get_server_id_from_game_id(&self, client_id: u32, game_id: u32) -> Option<u32> {

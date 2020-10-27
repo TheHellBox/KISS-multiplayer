@@ -235,7 +235,6 @@ local function onUpdate(dt)
           id = player_info[2],
           current_vehicle = player_info[3]
         }
-        print("received "..player_info.name..player_info.id.." "..player_info.current_vehicle)
         M.players[player_info.id] = player_info
       end
     elseif MESSAGETYPE_VEHICLEDATA_UPDATE then

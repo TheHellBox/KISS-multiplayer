@@ -37,12 +37,12 @@ local function onUpdate(dt)
       }
 
       if colors_buffer[vehicle:getID()] then
-        if not colors_eq(color, colors_buffer[vehicle:getID()]) then
+        if not colors_eq(colors, colors_buffer[vehicle:getID()]) then
           local data = {
             vehicle:getID(),
             colors
           }
-          network.send_message_pack(14, true, jsonEncode(colors))
+          network.send_messagepack(14, true, jsonEncode(colors))
         end
       else
         colors_buffer[vehicle:getID()] = colors
@@ -196,7 +196,7 @@ local function reset_vehicle(id)
   end
 end
 
-local function send_vehicle_data(parts_config, id)
+--[[local function send_vehicle_data(parts_config, id)
   local vehicle = be:getObjectByID(id)
   local parts_config = parts_config
   local color = vehicle.color
@@ -213,7 +213,7 @@ local function send_vehicle_data(parts_config, id)
 
   local result = jsonEncode(vehicle_data)
   network.send_data(13, true, result)
-end
+  end]]--
 
 local function update_vehicle_data(data)
   local vehicle = be:getObjectByID(id_map[data.server_id])
@@ -267,7 +267,7 @@ local function onFreeroamLoaded(mission)
     freeroam_freeroam.startFreeroam(network.connection.server_info.map)
   end
 
-  for _, data in vehicle_buffer do
+  for _, data in pairs(vehicle_buffer) do
     spawn_vehicle(data)
   end
   vehicle_buffer = {}
@@ -283,6 +283,7 @@ M.update_vehicle_gearbox = update_vehicle_gearbox
 M.rotate_nodes = rotate_nodes
 M.remove_vehicle = remove_vehicle
 M.reset_vehicle = reset_vehicle
+M.update_vehicle_colors = update_vehicle_colors
 M.onVehicleDestroyed = onVehicleDestroyed
 M.onVehicleResetted = onVehicleResetted
 M.onVehicleSpawned = onVehicleSpawned
