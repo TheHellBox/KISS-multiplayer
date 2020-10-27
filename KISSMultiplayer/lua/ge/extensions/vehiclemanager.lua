@@ -226,7 +226,7 @@ local function update_vehicle_colors(data)
   local data = messagepack.unpack(data)
   local id = M.id_map[data[1] or -1] or -1
   if M.ownership[id] then return end
-  local vehicle = be:getObjectByID(vehicle)
+  local vehicle = be:getObjectByID(id)
   if vehicle then
     local colors = {
       data[2][1],
@@ -266,7 +266,7 @@ local function onFreeroamLoaded(mission)
     M.loading_map = true
     freeroam_freeroam.startFreeroam(network.connection.server_info.map)
   end
-
+ 
   M.loading_map = false
   for _, data in pairs(vehicle_buffer) do
     spawn_vehicle(data)
