@@ -132,7 +132,7 @@ end
 
 local function draw_names()
   for id, player in pairs(network.players) do
-    if player.id == network.connection.client_id then goto continue end
+    if id == network.connection.client_id then goto continue end
     local vehicle = vehiclemanager.id_map[player.current_vehicle] or 0
     local vehicle = be:getObjectByID(vehicle)
     if vehicle then

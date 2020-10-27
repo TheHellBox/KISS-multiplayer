@@ -196,7 +196,6 @@ impl Server {
             ColorsUpdate(colors) => {
                 if let Some(server_id) = self.get_server_id_from_game_id(client_id, (colors.0).0) {
                     if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
-                        println!("Colors update");
                         let colors_table = (colors.0).1;
                         vehicle.data.color = colors_table[0];
                         vehicle.data.palete_0 = colors_table[1];

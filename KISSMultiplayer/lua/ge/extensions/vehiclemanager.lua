@@ -35,14 +35,14 @@ local function onUpdate(dt)
         {palete_0.x, palete_0.y, palete_0.z, palete_0.w},
         {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
       }
-
       if colors_buffer[vehicle:getID()] then
         if not colors_eq(colors, colors_buffer[vehicle:getID()]) then
           local data = {
             vehicle:getID(),
             colors
           }
-          network.send_messagepack(14, true, jsonEncode(colors))
+          network.send_messagepack(14, true, jsonEncode(data))
+          colors_buffer[vehicle:getID()] = colors
         end
       else
         colors_buffer[vehicle:getID()] = colors
