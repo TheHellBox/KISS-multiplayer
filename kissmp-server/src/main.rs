@@ -135,8 +135,10 @@ impl Server {
                     let _ = self.send_server_info().await;
                 }
                 conn = incoming.select_next_some() => {
-                    if let Err(e) = self.on_connect(conn.unwrap(), client_events_tx.clone()).await {
-                        println!("Client has failed to connect to the server");
+                    if let Ok(conn) = conn {
+                        if let Err(e) = self.on_connect(conn, client_events_tx.clone()).await {
+                            println!("Client has failed to connect to the server");
+                        }
                     }
                 },
                 stdin_input = reader.next() => {
