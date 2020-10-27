@@ -141,7 +141,7 @@ local function draw_names()
       vehicle_position.z = vehicle_position.z + 1.6
       debugDrawer:drawTextAdvanced(
         vehicle_position,
-        String(player.name.." ("..tostring(distance).."m)"),
+        String(player.name.." ("..tostring(math.floor(distance)).."m)"),
         ColorF(1, 1, 1, 1),
         true,
         false,
