@@ -407,9 +407,9 @@ async fn main() {
 
 fn list_mods() -> anyhow::Result<Vec<(String, u32)>> {
     let mut result = vec![];
-    let paths = std::fs::read_dir("./mods/").unwrap();
+    let paths = std::fs::read_dir("./mods/")?;
     for path in paths {
-        let path = path.unwrap().path();
+        let path = path?.path();
         if path.is_dir() {
             continue;
         }
