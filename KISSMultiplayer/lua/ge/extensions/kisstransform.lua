@@ -99,7 +99,12 @@ local function update(dt)
             predicted_position.z
           )
         )
-        goto continue
+        -- We use return instead of continue, guess why.
+        -- Lua has no continue!
+        -- I hate this language so much
+        -- And because we use return, we skip updates for all the other vehicles! Isn't that great?
+        -- Fuck lua. I hate you. I really do hate you
+        return
       end
       if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 25) then
         vehicle:setPosRot(
@@ -111,7 +116,7 @@ local function update(dt)
           predicted_rotation.z,
           predicted_rotation.w
         )
-        goto continue
+        return
       end
 
       if position_error:length() > 5 then
@@ -146,7 +151,6 @@ local function update(dt)
                                 ..required_angular_acceleration.z..","
                                 ..required_angular_acceleration.x..")")
     end
-    ::continue::
   end
 end
 
