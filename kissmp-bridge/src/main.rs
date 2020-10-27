@@ -34,7 +34,15 @@ async fn main() {
         let mut addr_buffer = vec![0; addr_len];
         reader.read_exact(&mut addr_buffer).await.unwrap();
         let addr_str = String::from_utf8(addr_buffer).unwrap();
-        let addr = &addr_str.parse::<SocketAddr>().unwrap();
+        let addr = {
+            if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+                addr
+            }
+            else{
+                println!("Failed to parse address!");
+                continue
+            }
+        };
 
         let mut endpoint = quinn::Endpoint::builder();
         let mut client_cfg = quinn::ClientConfig::default();
@@ -53,7 +61,7 @@ async fn main() {
         let (endpoint, _) = endpoint
             .bind(&SocketAddr::new(IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
             .unwrap();
-        let connection = endpoint.connect(addr, "kissmp").unwrap().await;
+        let connection = endpoint.connect(&addr, "kissmp").unwrap().await;
         if connection.is_err() {
             // Send connection failed message to the client
             let _ = writer.write_all(&[0]).await;

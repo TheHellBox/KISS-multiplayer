@@ -2,7 +2,7 @@
     "server_name": "KissMP Vanilla Server",
     "description": "Vanilla KissMP server",
     "map": "/levels/smallgrid/info.json",
-    "tickrate": 33,
+    "tickrate": 60,
     "max_players": 8,
     "show_in_server_list": false
 }
