@@ -1,10 +1,12 @@
 pub mod electrics;
 pub mod gearbox;
 pub mod transform;
+pub mod colors;
 
 pub use electrics::*;
 pub use gearbox::*;
 pub use transform::*;
+pub use colors::*;
 
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +18,9 @@ pub struct VehicleData {
     pub palete_0: [f32; 4],
     pub palete_1: [f32; 4],
     pub name: String,
+    #[serde(skip_deserializing)]
     pub server_id: Option<u32>,
+    #[serde(skip_deserializing)]
     pub owner: Option<u32>,
 }
 

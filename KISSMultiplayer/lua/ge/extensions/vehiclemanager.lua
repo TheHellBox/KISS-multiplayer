@@ -4,6 +4,7 @@ local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 
 local timer = 0
 local vehicle_buffer = {}
+local colors_buffer = {}
 
 M.loading_map = false
 M.id_map = {}
@@ -11,8 +12,44 @@ M.ownership = {}
 M.vehicle_updates_buffer = {}
 M.packet_gen_buffer = {}
 
+local function color_eq(a, b)
+  return (a[1] == b[1]) and (a[2] == b[2]) and {a[3] == b[3]} and {a[4] == b[4]}
+end
+
+local function colors_eq(a, b)
+  return color_eq(a[1], b[1]) and color_eq(a[2], b[2]) and color_eq(a[3], b[3])
+end
+
 local function onUpdate(dt)
   if not network.connection.connected then return end
+
+    -- Track color changes
+  for i = 0, be:getObjectCount() do
+    local vehicle = be:getObject(i)
+    if vehicle then
+      local color = vehicle.color
+      local palete_0 = vehicle.colorPalette0
+      local palete_1 = vehicle.colorPalette1
+      local colors = {
+        {color.x, color.y, color.z, color.w},
+        {palete_0.x, palete_0.y, palete_0.z, palete_0.w},
+        {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
+      }
+
+      if colors_buffer[vehicle:getID()] then
+        if not colors_eq(color, colors_buffer[vehicle:getID()]) then
+          local data = {
+            vehicle:getID(),
+            colors
+          }
+          network.send_message_pack(14, true, jsonEncode(colors))
+        end
+      else
+        colors_buffer[vehicle:getID()] = colors
+      end
+    end
+  end
+
   for id, updates in pairs(M.vehicle_updates_buffer) do
     local vehicle = be:getObjectByID(id)
     if vehicle then
@@ -159,6 +196,49 @@ local function reset_vehicle(id)
   end
 end
 
+local function send_vehicle_data(parts_config, id)
+  local vehicle = be:getObjectByID(id)
+  local parts_config = parts_config
+  local color = vehicle.color
+  local palete_0 = vehicle.colorPalette0
+  local palete_1 = vehicle.colorPalette1
+
+  local vehicle_data = {}
+  vehicle_data.parts_config = parts_config
+  vehicle_data.in_game_id = id
+  vehicle_data.color = {color.x, color.y, color.z, color.w}
+  vehicle_data.palete_0 = {palete_0.x, palete_0.y, palete_0.z, palete_0.w}
+  vehicle_data.palete_1 = {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
+  vehicle_data.name = vehicle:getJBeamFilename()
+
+  local result = jsonEncode(vehicle_data)
+  network.send_data(13, true, result)
+end
+
+local function update_vehicle_data(data)
+  local vehicle = be:getObjectByID(id_map[data.server_id])
+  if vehicle then
+    vehicle:queueLuaCommand("kissvehicle.update_data(\'"..jsonEncode(data).."\')")
+  end
+end
+
+local function update_vehicle_colors(data)
+  local data = messagepack.unpack(data)
+  local id = M.id_map[data[1] or -1] or -1
+  if M.ownership[id] then return end
+  local vehicle = be:getObjectByID(vehicle)
+  if vehicle then
+    local colors = {
+      data[2][1],
+      data[2][2],
+      data[2][3]
+    }
+    local vd = extensions.core_vehicle_manager.getVehicleData(objID)
+    if not vd or not vd.config or not vd.config.colors then return end
+    vd.config.colors = colors
+    extensions.core_vehicle_manager.liveUpdateVehicleColors(id, vehicle)
+  end
+end
 
 local function onVehicleSpawned(id)
   if not network.connection.connected then return end

@@ -7,6 +7,7 @@ pub struct Config {
     pub map: String,
     pub max_players: u8,
     pub tickrate: u8,
+    pub show_in_server_list: bool
 }
 
 impl Config {

@@ -182,6 +182,32 @@ impl Server {
                         .await
                         .unwrap();
                 }
+            },
+            VehicleDataUpdate(data) => {
+                if let Some(server_id) = self.get_server_id_from_game_id(client_id, data.in_game_id) {
+                    if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
+                        vehicle.data.color = data.color;
+                        vehicle.data.palete_0 = data.palete_0;
+                        vehicle.data.palete_1 = data.palete_1;
+                        vehicle.data.parts_config = data.parts_config;
+                    }
+                }
+            },
+            ColorsUpdate(colors) => {
+                if let Some(server_id) = self.get_server_id_from_game_id(client_id, (colors.0).0) {
+                    if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
+                        let colors_table = (colors.0).1;
+                        vehicle.data.color = colors_table[0];
+                        vehicle.data.palete_0 = colors_table[1];
+                        vehicle.data.palete_1 = colors_table[2];
+                         for (_, client) in &mut self.connections {
+                             client
+                                 .ordered
+                                 .send(Outgoing::ColorsUpdate(colors))
+                                 .await;
+                         }
+                    }
+                }
             }
         }
     }

@@ -1,4 +1,5 @@
 local M = {}
+local parts_config = v.config
 
 local function update_transform_info()
   local r = obj:getRotation()
@@ -41,10 +42,24 @@ local function kill_velocity(strength)
   end
 end
 
+local function update_vehicle_data(data)
+  local data = jsonDecode(data)
+  tableMerge(v.config, data)
+  obj:respawn(serialize(v.config))
+end
+
+local function vehicleResseted()
+  if parts_config ~= v.config then
+    obj:queueGameEngineLua("vehiclemanager.send_vehicle_data(\'"..v.config.."\', \'"..obj:getID().."\')")
+    parts_config = v.config
+  end
+end
+
 M.update_transform_info = update_transform_info
 M.set_rotation = set_rotation
 M.apply_full_velocity = apply_full_velocity
 M.kill_velocity = kill_velocity
-M.onInit = init
+M.update_vehicle_data = update_vehicle_data
+M.vehicleResetted = vehicleResseted
 
 return M

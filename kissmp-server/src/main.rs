@@ -84,6 +84,7 @@ struct Server {
     map: String,
     tickrate: u8,
     max_players: u8,
+    show_in_list: bool,
     lua: rlua::Lua,
     lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
 }
@@ -149,6 +150,9 @@ impl Server {
     }
 
     async fn send_server_info(&self) -> anyhow::Result<()> {
+        if !self.show_in_list {
+            return Ok(())
+        }
         let server_info = serde_json::json!({
             "name": self.name.clone(),
             "player_count": self.connections.len(),
@@ -336,7 +340,7 @@ impl Server {
         self.lua_tick().await.unwrap();
     }
 
-    pub fn client_owns_vehicle(&self, client_id: u32, vehicle_id: u32) -> bool {
+    pub fn _client_owns_vehicle(&self, client_id: u32, vehicle_id: u32) -> bool {
         if let Some(vehicles) = self.vehicle_ids.get(&client_id) {
             // FIXME: I think that can be optimized
             for (_, server_id) in vehicles {
@@ -392,6 +396,7 @@ async fn main() {
         map: config.map,
         tickrate: config.tickrate,
         max_players: config.max_players,
+        show_in_list: config.show_in_server_list,
         lua: lua,
         lua_commands: receiver,
     };

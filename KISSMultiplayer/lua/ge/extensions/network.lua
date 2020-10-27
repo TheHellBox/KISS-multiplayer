@@ -31,6 +31,8 @@ local FILE_TRANSFER = 9
 local DISCONNECTED = 10
 local MESSAGETYPE_LUA = 11
 local MESSAGETYPE_PLAYERINFO = 12
+local MESSAGETYPE_VEHICLEDATA_UPDATE = 13
+local MESSAGETYPE_COLORS_UPDATE = 14
 
 local function send_data(data_type, reliable, data)
   if not M.connection.connected then return -1 end
@@ -194,7 +196,9 @@ local function onUpdate(dt)
       kisstransform.update_vehicle_transform(transform)
     elseif data_type == MESSAGETYPE_VEHICLE_SPAWN then
       local decoded = jsonDecode(data)
-      vehiclemanager.spawn_vehicle(decoded)
+      if decoded then
+        vehiclemanager.spawn_vehicle(decoded)
+      end
     elseif data_type == MESSAGETYPE_ELECTRICS then
       vehiclemanager.update_vehicle_electrics(data)
     elseif data_type == MESSAGETYPE_GEARBOX then
@@ -234,6 +238,13 @@ local function onUpdate(dt)
         print("received "..player_info.name..player_info.id.." "..player_info.current_vehicle)
         M.players[player_info.id] = player_info
       end
+    elseif MESSAGETYPE_VEHICLEDATA_UPDATE then
+      local decoded = jsonDecode(data)
+      if decoded then
+        vehiclemanager.update_vehicle_data(decoded)
+      end
+    elseif MESSAGETYPE_COLORS_UPDATE then
+      vehiclemanager.update_vehicle_colors(data)
     end
   end
 end
