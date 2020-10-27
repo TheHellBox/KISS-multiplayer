@@ -214,7 +214,11 @@ impl Server {
         });
     }
     pub fn load_lua_addons(&mut self) {
-        let paths = std::fs::read_dir("./addons/").unwrap();
+        let path = std::path::Path::new("./addons/");
+        if !path.exists() {
+            std::fs::create_dir(path).unwrap();
+        }
+        let paths = std::fs::read_dir(path).unwrap();
         for path in paths {
             let path = path.unwrap().path();
             if !path.is_dir() {
