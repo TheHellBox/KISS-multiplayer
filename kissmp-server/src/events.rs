@@ -47,7 +47,13 @@ impl Server {
             }
             UpdateClientInfo(info) => {
                 if let Some(connection) = self.connections.get_mut(&client_id) {
-                    connection.client_info = info;
+                    let mut info = info.clone();
+                    if info.name == String::from("") {
+                        info.name = String::from("Unknown");
+                    }
+                    connection.client_info.name = info.name;
+                    connection.client_info.current_vehicle = info.current_vehicle;
+
                     connection
                         .ordered
                         .send(Outgoing::PlayerInfoUpdate(connection.client_info.clone()))
