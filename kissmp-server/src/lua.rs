@@ -116,6 +116,12 @@ impl rlua::UserData for LuaConnection {
             sender.0.send(LuaCommand::Kick(this.id, reason)).unwrap();
             Ok(())
         });
+        methods.add_method("sendLua", |lua_ctx, this, lua: String| {
+            let globals = lua_ctx.globals();
+            let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
+            sender.0.send(LuaCommand::SendLua(this.id, lua)).unwrap();
+            Ok(())
+        });
     }
 }
 

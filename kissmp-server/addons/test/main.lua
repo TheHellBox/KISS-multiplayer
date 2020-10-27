@@ -9,3 +9,15 @@ hooks.register(
     end
   end
 )
+
+hooks.register(
+  "OnChat",
+  function(client_id, message)
+    if message == "/home" then
+      local vehicle_id = connections[client_id]:getCurrentVehicle()
+      if vehicles[vehicle_id] then
+        vehicles[vehicle_id]:setPositionRotation(0, 0, 0, 0, 0, 0, 1)
+      end
+    end
+  end
+)
