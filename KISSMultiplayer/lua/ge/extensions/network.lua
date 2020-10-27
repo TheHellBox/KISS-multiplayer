@@ -227,7 +227,7 @@ local function onUpdate(dt)
       M.connection.connected = false
     elseif data_type == MESSAGETYPE_LUA then
       Lua:queueLuaCommand(data)
-    elseif MESSAGETYPE_PLAYERINFO then
+    elseif data_type == MESSAGETYPE_PLAYERINFO then
       local player_info = messagepack.unpack(data)
       if player_info then
         local player_info = {
@@ -237,12 +237,12 @@ local function onUpdate(dt)
         }
         M.players[player_info.id] = player_info
       end
-    elseif MESSAGETYPE_VEHICLEDATA_UPDATE then
+    elseif data_type == MESSAGETYPE_VEHICLEDATA_UPDATE then
       local decoded = jsonDecode(data)
       if decoded then
         vehiclemanager.update_vehicle_data(decoded)
       end
-    elseif MESSAGETYPE_COLORS_UPDATE then
+    elseif data_type == MESSAGETYPE_COLORS_UPDATE then
       vehiclemanager.update_vehicle_colors(data)
     end
   end

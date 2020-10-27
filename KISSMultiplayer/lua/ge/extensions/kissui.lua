@@ -134,7 +134,7 @@ local function draw_names()
   for id, player in pairs(network.players) do
     local vehicle = vehiclemanager.id_map[player.current_vehicle] or 0
     local vehicle = be:getObjectByID(vehicle)
-    if vehicle and (id == network.connection.client_id) then
+    if vehicle and (id ~= network.connection.client_id) then
       local vehicle_position = vehicle:getPosition()
       local local_position = be:getPlayerVehicle(0):getPosition()
       local distance = vec3(vehicle_position):distance(vec3(local_position))
