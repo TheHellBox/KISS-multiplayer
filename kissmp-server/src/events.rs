@@ -206,13 +206,15 @@ impl Server {
                         vehicle.data.color = colors_table[0];
                         vehicle.data.palete_0 = colors_table[1];
                         vehicle.data.palete_1 = colors_table[2];
-                         for (_, client) in &mut self.connections {
-                             client
-                                 .ordered
-                                 .send(Outgoing::ColorsUpdate(colors))
-                                 .await
-                                 .unwrap();
-                         }
+                        let mut colors = colors.clone();
+                        (colors.0).0 = server_id;
+                        for (_, client) in &mut self.connections {
+                            client
+                                .ordered
+                                .send(Outgoing::ColorsUpdate(colors))
+                                .await
+                                .unwrap();
+                        }
                     }
                 }
             }

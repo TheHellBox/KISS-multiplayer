@@ -91,8 +91,9 @@ async fn main() {
                 }
                 buffer_a.append(&mut len_buf.to_vec());
                 buffer_a.append(&mut data);
-                let mut stream = stream_connection.open_uni().await.unwrap();
-                let _ = stream.write_all(&buffer_a).await;
+                if let Ok(mut stream) = stream_connection.open_uni().await {
+                    let _ = stream.write_all(&buffer_a).await;
+                }
             }
             println!("Connection with game is closed");
         });
