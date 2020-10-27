@@ -267,11 +267,11 @@ local function onFreeroamLoaded(mission)
     freeroam_freeroam.startFreeroam(network.connection.server_info.map)
   end
 
+  M.loading_map = false
   for _, data in pairs(vehicle_buffer) do
     spawn_vehicle(data)
   end
   vehicle_buffer = {}
-  M.loading_map = false
 end
 
 M.onUpdate = onUpdate
