@@ -317,25 +317,22 @@ impl Server {
         for (_, client) in &mut self.connections {
             for (vehicle_id, vehicle) in &self.vehicles {
                 if let Some(transform) = &vehicle.transform {
-                    client
+                    let _ = client
                         .unreliable
                         .send(Outgoing::PositionUpdate(*vehicle_id, transform.clone()))
-                        .await
-                        .unwrap();
+                        .await;
                 }
                 if let Some(electrics) = &vehicle.electrics {
-                    client
+                    let _ = client
                         .unreliable
                         .send(Outgoing::ElectricsUpdate(*vehicle_id, electrics.clone()))
-                        .await
-                        .unwrap();
+                        .await;
                 }
                 if let Some(gearbox) = &vehicle.gearbox {
-                    client
+                    let _ = client
                         .unreliable
                         .send(Outgoing::GearboxUpdate(*vehicle_id, gearbox.clone()))
-                        .await
-                        .unwrap();
+                        .await;
                 }
             }
         }
