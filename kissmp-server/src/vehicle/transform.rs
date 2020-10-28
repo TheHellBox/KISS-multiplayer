@@ -5,11 +5,12 @@ pub struct Transform {
     pub velocity: [f32; 3],
     pub angular_velocity: [f32; 3],
     generation: u32,
+    sent_at: f32
 }
 
 impl Transform {
     pub fn from_bytes(data: &[u8]) -> (u32, Self) {
-        let result: [f32; 15] = bincode::deserialize(&data).unwrap();
+        let result: [f32; 16] = bincode::deserialize(&data).unwrap();
         (
             result[0] as u32,
             Self {
@@ -18,6 +19,7 @@ impl Transform {
                 velocity: [result[8], result[9], result[10]],
                 angular_velocity: [result[11], result[12], result[13]],
                 generation: result[14] as u32,
+                sent_at: result[15]
             },
         )
     }
@@ -38,6 +40,7 @@ impl Transform {
             self.angular_velocity[2],
             vehicle_id as f32,
             self.generation as f32,
+            self.sent_at
         ];
         let data = bincode::serialize(&data).unwrap();
         data

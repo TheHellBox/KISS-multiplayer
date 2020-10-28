@@ -6,6 +6,7 @@ local socket = require("socket")
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 
 M.players = {}
+M.socket = socket
 
 M.connection = {
   tcp = nil,
@@ -184,6 +185,7 @@ local function onUpdate(dt)
     M.connection.tcp:settimeout(0.0)
 
     if data_type == MESSAGETYPE_TRANSFORM then
+      data = data..string.char(1)
       local p = ffi.new("char[?]", #data, data)
       local ptr = ffi.cast("float*", p)
       local transform = {}
@@ -193,6 +195,7 @@ local function onUpdate(dt)
       transform.angular_velocity = {ptr[10], ptr[11], ptr[12]}
       transform.owner = ptr[13]
       transform.generation = ptr[14]
+      transform.sent_at = ptr[15]
       kisstransform.update_vehicle_transform(transform)
     elseif data_type == MESSAGETYPE_VEHICLE_SPAWN then
       local decoded = jsonDecode(data)

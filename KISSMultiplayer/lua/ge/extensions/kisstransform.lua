@@ -20,6 +20,13 @@ function lerp(a,b,t)
   return a * (1-t) + b * t
 end
 
+function get_current_time()
+  local date = os.date("*t", os.time())
+  date.sec = 0
+  date.min = 0
+  return network.socket.gettime() - os.time(date)
+end
+
 local function send_transform_updates(obj)
   --if not M.ownership[obj:getID()] then return end
   if not M.local_transforms[obj:getID()] then return end
@@ -50,7 +57,8 @@ local function send_transform_updates(obj)
   result[14] = M.local_transforms[id].vel_yaw
 
   result[15] = generation
-
+  result[16] = get_current_time()
+ 
   local packed = ffi.string(ffi.new("float[?]", #result, result), 4 * #result)
   network.send_data(0, false, packed)
 end
@@ -167,7 +175,7 @@ local function update_vehicle_transform(transform)
   vehiclemanager.packet_gen_buffer[id] = transform.generation
   local vehicle = be:getObjectByID(id)
   if vehicle then
-    local position = vec3(vehicle:getPosition())
+    transform.time_past = get_current_time() - transform.sent_at
     M.received_transforms[id] = transform
   end
 end

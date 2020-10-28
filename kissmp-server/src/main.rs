@@ -127,6 +127,8 @@ impl Server {
         let mut reader = reader.fuse();
         self.load_lua_addons();
 
+        println!("Server is running!");
+
         loop {
             select! {
                 _ = ticks.next() => {
