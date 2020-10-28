@@ -55,6 +55,80 @@ local function send_transform_updates(obj)
   network.send_data(0, false, packed)
 end
 
+local function apply_transform(dt, id, transform, apply_velocity)
+  transform.time_past = (transform.time_past or 0) + dt
+
+  local predicted_position = vec3(transform.position) + vec3(transform.velocity) * transform.time_past
+  local rotation_delta = vec3(transform.angular_velocity) * transform.time_past
+  local predicted_rotation = quat(transform.rotation) * quatFromEuler(rotation_delta.x, rotation_delta.y, rotation_delta.z)
+
+  local vehicle = be:getObjectByID(id)
+  if vehicle and M.local_transforms[id] then
+    local position_error = predicted_position - vec3(vehicle:getPosition())
+    local rotation_error = predicted_rotation / quat(M.local_transforms[id].rotation)
+    local rotation_error_euler = rotation_error:toEulerYXZ()
+    if position_error:length() > M.threshold then
+      vehicle:setPosition(
+        Point3F(
+          predicted_position.x,
+          predicted_position.y,
+          predicted_position.z
+        )
+      )
+      return
+    end
+    
+    if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 25) then
+      vehicle:setPosRot(
+        predicted_position.x,
+        predicted_position.y,
+        predicted_position.z,
+        predicted_rotation.x,
+        predicted_rotation.y,
+        predicted_rotation.z,
+        predicted_rotation.w
+      )
+      return
+    end
+    
+    -- Velocity is computed and applied past this point
+    -- Return now if it's requested not to be applied
+    if not apply_velocity then return end
+    
+    if position_error:length() > 5 then
+      position_error:normalize()
+      position_error = position_error * 5
+    end
+
+    local velocity_error = vec3(transform.velocity) - vec3(vehicle:getVelocity())
+    local error_length = velocity_error:length()
+    -- The value is so high is bacause of the breaking.
+    -- When vehicle break, it's accelearion is actually quite high
+    if error_length > 20 then
+      velocity_error:normalize()
+      velocity_error = velocity_error * 20
+    end
+
+    local local_ang_vel = vec3(
+      M.local_transforms[id].vel_yaw,
+      M.local_transforms[id].vel_pitch,
+      M.local_transforms[id].vel_roll
+    )
+    local angular_velocity_error = vec3(transform.angular_velocity) - local_ang_vel
+
+    local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 8, 1)
+    local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 8, 1)
+
+    vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
+                              ..required_acceleration.x..","
+                              ..required_acceleration.y..","
+                              ..required_acceleration.z..","
+                              ..required_angular_acceleration.y..","
+                              ..required_angular_acceleration.z..","
+                              ..required_angular_acceleration.x..")")
+  end
+end 
+
 local function update(dt)
   if not network.connection.connected then return end
     -- Get rotation/angular velocity from vehicle lua
@@ -79,78 +153,10 @@ local function update(dt)
     end
   end
 
+  -- Don't apply velocity while paused. If we do, velocity gets stored up and released when the game resumes.
+  local apply_velocity = not bullettime.getPause()
   for id, transform in pairs(M.received_transforms) do
-    transform.time_past = (transform.time_past or 0) + dt
-
-    local predicted_position = vec3(transform.position) + vec3(transform.velocity) * transform.time_past
-    local rotation_delta = vec3(transform.angular_velocity) * transform.time_past
-    local predicted_rotation = quat(transform.rotation) * quatFromEuler(rotation_delta.x, rotation_delta.y, rotation_delta.z)
-
-    local vehicle = be:getObjectByID(id)
-    if vehicle and M.local_transforms[id] then
-      local position_error = predicted_position - vec3(vehicle:getPosition())
-      local rotation_error = predicted_rotation / quat(M.local_transforms[id].rotation)
-      local rotation_error_euler = rotation_error:toEulerYXZ()
-      if position_error:length() > M.threshold then
-        vehicle:setPosition(
-          Point3F(
-            predicted_position.x,
-            predicted_position.y,
-            predicted_position.z
-          )
-        )
-        -- We use return instead of continue, guess why.
-        -- Lua has no continue!
-        -- I hate this language so much
-        -- And because we use return, we skip updates for all the other vehicles! Isn't that great?
-        -- Fuck lua. I hate you. I really do hate you
-        return
-      end
-      if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 25) then
-        vehicle:setPosRot(
-          predicted_position.x,
-          predicted_position.y,
-          predicted_position.z,
-          predicted_rotation.x,
-          predicted_rotation.y,
-          predicted_rotation.z,
-          predicted_rotation.w
-        )
-        return
-      end
-
-      if position_error:length() > 5 then
-        position_error:normalize()
-        position_error = position_error * 5
-      end
-
-      local velocity_error = vec3(transform.velocity) - vec3(vehicle:getVelocity())
-      local error_length = velocity_error:length()
-      -- The value is so high is bacause of the breaking.
-      -- When vehicle break, it's accelearion is actually quite high
-      if error_length > 20 then
-        velocity_error:normalize()
-        velocity_error = velocity_error * 20
-      end
-
-      local local_ang_vel = vec3(
-        M.local_transforms[id].vel_yaw,
-        M.local_transforms[id].vel_pitch,
-        M.local_transforms[id].vel_roll
-      )
-      local angular_velocity_error = vec3(transform.angular_velocity) - local_ang_vel
-
-      local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 8, 1)
-      local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 8, 1)
-
-      vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
-                                ..required_acceleration.x..","
-                                ..required_acceleration.y..","
-                                ..required_acceleration.z..","
-                                ..required_angular_acceleration.y..","
-                                ..required_angular_acceleration.z..","
-                                ..required_angular_acceleration.x..")")
-    end
+    apply_transform(dt, id, transform, apply_velocity)
   end
 end
 
