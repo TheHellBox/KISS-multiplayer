@@ -14,7 +14,7 @@ pub enum IncomingEvent {
     Chat(String),
     RequestMods(Vec<String>),
     VehicleDataUpdate(VehicleData),
-    ColorsUpdate(Colors)
+    ColorsUpdate(Colors),
 }
 
 impl Server {
@@ -98,7 +98,7 @@ impl Server {
                         .await
                         .unwrap();
                 }
-            },
+            }
             13 => {
                 let data_str = String::from_utf8(data.to_vec()).unwrap();
                 let vehicle_data: VehicleData = serde_json::from_str(&data_str).unwrap();
@@ -106,7 +106,7 @@ impl Server {
                     .send((id, IncomingEvent::VehicleDataUpdate(vehicle_data)))
                     .await
                     .unwrap();
-            },
+            }
             14 => {
                 let colors = Colors::from_bytes(&data);
                 if let Ok(colors) = colors {

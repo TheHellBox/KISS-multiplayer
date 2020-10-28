@@ -13,7 +13,7 @@ pub enum Outgoing {
     SendLua(String),
     PlayerInfoUpdate(ClientInfo),
     VehicleDataUpdate(VehicleData),
-    ColorsUpdate(Colors)
+    ColorsUpdate(Colors),
 }
 
 impl Server {
@@ -39,7 +39,7 @@ impl Server {
             PlayerInfoUpdate(player_info) => player_info.to_bytes(),
             VehicleDataUpdate(data) => serde_json::to_string(&data).unwrap().into_bytes(),
             ColorsUpdate(colors) => colors.to_bytes(),
-            TransferFile(_) => vec![] // Covered in other place, unused here
+            TransferFile(_) => vec![], // Covered in other place, unused here
         }
     }
 }
@@ -58,6 +58,6 @@ pub fn get_data_type(data: &Outgoing) -> u8 {
         SendLua(_) => 11,
         PlayerInfoUpdate(_) => 12,
         VehicleDataUpdate(_) => 13,
-        ColorsUpdate(_) => 14
+        ColorsUpdate(_) => 14,
     }
 }

@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use tokio::sync::mpsc;
 
+#[derive(Clone)]
 struct Connection {
     pub conn: quinn::Connection,
     pub ordered: mpsc::Sender<Outgoing>,
@@ -156,7 +157,7 @@ impl Server {
 
     async fn send_server_info(&self) -> anyhow::Result<()> {
         if !self.show_in_list {
-            return Ok(())
+            return Ok(());
         }
         let server_info = serde_json::json!({
             "name": self.name.clone(),

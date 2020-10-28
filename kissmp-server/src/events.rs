@@ -5,16 +5,31 @@ impl Server {
         use IncomingEvent::*;
         match event {
             ClientConnected => {
+                // Kinda ugly, but idk how to deal with lifetimes otherwise
+                let mut client_info_list = vec![];
+                for (_, connection) in self.connections.clone() {
+                    client_info_list.push(connection.client_info.clone())
+                }
+
                 let connection = self.connections.get_mut(&client_id).unwrap();
                 connection
                     .ordered
                     .send(Outgoing::PlayerInfoUpdate(connection.client_info.clone()))
                     .await
                     .unwrap();
+
                 for (_, vehicle) in &self.vehicles {
                     connection
                         .ordered
                         .send(Outgoing::VehicleSpawn(vehicle.data.clone()))
+                        .await
+                        .unwrap();
+                }
+
+                for info in client_info_list {
+                    connection
+                        .ordered
+                        .send(Outgoing::PlayerInfoUpdate(info))
                         .await
                         .unwrap();
                 }
@@ -188,9 +203,10 @@ impl Server {
                         .await
                         .unwrap();
                 }
-            },
+            }
             VehicleDataUpdate(data) => {
-                if let Some(server_id) = self.get_server_id_from_game_id(client_id, data.in_game_id) {
+                if let Some(server_id) = self.get_server_id_from_game_id(client_id, data.in_game_id)
+                {
                     if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
                         vehicle.data.color = data.color;
                         vehicle.data.palete_0 = data.palete_0;
@@ -198,7 +214,7 @@ impl Server {
                         vehicle.data.parts_config = data.parts_config;
                     }
                 }
-            },
+            }
             ColorsUpdate(colors) => {
                 if let Some(server_id) = self.get_server_id_from_game_id(client_id, (colors.0).0) {
                     if let Some(vehicle) = self.vehicles.get_mut(&server_id) {

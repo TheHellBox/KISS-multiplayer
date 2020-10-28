@@ -1,12 +1,12 @@
+pub mod colors;
 pub mod electrics;
 pub mod gearbox;
 pub mod transform;
-pub mod colors;
 
+pub use colors::*;
 pub use electrics::*;
 pub use gearbox::*;
 pub use transform::*;
-pub use colors::*;
 
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +37,7 @@ impl crate::Server {
         self.vehicles.remove(&id);
         for (cid, client) in &mut self.connections {
             if Some(*cid) == client_id {
-                continue
+                continue;
             }
             client
                 .ordered
@@ -64,13 +64,16 @@ impl crate::Server {
             let connection = self.connections.get_mut(&client_id).unwrap();
             connection.client_info.current_vehicle = vehicle_id;
         }
-        let client_info = self.connections.get(&client_id).unwrap().client_info.clone();
+        let client_info = self
+            .connections
+            .get(&client_id)
+            .unwrap()
+            .client_info
+            .clone();
         for (_cid, client) in &mut self.connections {
             client
                 .ordered
-                .send(crate::Outgoing::PlayerInfoUpdate(
-                    client_info.clone(),
-                ))
+                .send(crate::Outgoing::PlayerInfoUpdate(client_info.clone()))
                 .await
                 .unwrap();
         }
