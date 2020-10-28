@@ -10,7 +10,7 @@ pub struct Transform {
 
 impl Transform {
     pub fn from_bytes(data: &[u8]) -> (u32, Self) {
-        let result: [f32; 16] = bincode::deserialize(&data).unwrap();
+        let result: [f32; 16] = bincode::deserialize(&data).unwrap_or([0.0; 16]);
         (
             result[0] as u32,
             Self {
