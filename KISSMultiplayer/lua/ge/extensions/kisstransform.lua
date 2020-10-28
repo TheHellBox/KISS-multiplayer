@@ -11,6 +11,8 @@ M.local_transforms = {}
 M.threshold = 4
 M.rot_threshold = 1.5
 M.smoothing_coef = 4
+M.angular_velocity_error_limit = 0.05
+M.velocity_error_limit = 10
 
 -- FIXME: remove rotation smoothingg
 M.smoothing_coef_rot = 1000
@@ -86,7 +88,7 @@ local function apply_transform(dt, id, transform, apply_velocity)
       return
     end
     
-    if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 25) then
+    if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 5) then
       vehicle:setPosRot(
         predicted_position.x,
         predicted_position.y,
@@ -112,9 +114,9 @@ local function apply_transform(dt, id, transform, apply_velocity)
     local error_length = velocity_error:length()
     -- The value is so high is bacause of the breaking.
     -- When vehicle break, it's accelearion is actually quite high
-    if error_length > 20 then
+    if error_length > M.velocity_error_limit then
       velocity_error:normalize()
-      velocity_error = velocity_error * 20
+      velocity_error = velocity_error * M.velocity_error_limit
     end
 
     local local_ang_vel = vec3(
@@ -123,6 +125,9 @@ local function apply_transform(dt, id, transform, apply_velocity)
       M.local_transforms[id].vel_roll
     )
     local angular_velocity_error = vec3(transform.angular_velocity) - local_ang_vel
+    angular_velocity_error.x = clamp(angular_velocity_error.x, -M.angular_velocity_error_limit, M.angular_velocity_error_limit)
+    angular_velocity_error.y = clamp(angular_velocity_error.x, -M.angular_velocity_error_limit, M.angular_velocity_error_limit)
+    angular_velocity_error.z = clamp(angular_velocity_error.x, -M.angular_velocity_error_limit, M.angular_velocity_error_limit)
 
     local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 8, 1)
     local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 8, 1)
