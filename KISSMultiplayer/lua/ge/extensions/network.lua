@@ -48,8 +48,20 @@ local function send_data(data_type, reliable, data)
   M.connection.tcp:send(data)
 end
 
+local function sanitize_addr(addr)
+  -- Trim leading and trailing spaces that might occur during a copy/paste
+  local sanitized = addr:gsub("^%s*(.-)%s*$", "%1")
+  
+  -- Check if port is missing, add default port if so
+  if not sanitized:find(":") then
+    sanitized = sanitized .. ":3698" 
+  end
+  return sanitized
+end
+
 local function connect(addr, player_name)
   print("Connecting...")
+  addr = sanitize_addr(addr)
   kissui.add_message("Connecting to "..addr.."...")
   M.connection.tcp = socket.tcp()
   M.connection.tcp:settimeout(3.0)
