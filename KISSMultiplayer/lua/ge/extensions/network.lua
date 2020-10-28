@@ -240,11 +240,6 @@ local function onUpdate(dt)
         }
         M.players[player_info.id] = player_info
       end
-    elseif data_type == MESSAGETYPE_VEHICLEDATA_UPDATE then
-      local decoded = jsonDecode(data)
-      if decoded then
-        vehiclemanager.update_vehicle_data(decoded)
-      end
     elseif data_type == MESSAGETYPE_COLORS_UPDATE then
       vehiclemanager.update_vehicle_colors(data)
     end

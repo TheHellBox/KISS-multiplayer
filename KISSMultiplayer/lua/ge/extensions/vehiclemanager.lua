@@ -196,25 +196,6 @@ local function reset_vehicle(id)
   end
 end
 
---[[local function send_vehicle_data(parts_config, id)
-  local vehicle = be:getObjectByID(id)
-  local parts_config = parts_config
-  local color = vehicle.color
-  local palete_0 = vehicle.colorPalette0
-  local palete_1 = vehicle.colorPalette1
-
-  local vehicle_data = {}
-  vehicle_data.parts_config = parts_config
-  vehicle_data.in_game_id = id
-  vehicle_data.color = {color.x, color.y, color.z, color.w}
-  vehicle_data.palete_0 = {palete_0.x, palete_0.y, palete_0.z, palete_0.w}
-  vehicle_data.palete_1 = {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
-  vehicle_data.name = vehicle:getJBeamFilename()
-
-  local result = jsonEncode(vehicle_data)
-  network.send_data(13, true, result)
-  end]]--
-
 local function update_vehicle_data(data)
   local vehicle = be:getObjectByID(id_map[data.server_id])
   if vehicle then
@@ -233,7 +214,7 @@ local function update_vehicle_colors(data)
       data[2][2],
       data[2][3]
     }
-    local vd = extensions.core_vehicle_manager.getVehicleData(objID)
+    local vd = extensions.core_vehicle_manager.getVehicleData(id)
     if not vd or not vd.config or not vd.config.colors then return end
     vd.config.colors = colors
     extensions.core_vehicle_manager.liveUpdateVehicleColors(id, vehicle)
