@@ -17,7 +17,7 @@ use futures::{select, StreamExt};
 use quinn::{Certificate, CertificateChain, PrivateKey};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use tokio::sync::mpsc;
 
 struct Connection {
@@ -84,6 +84,7 @@ struct Server {
     map: String,
     tickrate: u8,
     max_players: u8,
+    port: u16,
     show_in_list: bool,
     lua: rlua::Lua,
     lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
@@ -96,7 +97,7 @@ impl Server {
         let mut send_info_ticks = tokio::time::interval(std::time::Duration::from_secs(1)).fuse();
 
         let (certificate_chain, key) = generate_certificate();
-        let addr = &"0.0.0.0:3698".parse::<SocketAddr>().unwrap();
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
 
         let mut server_config = quinn::ServerConfigBuilder::default();
         server_config.certificate(certificate_chain, key).unwrap();
@@ -161,7 +162,7 @@ impl Server {
             "max_players": self.max_players,
             "description": self.description.clone(),
             "map": self.map.clone(),
-            "port": 3698
+            "port": self.port
         })
         .to_string();
         self.reqwest_client
@@ -394,6 +395,7 @@ async fn main() {
         description: config.description,
         map: config.map,
         tickrate: config.tickrate,
+        port: config.port,
         max_players: config.max_players,
         show_in_list: config.show_in_server_list,
         lua: lua,

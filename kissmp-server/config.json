@@ -3,6 +3,7 @@
     "description": "Vanilla KissMP server",
     "map": "/levels/smallgrid/info.json",
     "tickrate": 60,
+    "port": 3698,
     "max_players": 8,
     "show_in_server_list": false
 }
