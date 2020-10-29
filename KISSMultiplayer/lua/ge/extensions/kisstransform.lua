@@ -126,8 +126,8 @@ local function apply_transform(dt, id, transform, apply_velocity)
     angular_velocity_error.y = clamp(angular_velocity_error.x, -M.angular_velocity_error_limit, M.angular_velocity_error_limit)
     angular_velocity_error.z = clamp(angular_velocity_error.x, -M.angular_velocity_error_limit, M.angular_velocity_error_limit)
 
-    local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 8, 1)
-    local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 8, 1)
+    local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 5, 1)
+    local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 5, 1)
 
     vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
                               ..required_acceleration.x..","
