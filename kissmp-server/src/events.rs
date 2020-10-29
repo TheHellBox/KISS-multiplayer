@@ -204,19 +204,19 @@ impl Server {
                         .unwrap();
                 }
             }
-            ColorsUpdate(colors) => {
-                if let Some(server_id) = self.get_server_id_from_game_id(client_id, (colors.0).0) {
+            VehicleMetaUpdate(meta) => {
+                if let Some(server_id) = self.get_server_id_from_game_id(client_id, meta.vehicle_id) {
                     if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
-                        let colors_table = (colors.0).1;
-                        vehicle.data.color = colors_table[0];
-                        vehicle.data.palete_0 = colors_table[1];
-                        vehicle.data.palete_1 = colors_table[2];
-                        let mut colors = colors.clone();
-                        (colors.0).0 = server_id;
+                        vehicle.data.color = meta.colors_table[0];
+                        vehicle.data.palete_0 = meta.colors_table[1];
+                        vehicle.data.palete_1 = meta.colors_table[2];
+                        vehicle.data.plate = meta.plate.clone();
+                        let mut meta = meta.clone();
+                        meta.vehicle_id = server_id;
                         for (_, client) in &mut self.connections {
                             client
                                 .ordered
-                                .send(Outgoing::ColorsUpdate(colors))
+                                .send(Outgoing::VehicleMetaUpdate(meta.clone()))
                                 .await
                                 .unwrap();
                         }

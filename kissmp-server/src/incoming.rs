@@ -13,7 +13,7 @@ pub enum IncomingEvent {
     UpdateClientInfo(ClientInfo),
     Chat(String),
     RequestMods(Vec<String>),
-    ColorsUpdate(Colors),
+    VehicleMetaUpdate(VehicleMeta),
 }
 
 impl Server {
@@ -99,10 +99,10 @@ impl Server {
                 }
             }
             14 => {
-                let colors = Colors::from_bytes(&data);
-                if let Ok(colors) = colors {
+                let meta = VehicleMeta::from_bytes(&data);
+                if let Ok(meta) = meta {
                     client_events_tx
-                        .send((id, IncomingEvent::ColorsUpdate(colors)))
+                        .send((id, IncomingEvent::VehicleMetaUpdate(meta)))
                         .await
                         .unwrap();
                 }

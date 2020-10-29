@@ -5,6 +5,7 @@ local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 local timer = 0
 local vehicle_buffer = {}
 local colors_buffer = {}
+local plates_buffer = {}
 
 M.loading_map = false
 M.id_map = {}
@@ -20,36 +21,55 @@ local function colors_eq(a, b)
   return color_eq(a[1], b[1]) and color_eq(a[2], b[2]) and color_eq(a[3], b[3])
 end
 
-local function onUpdate(dt)
-  if not network.connection.connected then return end
-
-    -- Track color changes
+local function send_vehicle_meta_updates()
   for i = 0, be:getObjectCount() do
     local vehicle = be:getObject(i)
     if vehicle then
+      local changed = false
+      local id = vehicle:getID()
+      
       local color = vehicle.color
       local palete_0 = vehicle.colorPalette0
       local palete_1 = vehicle.colorPalette1
+      local plate = vehicle.licenseText
       local colors = {
         {color.x, color.y, color.z, color.w},
         {palete_0.x, palete_0.y, palete_0.z, palete_0.w},
         {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
       }
-      if colors_buffer[vehicle:getID()] then
-        if not colors_eq(colors, colors_buffer[vehicle:getID()]) then
-          local data = {
-            vehicle:getID(),
-            colors
-          }
-          network.send_messagepack(14, true, jsonEncode(data))
-          colors_buffer[vehicle:getID()] = colors
-        end
-      else
-        colors_buffer[vehicle:getID()] = colors
+      
+      if plates_buffer[id] then
+        changed = changed or plates_buffer[id] ~= plate
+      end
+      plates_buffer[id] = plate
+      
+      if colors_buffer[id] then
+        changed = changed or not colors_eq(colors, colors_buffer[id])
+      end
+      colors_buffer[id] = colors
+      
+      if changed then
+        local data = {
+          id,
+          plate,
+          colors
+        }
+        network.send_messagepack(14, true, jsonEncode(data))
       end
     end
   end
+end
 
+local function onUpdate(dt)
+  if not network.connection.connected then return end
+
+  -- Track color and plate changes
+  timer = timer + dt
+  if timer >= 1 then
+    send_vehicle_meta_updates()
+    timer = timer - 1
+  end
+  
   for id, updates in pairs(M.vehicle_updates_buffer) do
     local vehicle = be:getObjectByID(id)
     if vehicle then
@@ -79,6 +99,7 @@ local function send_vehicle_config_inner(id, parts_config)
   local color = vehicle.color
   local palete_0 = vehicle.colorPalette0
   local palete_1 = vehicle.colorPalette1
+  local plate = vehicle.licenseText
 
   local vehicle_data = {}
   vehicle_data.parts_config = parts_config
@@ -86,6 +107,7 @@ local function send_vehicle_config_inner(id, parts_config)
   vehicle_data.color = {color.x, color.y, color.z, color.w}
   vehicle_data.palete_0 = {palete_0.x, palete_0.y, palete_0.z, palete_0.w}
   vehicle_data.palete_1 = {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
+  vehicle_data.plate = plate
   vehicle_data.name = vehicle:getJBeamFilename()
   local result = jsonEncode(vehicle_data)
   if result then
@@ -113,6 +135,7 @@ local function spawn_vehicle(data)
   local current_vehicle = be:getPlayerVehicle(0)
   local parts_config = jsonDecode(data.parts_config)
   local c = data.color
+  local plate = data.plate
   local cp0 = data.palete_0
   local cp1 = data.palete_1
   local name = data.name
@@ -126,6 +149,7 @@ local function spawn_vehicle(data)
     ColorF(cp0[1],cp0[2],cp0[3],cp0[4]),
     ColorF(cp1[1],cp1[2],cp1[3],cp1[4])
   )
+  extensions.core_vehicles.setPlateText(plate, spawned:getID())
   if data.server_id then
     M.id_map[data.server_id] = spawned:getID()
   else
@@ -203,17 +227,23 @@ local function update_vehicle_data(data)
   end
 end
 
-local function update_vehicle_colors(data)
+local function update_vehicle_meta(data)
   local data = messagepack.unpack(data)
   local id = M.id_map[data[1] or -1] or -1
   if M.ownership[id] then return end
   local vehicle = be:getObjectByID(id)
   if vehicle then
+    local plate = data[2]
     local colors = {
-      data[2][1],
-      data[2][2],
-      data[2][3]
+      data[3][1],
+      data[3][2],
+      data[3][3]
     }
+    
+    -- Apply plate
+    extensions.core_vehicles.setPlateText(plate, id)
+    
+    -- Apply colors
     local vd = extensions.core_vehicle_manager.getVehicleData(id)
     if not vd or not vd.config or not vd.config.colors then return end
     vd.config.colors = colors
@@ -264,7 +294,7 @@ M.update_vehicle_gearbox = update_vehicle_gearbox
 M.rotate_nodes = rotate_nodes
 M.remove_vehicle = remove_vehicle
 M.reset_vehicle = reset_vehicle
-M.update_vehicle_colors = update_vehicle_colors
+M.update_vehicle_meta = update_vehicle_meta
 M.onVehicleDestroyed = onVehicleDestroyed
 M.onVehicleResetted = onVehicleResetted
 M.onVehicleSpawned = onVehicleSpawned
