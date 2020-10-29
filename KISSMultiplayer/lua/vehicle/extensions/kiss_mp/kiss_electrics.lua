@@ -82,17 +82,9 @@ local function apply_diff(data)
     elseif k == "lightbar" then
       electrics.set_lightbar_signal(v)
     elseif k == "engineRunning" then
-      if v > 0.5 then
-        controller.mainController.setStarter(true)
-      else
-        controller.mainController.setStarter(false)
-      end
+      controller.mainController.setStarter(v > 0.5)
     elseif k == "horn" then
-      if v > 0.5 then
-        electrics.horn(true)
-      else
-        electrics.horn(false)
-      end
+      electrics.horn(v > 0.5)
     end
   end
 end
