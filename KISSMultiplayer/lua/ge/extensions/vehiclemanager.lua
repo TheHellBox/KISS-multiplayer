@@ -50,7 +50,7 @@ local function send_vehicle_meta_updates()
       
       if changed then
         local data = {
-          vehicle:getID(),
+          id,
           plate,
           colors
         }
