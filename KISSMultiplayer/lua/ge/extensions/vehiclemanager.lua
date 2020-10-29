@@ -252,7 +252,7 @@ end
 local function electrics_diff_update(data)
   local data = messagepack.unpack(data)
   local id = M.id_map[data[1] or -1]
-  if id then
+  if id and not M.ownership[id] then
     local vehicle = be:getObjectByID(id)
     if not vehicle then return end
     local data = jsonEncode(data[2])
