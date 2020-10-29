@@ -30,8 +30,16 @@ local ignored_keys = {
   fuelVolume = true,
   turboSpin = true,
   turboRPM = true,
+  turboBoost = true,
   virtualAirspeed = true,
-  turboRpmRatio = true
+  turboRpmRatio = true,
+  steering = true,
+  tcs = true,
+  tcsActive = true,
+  esc = true,
+  escActive = true,
+  brake = true,
+  brakelights = true
 }
 
 local function send()
@@ -50,7 +58,7 @@ local function send()
     diff = {}
   }
   for key, value in pairs(electrics.values) do
-    if not ignored_keys[key] then
+    if not ignored_keys[key] and type(value) == 'number' then
       if prev_electrics[key] ~= value then
         data.diff[key] = value
       end
