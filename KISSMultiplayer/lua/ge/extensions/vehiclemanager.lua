@@ -171,7 +171,7 @@ local function update_vehicle_electrics(data)
   if not vehicle then return end
   if not M.vehicle_updates_buffer[id] then M.vehicle_updates_buffer[id] = {} end
   M.vehicle_updates_buffer[id].electrics = data
-  vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(d1ata).."\')")
+  vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(data).."\')")
 end
 
 local function update_vehicle_gearbox(data)
