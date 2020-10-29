@@ -83,12 +83,6 @@ local function onUpdate(dt)
   end
 end
 
-local function enable_spawning(enabled)
-  local jsCommand = 'angular.element(document.body).injector().get("VehicleSelectConfig").configs.default.hide = {"spawnNew":' .. tostring(enabled) .. '}'
-  be:queueJS(jsCommand)
-end
-
-
 local function send_vehicle_config(vehicle_id)
   local vehicle = be:getObjectByID(vehicle_id)
   if vehicle then

@@ -33,7 +33,6 @@ local DISCONNECTED = 10
 local MESSAGETYPE_LUA = 11
 local MESSAGETYPE_PLAYERINFO = 12
 local MESSAGETYPE_META_UPDATE = 14
-local MESSAGETYPE_ENABLE_VEHICLE_SPAWNING = 15
 
 local function send_data(data_type, reliable, data)
   if not M.connection.connected then return -1 end
@@ -254,8 +253,6 @@ local function onUpdate(dt)
       end
     elseif data_type == MESSAGETYPE_META_UPDATE then
       vehiclemanager.update_vehicle_meta(data)
-    elseif data_type == MESSAGETYPE_ENABLE_VEHICLE_SPAWNING then
-      vehiclemanager.enable_spawning(data == 1)
     end
   end
 end
