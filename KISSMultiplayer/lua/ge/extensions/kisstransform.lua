@@ -13,6 +13,7 @@ M.rot_threshold = 1.5
 M.smoothing_coef = 4
 M.angular_velocity_error_limit = 0.05
 M.velocity_error_limit = 10
+M.smoothing_coef_rot = 2
 
 local function lerp(a,b,t)
   local t = math.min(t, 1)
@@ -97,11 +98,14 @@ local function apply_transform(dt, id, transform, apply_velocity)
       )
       return
     end
-    
+
     -- Velocity is computed and applied past this point
     -- Return now if it's requested not to be applied
     if not apply_velocity then return end
-    
+
+    rotation_error_euler = lerp(buffered_rotation_errors[id] or rotation_error_euler, rotation_error_euler, dt * M.smoothing_coef_rot)
+    buffered_rotation_errors[id] = rotation_error_euler
+
     if position_error:length() > 5 then
       position_error:normalize()
       position_error = position_error * 5
