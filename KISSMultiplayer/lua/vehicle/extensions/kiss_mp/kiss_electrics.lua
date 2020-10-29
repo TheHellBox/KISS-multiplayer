@@ -4,11 +4,23 @@ local timer = 0
 local ignored_keys = {
   throttle = true,
   throttle_input = true,
+  brake = true,
   brake_input = true,
   clutch = true,
+  clutch_input = true,
   clutchRatio = true,
   parkingbrake = true,
+  parkingbrake_input = true,
+  steering = true,
   steering_input = true,
+  lights = true,
+  turnsignal = true,
+  hazard = true,
+  signal_R = true,
+  signal_L = true,
+  gear_M = true,
+  gear_A = true,
+  gearIndex = true,
   exhaustFlow = true,
   engineLoad = true,
   airspeed = true,
@@ -34,12 +46,13 @@ local ignored_keys = {
   turboBoost = true,
   virtualAirspeed = true,
   turboRpmRatio = true,
-  steering = true,
+  lockupClutchRatio = true,
+  abs = true,
+  absActive = true,
   tcs = true,
   tcsActive = true,
   esc = true,
   escActive = true,
-  brake = true,
   brakelights = true
 }
 
@@ -48,8 +61,8 @@ local function send()
     vehicle_id = obj:getID(),
     throttle_input = electrics.values.throttle_input,
     brake_input = electrics.values.brake_input,
-    clutch = electrics.values.clutch,
-    parkingbrake = electrics.values.parkingbrake,
+    clutch = electrics.values.clutch_input,
+    parkingbrake = electrics.values.parkingbrake_input,
     steering_input = electrics.values.steering_input,
   }
   obj:queueGameEngineLua("network.send_messagepack(2, false, \'"..jsonEncode(data).."\')")
@@ -103,11 +116,18 @@ local function apply_diff(data)
 end
 
 local function kissInit()
-  -- Blacklist shaft electrics
+  -- Blacklist powertrain electrics
   local devices = powertrain.getDevices()
-  for _,device in pairs(devices) do
+  for _, device in pairs(devices) do
     if device.electricsName and device.visualShaftAngle then
       ignored_keys[device.electricsName] = true
+    end
+    
+    if device.electricsThrottleName then 
+      ignored_keys[device.electricsThrottleName] = true
+    end
+    if device.electricsThrottleFactorName then
+      ignored_keys[device.electricsThrottleFactorName] = true
     end
   end
 end
