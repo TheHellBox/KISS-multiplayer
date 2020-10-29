@@ -30,12 +30,15 @@ local ignored_keys = {
   fuelVolume = true,
   turboSpin = true,
   turboRPM = true,
+  turboBoost = true,
   virtualAirspeed = true,
   turboRpmRatio = true,
+  steering = true,
   tcs = true,
   tcsActive = true,
   esc = true,
   escActive = true,
+  brake = true,
   brakelights = true
 }
 
