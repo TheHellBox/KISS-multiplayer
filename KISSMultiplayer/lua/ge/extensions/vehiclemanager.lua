@@ -101,7 +101,7 @@ local function send_vehicle_config_inner(id, parts_config)
   local palete_1 = vehicle.colorPalette1
   local plate = vehicle.licenseText
   local position = vehicle:getPosition()
-  local rotation = kisstransform.local_transforms[vehicle:getID()].rotation or {0, 0, 0, 1}
+  local rotation = vehicle:getRotation()
 
   local vehicle_data = {}
   vehicle_data.parts_config = parts_config
@@ -112,7 +112,7 @@ local function send_vehicle_config_inner(id, parts_config)
   vehicle_data.plate = plate
   vehicle_data.name = vehicle:getJBeamFilename()
   vehicle_data.position = {position.x, position.y, position.z}
-  vehicle_data.rotation = rotation
+  vehicle_data.rotation = {rotation.x, rotation.y, rotation.z, rotation.w}
 
   local result = jsonEncode(vehicle_data)
   if result then
@@ -171,7 +171,7 @@ local function update_vehicle_electrics(data)
   if not vehicle then return end
   if not M.vehicle_updates_buffer[id] then M.vehicle_updates_buffer[id] = {} end
   M.vehicle_updates_buffer[id].electrics = data
-  vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(data).."\')")
+  vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(d1ata).."\')")
 end
 
 local function update_vehicle_gearbox(data)
