@@ -100,6 +100,8 @@ local function send_vehicle_config_inner(id, parts_config)
   local palete_0 = vehicle.colorPalette0
   local palete_1 = vehicle.colorPalette1
   local plate = vehicle.licenseText
+  local position = vehicle:getPosition()
+  local rotation = kisstransform.local_transforms[vehicle:getID()].rotation or {0, 0, 0, 1}
 
   local vehicle_data = {}
   vehicle_data.parts_config = parts_config
@@ -109,6 +111,9 @@ local function send_vehicle_config_inner(id, parts_config)
   vehicle_data.palete_1 = {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
   vehicle_data.plate = plate
   vehicle_data.name = vehicle:getJBeamFilename()
+  vehicle_data.position = {position.x, position.y, position.z}
+  vehicle_data.rotation = rotation
+
   local result = jsonEncode(vehicle_data)
   if result then
     network.send_data(1, true, result)
@@ -143,8 +148,8 @@ local function spawn_vehicle(data)
   local spawned = spawn.spawnVehicle(
     name,
     serialize(parts_config),
-    vec3(0,0,0),
-    quat(0,0,0,0),
+    vec3(data.position),
+    quat(data.rotation),
     ColorF(c[1],c[2],c[3],c[4]),
     ColorF(cp0[1],cp0[2],cp0[3],cp0[4]),
     ColorF(cp1[1],cp1[2],cp1[3],cp1[4])

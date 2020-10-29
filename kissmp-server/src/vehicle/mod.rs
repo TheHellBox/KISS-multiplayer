@@ -23,6 +23,8 @@ pub struct VehicleData {
     pub server_id: Option<u32>,
     #[serde(skip_deserializing)]
     pub owner: Option<u32>,
+    pub position: [f32; 3],
+    pub rotation: [f32; 4]
 }
 
 #[derive(Clone)]

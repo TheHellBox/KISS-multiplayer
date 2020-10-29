@@ -100,6 +100,8 @@ impl Server {
             TransformUpdate(vehicle_id, transform) => {
                 if let Some(server_id) = self.get_server_id_from_game_id(client_id, vehicle_id) {
                     if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
+                        vehicle.data.position = transform.position;
+                        vehicle.data.rotation = transform.rotation;
                         vehicle.transform = Some(transform);
                     }
                 }

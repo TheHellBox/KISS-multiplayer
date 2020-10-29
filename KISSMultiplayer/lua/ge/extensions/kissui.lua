@@ -30,7 +30,12 @@ end
 
 local function load_config()
   local file = io.open("./kissmp_config.json", "r")
-  if not file then return end
+  if not file then
+    if Steam and Steam.isWorking and Steam.accountLoggedIn then
+      player_name = imgui.ArrayChar(32, Steam.playerName)
+    end
+    return
+  end
   local content = file:read("*a")
   local config = jsonDecode(content or "")
   if not config then return end
