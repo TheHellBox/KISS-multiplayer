@@ -1,9 +1,9 @@
-pub mod colors;
+pub mod vehicle_meta;
 pub mod electrics;
 pub mod gearbox;
 pub mod transform;
 
-pub use colors::*;
+pub use vehicle_meta::*;
 pub use electrics::*;
 pub use gearbox::*;
 pub use transform::*;
@@ -17,6 +17,7 @@ pub struct VehicleData {
     pub color: [f32; 4],
     pub palete_0: [f32; 4],
     pub palete_1: [f32; 4],
+    pub plate: String,
     pub name: String,
     #[serde(skip_deserializing)]
     pub server_id: Option<u32>,

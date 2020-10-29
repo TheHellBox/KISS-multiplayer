@@ -1,9 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
-pub struct Colors(pub (u32, [[f32; 4]; 3]));
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct VehicleMeta {
+    pub vehicle_id: u32,
+    pub plate: String,
+    pub colors_table: [[f32; 4]; 3],
+}
 
-impl Colors {
+impl VehicleMeta {
     pub fn from_bytes(data: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
         rmp_serde::decode::from_read_ref(data)
     }
