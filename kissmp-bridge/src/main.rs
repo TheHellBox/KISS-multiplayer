@@ -182,13 +182,15 @@ pub async fn drive_receive(
     loop {
         tokio::select! {
             stream = connection.uni_streams.try_next() => {
-                let mut stream = stream?.unwrap();
-                let mut buf = [0; 1024];
-                while let Some(n) = stream.read(&mut buf).await? {
-                    if n == 0 {
-                        break
+                let mut stream = stream?;
+                if let Some(stream) = &mut stream {
+                    let mut buf = [0; 1024];
+                    while let Some(n) = stream.read(&mut buf).await? {
+                        if n == 0 {
+                            break
+                        }
+                        let _ = writer.write_all(&buf[0..n].to_vec()).await;
                     }
-                    let _ = writer.write_all(&buf[0..n].to_vec()).await;
                 }
             },
             data = datagrams.select_next_some() => {
