@@ -1,4 +1,13 @@
 local M = {}
+local prev_electrics = {}
+local timer = 0
+local ignored_keys = {
+  throttle_input = true,
+  brake_input = true,
+  clutch = true,
+  parkingbrake = true,
+  steering_input = true
+}
 
 local function send()
   local data = {
@@ -8,12 +17,19 @@ local function send()
     clutch = electrics.values.clutch,
     parkingbrake = electrics.values.parkingbrake,
     steering_input = electrics.values.steering_input,
-    horn = electrics.values.horn,
-    toggle_right_signal = electrics.values.signal_right_input,
-    toggle_left_signal = electrics.values.signal_left_input,
-    toggle_lights = electrics.values.lights,
   }
   obj:queueGameEngineLua("network.send_messagepack(2, false, \'"..jsonEncode(data).."\')")
+
+  local diff = {}
+  for key, value in pairs(electrics) do
+    if not ignored_keys[key] then
+      if prev_electrics[key] ~= value then
+        diff[key] = value
+      end
+      prev_electrics[key] = value
+    end
+  end
+  obj:queueGameEngineLua("network.send_messagepack(15, true, \'"..jsonEncode(diff).."\')")
 end
 
 local function apply(data)

@@ -14,15 +14,12 @@ M.smoothing_coef = 4
 M.angular_velocity_error_limit = 0.05
 M.velocity_error_limit = 10
 
--- FIXME: remove rotation smoothingg
-M.smoothing_coef_rot = 1000
-
-function lerp(a,b,t)
+local function lerp(a,b,t)
   local t = math.min(t, 1)
   return a * (1-t) + b * t
 end
 
-function get_current_time()
+local function get_current_time()
   local date = os.date("*t", os.time())
   date.sec = 0
   date.min = 0

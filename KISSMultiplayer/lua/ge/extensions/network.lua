@@ -33,6 +33,7 @@ local DISCONNECTED = 10
 local MESSAGETYPE_LUA = 11
 local MESSAGETYPE_PLAYERINFO = 12
 local MESSAGETYPE_META_UPDATE = 14
+local MESSAGETYPE_ELECTRICS_UNDEFINED = 15
 
 local function send_data(data_type, reliable, data)
   if not M.connection.connected then return -1 end

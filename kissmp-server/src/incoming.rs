@@ -14,6 +14,7 @@ pub enum IncomingEvent {
     Chat(String),
     RequestMods(Vec<String>),
     VehicleMetaUpdate(VehicleMeta),
+    ElectricsUndefinedUpdate(ElectricsUndefined)
 }
 
 impl Server {
@@ -103,6 +104,15 @@ impl Server {
                 if let Ok(meta) = meta {
                     client_events_tx
                         .send((id, IncomingEvent::VehicleMetaUpdate(meta)))
+                        .await
+                        .unwrap();
+                }
+            }
+            15 => {
+                let electrics_undefined = ElectricsUndefined::from_bytes(&data);
+                if let Ok(electrics_undefined) = electrics_undefined {
+                    client_events_tx
+                        .send((id, IncomingEvent::ElectricsUndefinedUpdate(electrics_undefined)))
                         .await
                         .unwrap();
                 }

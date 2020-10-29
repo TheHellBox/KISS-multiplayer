@@ -148,7 +148,16 @@ impl Server {
                     self.get_server_id_from_game_id(client_id, electrics.vehicle_id)
                 {
                     if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
-                        vehicle.electrics = Some(electrics);
+                        if let Some(veh_electrics) = &mut vehicle.electrics {
+                            veh_electrics.throttle_input = electrics.throttle_input;
+                            veh_electrics.brake_input = electrics.brake_input;
+                            veh_electrics.clutch = electrics.clutch;
+                            veh_electrics.parkingbrake = electrics.parkingbrake;
+                            veh_electrics.steering_input = electrics.steering_input;
+                        }
+                        else{
+                            vehicle.electrics = Some(electrics);
+                        }
                     }
                 }
             }
@@ -224,6 +233,26 @@ impl Server {
                         }
                     }
                 }
+            }
+            ElectricsUndefinedUpdate(undefined_update) => {
+                 if let Some(server_id) = self.get_server_id_from_game_id(client_id, undefined_update.vehicle_id) {
+                     if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
+                         for (key, value) in &undefined_update.diff {
+                             if let Some(electrics) = &mut vehicle.electrics {
+                                 electrics.undefined.insert(key.clone(), *value);
+                             }
+                         }
+                     }
+                     let mut undefined_update = undefined_update.clone();
+                     undefined_update.vehicle_id = server_id;
+                     for (_, client) in &mut self.connections {
+                         client
+                             .ordered
+                             .send(Outgoing::ElectricsUndefinedUpdate(undefined_update.clone()))
+                             .await
+                             .unwrap();
+                     }
+                 }
             }
         }
     }

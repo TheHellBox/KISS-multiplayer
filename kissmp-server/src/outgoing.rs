@@ -13,6 +13,7 @@ pub enum Outgoing {
     SendLua(String),
     PlayerInfoUpdate(ClientInfo),
     VehicleMetaUpdate(VehicleMeta),
+    ElectricsUndefinedUpdate(ElectricsUndefined)
 }
 
 impl Server {
@@ -38,6 +39,7 @@ impl Server {
             PlayerInfoUpdate(player_info) => player_info.to_bytes(),
             VehicleMetaUpdate(meta) => meta.to_bytes(),
             TransferFile(_) => vec![], // Covered in other place, unused here
+            ElectricsUndefinedUpdate(values) => values.to_bytes()
         }
     }
 }
@@ -56,5 +58,6 @@ pub fn get_data_type(data: &Outgoing) -> u8 {
         SendLua(_) => 11,
         PlayerInfoUpdate(_) => 12,
         VehicleMetaUpdate(_) => 14,
+        ElectricsUndefinedUpdate(_) => 15
     }
 }
