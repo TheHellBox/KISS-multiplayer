@@ -8,6 +8,7 @@ end
 
 local function send()
   local device = powertrain.getDevice("gearbox")
+  if not device then return end
   local data = {
     vehicle_id = obj:getID(),
     arcade = M.arcade,
