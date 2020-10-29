@@ -31,7 +31,12 @@ local ignored_keys = {
   turboSpin = true,
   turboRPM = true,
   virtualAirspeed = true,
-  turboRpmRatio = true
+  turboRpmRatio = true,
+  tcs = true,
+  tcsActive = true,
+  esc = true,
+  escActive = true,
+  brakelights = true
 }
 
 local function send()
