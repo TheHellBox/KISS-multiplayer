@@ -265,6 +265,7 @@ local function onVehicleSpawned(id)
   local vehicle = be:getObjectByID(id)
   vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
+  vehicle:queueLuaCommand("extensions.hook('kissInit')")
   send_vehicle_config(id)
 end
 
