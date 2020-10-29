@@ -6,6 +6,7 @@ local ignored_keys = {
   throttle_input = true,
   brake_input = true,
   clutch = true,
+  clutchRatio = true,
   parkingbrake = true,
   steering_input = true,
   exhaustFlow = true,
@@ -101,8 +102,20 @@ local function apply_diff(data)
   end
 end
 
+local function kissInit()
+  -- Blacklist shaft electrics
+  local devices = powertrain.getDevices()
+  for _,device in pairs(devices) do
+    if device.electricsName and device.visualShaftAngle then
+      ignored_keys[device.electricsName] = true
+    end
+  end
+end
+
 M.send = send
 M.apply = apply
 M.apply_diff = apply_diff
+
+M.kissInit = kissInit
 
 return M
