@@ -3,17 +3,70 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
+#[cfg(feature = "discord-rpc-client")]
+#[derive(Debug, Clone)]
+struct DiscordState {
+    server_name: Option<String>,
+}
+
 #[tokio::main]
 async fn main() {
+    #[cfg(feature = "discord-rpc-client")]
+    let (mut discord_tx, mut discord_rx) = tokio::sync::mpsc::channel(10);
+    #[cfg(feature = "discord-rpc-client")]
+    tokio::spawn(async move {
+        let mut drpc_client = discord_rpc_client::Client::new(771278096627662928);
+        drpc_client.start();
+        let mut state = DiscordState { server_name: None };
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+
+            for new_state in discord_rx.try_recv() {
+                state = new_state;
+            }
+            if state.server_name.is_none() {
+                let _ = drpc_client.clear_activity();
+                continue;
+            }
+            drpc_client
+                .set_activity(|activity| {
+                    activity
+                        .details(format!("Playing on {}", state.clone().server_name.unwrap()))
+                        .instance(true)
+                        .timestamps(|x| x.start(0).end(0))
+                        .assets(|assets| assets.large_image("kissmp_logo").small_text("Hey"))
+                }).unwrap();
+        }
+    });
+
     // Master server proxy
-    tokio::spawn(async {
+    tokio::spawn(async move {
         let server = tiny_http::Server::http("0.0.0.0:3693").unwrap();
         for request in server.incoming_requests() {
+            let addr = request.remote_addr();
+            if addr.ip() != Ipv4Addr::new(127, 0, 0, 1) {
+                continue;
+            }
             let mut url = request.url().to_string();
             url.remove(0);
+            println!("url {}", url);
             if url == "check" {
                 let response = tiny_http::Response::from_string("ok");
                 request.respond(response).unwrap();
+                continue;
+            }
+            #[cfg(feature = "discord-rpc-client")]
+            if url.starts_with("rich_presence") {
+                let data = url.replace("rich_presence/", "").replace("%20", " ");
+                let server_name = {
+                    if data != "none" {
+                        Some(data)
+                    } else {
+                        None
+                    }
+                };
+                let state = DiscordState { server_name };
+                discord_tx.send(state).await.unwrap();
                 continue;
             }
             let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
@@ -38,10 +91,9 @@ async fn main() {
         let addr = {
             if let Ok(mut socket_addrs) = addr_str.to_socket_addrs() {
                 socket_addrs.next().unwrap()
-            }
-            else{
+            } else {
                 println!("Failed to parse address!");
-                continue
+                continue;
             }
         };
 
@@ -97,6 +149,7 @@ async fn main() {
                 }
             }
             println!("Connection with game is closed");
+            stream_connection.close(0u32.into(), b"");
         });
 
         //let mut ordered = connection.uni_streams.next().await.unwrap().unwrap();

@@ -12,3 +12,6 @@ registerCoreModule("kissui")
 
 load("kissmods")
 registerCoreModule("kissmods")
+
+load("kissrichpresence")
+registerCoreModule("kissrichpresence")
