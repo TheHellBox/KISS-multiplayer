@@ -103,9 +103,8 @@ local function apply_transform(dt, id, transform, apply_velocity)
     -- Return now if it's requested not to be applied
     if not apply_velocity then return end
 
-    rotation_error = (buffered_rotation_errors[id] or rotation_error_euler):slerp(rotation_errir_euler, dt * M.smoothing_coef_rot)
+    rotation_error = (buffered_rotation_errors[id] or rotation_error):slerp(rotation_error, dt * M.smoothing_coef_rot)
     buffered_rotation_errors[id] = rotation_error
-    rotation_error_euler = rotation_error:toEulerYXZ()
 
     if position_error:length() > 5 then
       position_error:normalize()
