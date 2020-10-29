@@ -55,7 +55,7 @@ local function send()
     diff = {}
   }
   for key, value in pairs(electrics.values) do
-    if not ignored_keys[key] then
+    if not ignored_keys[key] and type(value) == 'number' then
       if prev_electrics[key] ~= value then
         data.diff[key] = value
       end
