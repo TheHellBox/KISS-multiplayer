@@ -28,14 +28,14 @@ async fn main() {
                 let _ = drpc_client.clear_activity();
                 continue;
             }
-            drpc_client
+            let _ = drpc_client
                 .set_activity(|activity| {
                     activity
                         .details(format!("Playing on {}", state.clone().server_name.unwrap()))
                         .instance(true)
                         .timestamps(|x| x.start(0).end(0))
                         .assets(|assets| assets.large_image("kissmp_logo").small_text("Hey"))
-                }).unwrap();
+                });
         }
     });
 

@@ -16,8 +16,27 @@ local gui_module = require("ge/extensions/editor/api/gui")
 local gui = {setupEditorGuiTheme = nop}
 local imgui = ui_imgui
 local addr = imgui.ArrayChar(128)
-local player_name = imgui.ArrayChar(128)
+local player_name = imgui.ArrayChar(32, "Unknown")
 local message_buffer = imgui.ArrayChar(128)
+
+local function save_config()
+  local result = {
+    name = ffi.string(player_name),
+    addr = ffi.string(addr)
+  }
+  local file = io.open("./kissmp_config.json", "w")
+  file:write(jsonEncode(result))
+end
+
+local function load_config()
+  local file = io.open("./kissmp_config.json", "r")
+  if not file then return end
+  local content = file:read("*a")
+  local config = jsonDecode(content or "")
+  if not config then return end
+  player_name = imgui.ArrayChar(32, config.name)
+  addr = imgui.ArrayChar(128, config.addr)
+end
 
 local function refresh_server_list()
   local b, _, _  = http.request("http://127.0.0.1:3693/check")
@@ -31,6 +50,7 @@ local function refresh_server_list()
 end
 
 local function open_ui()
+  load_config()
   refresh_server_list()
   gui_module.initialize(gui)
   gui.registerWindow("KissMP", imgui.ImVec2(256, 256))
@@ -53,6 +73,7 @@ local function draw_menu()
     if imgui.Button("Connect") then
       local addr = ffi.string(addr)
       local player_name = ffi.string(player_name)
+      save_config()
       network.connect(addr, player_name)
     end
     imgui.Text("Server list:")
@@ -71,6 +92,7 @@ local function draw_menu()
         imgui.Text(server.description)
         imgui.PopTextWrapPos()
         if imgui.Button("Connect") then
+          save_config()
           local player_name = ffi.string(player_name)
           network.connect(addr, player_name)
         end
