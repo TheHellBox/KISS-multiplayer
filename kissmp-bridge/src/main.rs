@@ -49,7 +49,6 @@ async fn main() {
             }
             let mut url = request.url().to_string();
             url.remove(0);
-            println!("url {}", url);
             if url == "check" {
                 let response = tiny_http::Response::from_string("ok");
                 request.respond(response).unwrap();
@@ -67,6 +66,8 @@ async fn main() {
                 };
                 let state = DiscordState { server_name };
                 discord_tx.send(state).await.unwrap();
+                let response = tiny_http::Response::from_string("ok");
+                request.respond(response).unwrap();
                 continue;
             }
             let response = reqwest::get(&url).await.unwrap().text().await.unwrap();

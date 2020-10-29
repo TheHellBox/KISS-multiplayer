@@ -254,6 +254,8 @@ local function onUpdate(dt)
       end
     elseif data_type == MESSAGETYPE_META_UPDATE then
       vehiclemanager.update_vehicle_meta(data)
+    elseif data_type == MESSAGETYPE_ELECTRICS_UNDEFINED then
+      vehiclemanager.electrics_diff_update(data)
     end
   end
 end

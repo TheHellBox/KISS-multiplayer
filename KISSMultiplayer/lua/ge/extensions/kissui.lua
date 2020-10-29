@@ -29,6 +29,7 @@ local function save_config()
 end
 
 local function load_config()
+  print("load")
   local file = io.open("./kissmp_config.json", "r")
   if not file then
     if Steam and Steam.isWorking and Steam.accountLoggedIn then
@@ -41,6 +42,7 @@ local function load_config()
   if not config then return end
   player_name = imgui.ArrayChar(32, config.name)
   addr = imgui.ArrayChar(128, config.addr)
+  print("end")
 end
 
 local function refresh_server_list()

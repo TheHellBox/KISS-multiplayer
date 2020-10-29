@@ -225,13 +225,6 @@ local function reset_vehicle(id)
   end
 end
 
-local function update_vehicle_data(data)
-  local vehicle = be:getObjectByID(id_map[data.server_id])
-  if vehicle then
-    vehicle:queueLuaCommand("kissvehicle.update_data(\'"..jsonEncode(data).."\')")
-  end
-end
-
 local function update_vehicle_meta(data)
   local data = messagepack.unpack(data)
   local id = M.id_map[data[1] or -1] or -1
@@ -253,6 +246,17 @@ local function update_vehicle_meta(data)
     if not vd or not vd.config or not vd.config.colors then return end
     vd.config.colors = colors
     extensions.core_vehicle_manager.liveUpdateVehicleColors(id, vehicle)
+  end
+end
+
+local function electrics_diff_update(data)
+  local data = messagepack.unpack(data)
+  local id = M.id_map[data[1] or -1]
+  if id then
+    local vehicle = be:getObjectByID(id)
+    if not vehicle then return end
+    local data = jsonEncode(data[2])
+    vehicle:queueLuaCommand("kiss_electrics.apply_diff(\'"..data.."\')")
   end
 end
 
@@ -304,5 +308,6 @@ M.onVehicleDestroyed = onVehicleDestroyed
 M.onVehicleResetted = onVehicleResetted
 M.onVehicleSpawned = onVehicleSpawned
 M.onFreeroamLoaded = onFreeroamLoaded
+M.electrics_diff_update = electrics_diff_update
 
 return M

@@ -110,6 +110,7 @@ impl Server {
             }
             15 => {
                 let electrics_undefined = ElectricsUndefined::from_bytes(&data);
+                println!("{:?}", electrics_undefined);
                 if let Ok(electrics_undefined) = electrics_undefined {
                     client_events_tx
                         .send((id, IncomingEvent::ElectricsUndefinedUpdate(electrics_undefined)))

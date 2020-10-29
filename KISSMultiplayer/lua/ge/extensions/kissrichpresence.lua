@@ -17,5 +17,5 @@ local function update(dt)
   local _, _, _  = http.request("http://127.0.0.1:3693/rich_presence/"..network.connection.server_info.name)
 end
 
-M.onUpdate = update
+--M.onUpdate = update
 return M
