@@ -27,7 +27,11 @@ local ignored_keys = {
   driveshaft = true,
   fuel = true,
   engineThrottle = true,
-  fuelVolume = true
+  fuelVolume = true,
+  turboSpin = true,
+  turboRPM = true,
+  virtualAirspeed = true,
+  turboRpmRatio = true
 }
 
 local function send()
