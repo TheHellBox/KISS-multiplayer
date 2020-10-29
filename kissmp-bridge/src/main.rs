@@ -1,5 +1,5 @@
 use futures::{StreamExt, TryStreamExt};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -34,9 +34,10 @@ async fn main() {
         let mut addr_buffer = vec![0; addr_len];
         reader.read_exact(&mut addr_buffer).await.unwrap();
         let addr_str = String::from_utf8(addr_buffer).unwrap();
+
         let addr = {
-            if let Ok(addr) = addr_str.parse::<SocketAddr>() {
-                addr
+            if let Ok(mut socket_addrs) = addr_str.to_socket_addrs() {
+                socket_addrs.next().unwrap()
             }
             else{
                 println!("Failed to parse address!");
