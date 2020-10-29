@@ -13,6 +13,11 @@ local ignored_keys = {
   parkingbrake_input = true,
   steering = true,
   steering_input = true,
+  lights = true,
+  turnsignal = true,
+  hazard = true,
+  signal_R = true,
+  signal_L = true,
   gear_M = true,
   gear_A = true,
   gearIndex = true,
@@ -113,7 +118,7 @@ end
 local function kissInit()
   -- Blacklist powertrain electrics
   local devices = powertrain.getDevices()
-  for _,device in pairs(devices) do
+  for _, device in pairs(devices) do
     if device.electricsName and device.visualShaftAngle then
       ignored_keys[device.electricsName] = true
     end
