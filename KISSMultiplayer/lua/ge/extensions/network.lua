@@ -257,9 +257,7 @@ local function onUpdate(dt)
     local len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))
 
     local data, _, _ = M.connection.tcp:receive(len[0])
-
     M.connection.tcp:settimeout(0.0)
-
     message_handlers[data_type](data)
 
     if data_type == FILE_TRANSFER then

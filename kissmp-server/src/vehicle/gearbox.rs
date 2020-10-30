@@ -7,7 +7,7 @@ pub struct Gearbox {
     pub lock_coef: f32,
     pub mode: Option<String>,
     pub gear_indices: [i8; 2],
-}   
+}
 
 impl Gearbox {
     pub fn from_bytes(data: &[u8]) -> Result<Self, rmp_serde::decode::Error> {

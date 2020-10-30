@@ -5,5 +5,6 @@
     "tickrate": 60,
     "port": 3698,
     "max_players": 8,
+    "max_vehicles_per_client": 3,
     "show_in_server_list": false
 }

@@ -14,7 +14,7 @@ pub enum IncomingEvent {
     Chat(String),
     RequestMods(Vec<String>),
     VehicleMetaUpdate(VehicleMeta),
-    ElectricsUndefinedUpdate(ElectricsUndefined)
+    ElectricsUndefinedUpdate(ElectricsUndefined),
 }
 
 impl Server {
@@ -113,7 +113,10 @@ impl Server {
                 println!("{:?}", electrics_undefined);
                 if let Ok(electrics_undefined) = electrics_undefined {
                     client_events_tx
-                        .send((id, IncomingEvent::ElectricsUndefinedUpdate(electrics_undefined)))
+                        .send((
+                            id,
+                            IncomingEvent::ElectricsUndefinedUpdate(electrics_undefined),
+                        ))
                         .await
                         .unwrap();
                 }

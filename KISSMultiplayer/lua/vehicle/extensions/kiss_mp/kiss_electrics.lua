@@ -57,7 +57,8 @@ local ignored_keys = {
   tcsActive = true,
   esc = true,
   escActive = true,
-  brakelights = true
+  brakelights = true,
+  radiatorFanSpin = true
 }
 
 local function send()

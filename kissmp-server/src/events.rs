@@ -107,6 +107,18 @@ impl Server {
                 }
             }
             VehicleData(data) => {
+                // Remove old vehicle with the same ID
+                if let Some(server_id) = self.get_server_id_from_game_id(client_id, data.in_game_id)
+                {
+                    self.remove_vehicle(server_id, Some(client_id)).await;
+                }
+
+                if let Some(client_vehicles) = self.vehicle_ids.get(&client_id) {
+                    if client_vehicles.len() as u8 >= self.max_vehicles_per_client {
+                        return;
+                    }
+                }
+
                 let server_id = rand::random::<u16>() as u32;
                 let mut data = data.clone();
                 data.server_id = Some(server_id);
@@ -121,11 +133,6 @@ impl Server {
                 if self.vehicle_ids.get(&client_id).is_none() {
                     self.vehicle_ids
                         .insert(client_id, HashMap::with_capacity(16));
-                }
-
-                if let Some(server_id) = self.get_server_id_from_game_id(client_id, data.in_game_id)
-                {
-                    self.remove_vehicle(server_id, Some(client_id)).await;
                 }
 
                 self.vehicle_ids
@@ -154,8 +161,7 @@ impl Server {
                             veh_electrics.clutch = electrics.clutch;
                             veh_electrics.parkingbrake = electrics.parkingbrake;
                             veh_electrics.steering_input = electrics.steering_input;
-                        }
-                        else{
+                        } else {
                             vehicle.electrics = Some(electrics);
                         }
                     }
@@ -216,7 +222,8 @@ impl Server {
                 }
             }
             VehicleMetaUpdate(meta) => {
-                if let Some(server_id) = self.get_server_id_from_game_id(client_id, meta.vehicle_id) {
+                if let Some(server_id) = self.get_server_id_from_game_id(client_id, meta.vehicle_id)
+                {
                     if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
                         vehicle.data.color = meta.colors_table[0];
                         vehicle.data.palete_0 = meta.colors_table[1];
@@ -235,24 +242,26 @@ impl Server {
                 }
             }
             ElectricsUndefinedUpdate(undefined_update) => {
-                 if let Some(server_id) = self.get_server_id_from_game_id(client_id, undefined_update.vehicle_id) {
-                     if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
-                         for (key, value) in &undefined_update.diff {
-                             if let Some(electrics) = &mut vehicle.electrics {
-                                 electrics.undefined.insert(key.clone(), *value);
-                             }
-                         }
-                     }
-                     let mut undefined_update = undefined_update.clone();
-                     undefined_update.vehicle_id = server_id;
-                     for (_, client) in &mut self.connections {
-                         client
-                             .ordered
-                             .send(Outgoing::ElectricsUndefinedUpdate(undefined_update.clone()))
-                             .await
-                             .unwrap();
-                     }
-                 }
+                if let Some(server_id) =
+                    self.get_server_id_from_game_id(client_id, undefined_update.vehicle_id)
+                {
+                    if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
+                        for (key, value) in &undefined_update.diff {
+                            if let Some(electrics) = &mut vehicle.electrics {
+                                electrics.undefined.insert(key.clone(), *value);
+                            }
+                        }
+                    }
+                    let mut undefined_update = undefined_update.clone();
+                    undefined_update.vehicle_id = server_id;
+                    for (_, client) in &mut self.connections {
+                        client
+                            .ordered
+                            .send(Outgoing::ElectricsUndefinedUpdate(undefined_update.clone()))
+                            .await
+                            .unwrap();
+                    }
+                }
             }
         }
     }

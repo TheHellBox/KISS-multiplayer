@@ -8,6 +8,7 @@ pub struct Config {
     pub max_players: u8,
     pub tickrate: u8,
     pub port: u16,
+    pub max_vehicles_per_client: u8,
     pub show_in_server_list: bool,
 }
 
@@ -19,6 +20,7 @@ impl Default for Config {
             map: "/levels/smallgrid/info.json".to_string(),
             tickrate: 60,
             max_players: 8,
+            max_vehicles_per_client: 3,
             port: 3698,
             show_in_server_list: false,
         }

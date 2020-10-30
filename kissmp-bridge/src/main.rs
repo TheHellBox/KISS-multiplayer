@@ -192,6 +192,9 @@ pub async fn drive_receive(
                         let _ = writer.write_all(&buf[0..n].to_vec()).await;
                     }
                 }
+                else{
+                    return Err(anyhow::Error::msg(""));
+                }
             },
             data = datagrams.select_next_some() => {
                 let data = data?;

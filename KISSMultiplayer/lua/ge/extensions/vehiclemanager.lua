@@ -13,6 +13,11 @@ M.ownership = {}
 M.vehicle_updates_buffer = {}
 M.packet_gen_buffer = {}
 
+local function enable_spawning(enabled)
+  local jsCommand = 'angular.element(document.body).injector().get("VehicleSelectConfig").configs.default.hide = {"spawnNew":' .. tostring(not enabled) .. '}'
+  be:queueJS(jsCommand)
+end
+
 local function color_eq(a, b)
   return (a[1] == b[1]) and (a[2] == b[2]) and {a[3] == b[3]} and {a[4] == b[4]}
 end
@@ -83,6 +88,18 @@ local function onUpdate(dt)
   end
 end
 
+local function update_ownership_limits()
+    local owned_vehicle_count = 0
+    for _, _ in pairs(M.ownership) do
+      owned_vehicle_count = owned_vehicle_count + 1
+    end
+    if owned_vehicle_count >= network.connection.server_info.max_vehicles_per_client then
+      enable_spawning(false)
+    else
+      enable_spawning(true)
+    end
+end
+
 local function send_vehicle_config(vehicle_id)
   local vehicle = be:getObjectByID(vehicle_id)
   if vehicle then
@@ -135,6 +152,7 @@ local function spawn_vehicle(data)
     print("Vehicle belongs to local client, setting ownership")
     M.id_map[data.server_id] = data.in_game_id
     M.ownership[data.in_game_id] = data.server_id
+    update_ownership_limits()
     return
   end
   if M.id_map[data.server_id] then return end
@@ -214,8 +232,10 @@ local function remove_vehicle(data)
     vehicle:delete()
     if commands.isFreeCamera(player) then commands.setGameCamera() end
     M.id_map[id] = nil
+    M.ownership[id] = nil
     M.vehicle_updates_buffer[id] = nil
     kisstransform.received_transforms[id] = nil
+    update_ownership_limits()
   end
 end
 

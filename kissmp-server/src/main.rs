@@ -85,6 +85,7 @@ struct Server {
     map: String,
     tickrate: u8,
     max_players: u8,
+    max_vehicles_per_client: u8,
     port: u16,
     show_in_list: bool,
     lua: rlua::Lua,
@@ -226,6 +227,7 @@ impl Server {
             "client_id": id,
             "map": self.map.clone(),
             "tickrate": self.tickrate,
+            "max_vehicles_per_client": self.max_vehicles_per_client,
             "mods": list_mods().unwrap_or(vec![])
         })
         .to_string()
@@ -400,6 +402,7 @@ async fn main() {
         tickrate: config.tickrate,
         port: config.port,
         max_players: config.max_players,
+        max_vehicles_per_client: config.max_vehicles_per_client,
         show_in_list: config.show_in_server_list,
         lua: lua,
         lua_commands: receiver,

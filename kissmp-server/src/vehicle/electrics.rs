@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct ElectricsUndefined{
+pub struct ElectricsUndefined {
     pub vehicle_id: u32,
-    pub diff: std::collections::HashMap<String, f32>
+    pub diff: std::collections::HashMap<String, f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -15,7 +15,7 @@ pub struct Electrics {
     pub parkingbrake: f32,
     pub steering_input: f32,
     #[serde(skip_serializing, skip_deserializing)]
-    pub undefined: std::collections::HashMap<String, f32>
+    pub undefined: std::collections::HashMap<String, f32>,
 }
 
 impl Electrics {

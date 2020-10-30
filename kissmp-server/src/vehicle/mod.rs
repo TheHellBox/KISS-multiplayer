@@ -1,12 +1,12 @@
-pub mod vehicle_meta;
 pub mod electrics;
 pub mod gearbox;
 pub mod transform;
+pub mod vehicle_meta;
 
-pub use vehicle_meta::*;
 pub use electrics::*;
 pub use gearbox::*;
 pub use transform::*;
+pub use vehicle_meta::*;
 
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +24,7 @@ pub struct VehicleData {
     #[serde(skip_deserializing)]
     pub owner: Option<u32>,
     pub position: [f32; 3],
-    pub rotation: [f32; 4]
+    pub rotation: [f32; 4],
 }
 
 #[derive(Clone)]
@@ -37,6 +37,15 @@ pub struct Vehicle {
 
 impl crate::Server {
     pub async fn remove_vehicle(&mut self, id: u32, client_id: Option<u32>) {
+        let vehicle = self.vehicles.get(&id);
+        if let Some(client_id) = client_id {
+            if let Some(client_vehicles) = self.vehicle_ids.get_mut(&client_id) {
+                if let Some(vehicle) = vehicle {
+                    client_vehicles.remove(&vehicle.data.in_game_id);
+                }
+            }
+        }
+
         self.vehicles.remove(&id);
         for (cid, client) in &mut self.connections {
             if Some(*cid) == client_id {
