@@ -19,6 +19,8 @@ local addr = imgui.ArrayChar(128)
 local player_name = imgui.ArrayChar(32, "Unknown")
 local message_buffer = imgui.ArrayChar(128)
 
+local prev_chat_scroll_max = 0
+
 local function save_config()
   local result = {
     name = ffi.string(player_name),
@@ -56,6 +58,15 @@ local function refresh_server_list()
   end
 end
 
+local function send_current_chat_message()
+  local message = ffi.string(message_buffer)
+  local message_trimmed = message:gsub("^%s*(.-)%s*$", "%1")
+  if message_trimmed:len() == 0 then return end
+  
+  network.send_data(8, true, message)
+  message_buffer = imgui.ArrayChar(128)
+end
+
 local function open_ui()
   load_config()
   refresh_server_list()
@@ -64,7 +75,7 @@ local function open_ui()
   gui.showWindow("KissMP")
   gui.registerWindow("Chat", imgui.ImVec2(256, 256))
   gui.showWindow("Chat")
-  gui.registerWindow("Download", imgui.ImVec2(256, 128))
+  gui.registerWindow("Download", imgui.ImVec2(256, 140))
   gui.showWindow("Download")
 end
 
@@ -129,19 +140,23 @@ local function draw_chat()
       imgui.TextColored(imgui.ImVec4(1, 1, 1, 1), message)
       imgui.PopTextWrapPos()
     end
+    
+    local scroll_to_bottom = imgui.GetScrollY() >= prev_chat_scroll_max
+    if scroll_to_bottom then
+      imgui.SetScrollY(imgui.GetScrollMaxY())
+    end
+    prev_chat_scroll_max = imgui.GetScrollMaxY()
     imgui.EndChild()
+    
+    
     imgui.Spacing()
     if imgui.InputText("##chat", message_buffer, 128, imgui.InputTextFlags_EnterReturnsTrue) then
-      local message = ffi.string(message_buffer)
-      network.send_data(8, true, message)
+      send_current_chat_message()
       imgui.SetKeyboardFocusHere(-1)
-      message_buffer = imgui.ArrayChar(128)
     end
     imgui.SameLine()
     if imgui.Button("Send") then
-      local message = ffi.string(message_buffer)
-      network.send_data(8, true, message)
-      message_buffer = imgui.ArrayChar(128)
+      send_current_chat_message()
     end
   end
   imgui.End()
@@ -150,11 +165,9 @@ end
 local function draw_download()
   if not M.show_download then return end
   if not gui.isWindowVisible("Download") then return end
-  if imgui.Begin("Download", gui.getWindowVisibleBoolPtr("Download")) then
-    --local draw_list = imgui.GetOverlayDrawList1()
-    --imgui.ImDrawList_AddRectFilled(draw_list, imgui.ImVec2(30, 30), imgui.ImVec2(30 + M.download_progress * 200, 60), imgui.Col_ButtonHovered)
+  if imgui.Begin("Download", gui.getWindowVisibleBoolPtr("Download")) then        
     imgui.Text("Downloading "..network.download_info.file_name.."...")
-    imgui.Text("Progress: "..math.floor(M.download_progress * 100).."/100")
+    imgui.ProgressBar(M.download_progress, imgui.ImVec2(-1, 0))
   end
   imgui.End()
 end
