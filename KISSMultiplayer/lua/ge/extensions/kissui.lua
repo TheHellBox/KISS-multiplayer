@@ -75,7 +75,7 @@ local function open_ui()
   gui.showWindow("KissMP")
   gui.registerWindow("Chat", imgui.ImVec2(256, 256))
   gui.showWindow("Chat")
-  gui.registerWindow("Download", imgui.ImVec2(256, 140))
+  gui.registerWindow("Download", imgui.ImVec2(256, 132))
   gui.showWindow("Download")
 end
 
@@ -165,7 +165,7 @@ end
 local function draw_download()
   if not M.show_download then return end
   if not gui.isWindowVisible("Download") then return end
-  if imgui.Begin("Download", gui.getWindowVisibleBoolPtr("Download")) then        
+  if imgui.Begin("Download", gui.getWindowVisibleBoolPtr("Download"), imgui.WindowFlags_NoScrollbar + imgui.WindowFlags_NoResize) then        
     imgui.Text("Downloading "..network.download_info.file_name.."...")
     imgui.ProgressBar(M.download_progress, imgui.ImVec2(-1, 0))
   end
