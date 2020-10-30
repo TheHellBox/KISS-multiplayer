@@ -173,7 +173,9 @@ local function spawn_vehicle(data)
     ColorF(cp0[1],cp0[2],cp0[3],cp0[4]),
     ColorF(cp1[1],cp1[2],cp1[3],cp1[4])
   )
-  extensions.core_vehicles.setPlateText(plate, spawned:getID())
+  if plate ~= nil then
+    extensions.core_vehicles.setPlateText(plate, spawned:getID())
+  end
   if data.server_id then
     M.id_map[data.server_id] = spawned:getID()
   else
@@ -262,7 +264,9 @@ local function update_vehicle_meta(data)
     }
     
     -- Apply plate
-    extensions.core_vehicles.setPlateText(plate, id)
+    if plate ~= nil then
+      extensions.core_vehicles.setPlateText(plate, id)
+    end
     
     -- Apply colors
     local vd = extensions.core_vehicle_manager.getVehicleData(id)
