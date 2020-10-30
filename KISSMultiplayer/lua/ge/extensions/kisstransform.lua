@@ -4,6 +4,7 @@ local generation = 0
 local timer = 0
 local buffered_position_errors = {}
 local buffered_rotation_errors = {}
+local buffered_ang_vel_errors = {}
 
 M.received_transforms = {}
 M.local_transforms = {}
@@ -11,7 +12,7 @@ M.local_transforms = {}
 M.threshold = 4
 M.rot_threshold = 1.5
 M.smoothing_coef = 4
-M.angular_velocity_error_limit = 0.05
+M.angular_velocity_error_limit = 0.1
 M.velocity_error_limit = 10
 M.smoothing_coef_rot = 2
 
@@ -130,8 +131,11 @@ local function apply_transform(dt, id, transform, apply_velocity)
     angular_velocity_error.y = clamp(angular_velocity_error.x, -M.angular_velocity_error_limit, M.angular_velocity_error_limit)
     angular_velocity_error.z = clamp(angular_velocity_error.x, -M.angular_velocity_error_limit, M.angular_velocity_error_limit)
 
+    angular_velocity_error = lerp(buffered_ang_vel_errors[id] or angular_velocity_error, angular_velocity_error, dt * M.smoothing_coef_rot)
+    buffered_ang_vel_errors[id] = angular_velocity_error
+
     local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 5, 1)
-    local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 5, 1)
+    local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 4) * math.min(dt * 4, 1)
 
     vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
                               ..required_acceleration.x..","
@@ -193,7 +197,7 @@ local function update_vehicle_transform(data)
   vehiclemanager.packet_gen_buffer[id] = transform.generation
   local vehicle = be:getObjectByID(id)
   if vehicle then
-    transform.time_past = get_current_time() - transform.sent_at
+    transform.time_past = 0 --get_current_time() - transform.sent_at
     M.received_transforms[id] = transform
   end
 end
