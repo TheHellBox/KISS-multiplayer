@@ -104,8 +104,8 @@ local function apply_transform(dt, id, transform, apply_velocity)
     -- Return now if it's requested not to be applied
     if not apply_velocity then return end
 
-    rotation_error = (buffered_rotation_errors[id] or rotation_error):slerp(rotation_error, dt * M.smoothing_coef_rot)
-    buffered_rotation_errors[id] = rotation_error
+    --rotation_error = (buffered_rotation_errors[id] or rotation_error):slerp(rotation_error, dt * M.smoothing_coef_rot)
+    --buffered_rotation_errors[id] = rotation_error
 
     if position_error:length() > 5 then
       position_error:normalize()
@@ -127,15 +127,10 @@ local function apply_transform(dt, id, transform, apply_velocity)
       M.local_transforms[id].vel_roll
     )
     local angular_velocity_error = vec3(transform.angular_velocity) - local_ang_vel
-    angular_velocity_error.x = clamp(angular_velocity_error.x, -M.angular_velocity_error_limit, M.angular_velocity_error_limit)
-    angular_velocity_error.y = clamp(angular_velocity_error.x, -M.angular_velocity_error_limit, M.angular_velocity_error_limit)
-    angular_velocity_error.z = clamp(angular_velocity_error.x, -M.angular_velocity_error_limit, M.angular_velocity_error_limit)
-
-    angular_velocity_error = lerp(buffered_ang_vel_errors[id] or angular_velocity_error, angular_velocity_error, dt * M.smoothing_coef_rot)
-    buffered_ang_vel_errors[id] = angular_velocity_error
 
     local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 5, 1)
-    local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 4) * math.min(dt * 4, 1)
+    local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 7, 1)
+    required_angular_acceleration = required_angular_acceleration * (1 - clamp((1 / (required_angular_acceleration:squaredLength() + 9 * dt)), 0, 1))
 
     vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
                               ..required_acceleration.x..","
