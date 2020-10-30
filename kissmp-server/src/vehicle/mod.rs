@@ -17,7 +17,7 @@ pub struct VehicleData {
     pub color: [f32; 4],
     pub palete_0: [f32; 4],
     pub palete_1: [f32; 4],
-    pub plate: String,
+    pub plate: Option<String>,
     pub name: String,
     #[serde(skip_deserializing)]
     pub server_id: Option<u32>,
