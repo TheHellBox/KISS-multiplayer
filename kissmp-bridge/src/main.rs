@@ -78,6 +78,7 @@ async fn main() {
 
     let addr = &"0.0.0.0:7894".parse::<SocketAddr>().unwrap();
     let mut listener = TcpListener::bind(addr).await.unwrap();
+    println!("Bridge is running!");
     while let Ok(conn) = listener.accept().await {
         let stream = conn.0;
         let (mut reader, mut writer) = tokio::io::split(stream);
