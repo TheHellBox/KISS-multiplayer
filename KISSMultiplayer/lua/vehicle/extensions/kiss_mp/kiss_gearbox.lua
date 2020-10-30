@@ -71,10 +71,19 @@ local function kissInit()
   gearbox_is_dct = gearbox.type == "dctGearbox"
 end
 
+local function kissUpdateOwnership(owned)
+  if owned then return end
+  if not gearbox then return end
+  if gearbox.type == "manualGearbox" then
+    gearbox.gearDamageThreshold = math.huge
+  end
+end
+
 M.send = send
 M.apply = apply
 M.gearboxBehaviorChanged = gearboxBehaviorChanged
 
 M.kissInit = kissInit
+M.kissUpdateOwnership = kissUpdateOwnership
 
 return M

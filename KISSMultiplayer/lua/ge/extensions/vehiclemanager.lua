@@ -286,9 +286,11 @@ end
 local function onVehicleSpawned(id)
   if not network.connection.connected then return end
   local vehicle = be:getObjectByID(id)
+  local owned = M.ownership[id] ~= nil and M.ownership[id]
   vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.hook('kissInit')")
+  vehicle:queueLuaCommand("extensions.hook('kissUpdateOwnership', " .. tostring(owned) .. ")")
   send_vehicle_config(id)
 end
 
