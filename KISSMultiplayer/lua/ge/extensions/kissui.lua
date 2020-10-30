@@ -467,7 +467,6 @@ local function onUpdate(dt)
   if search_text ~= prev_search_text or filter_notfull ~= prev_filter_notfull or filter_online ~= prev_filter_online then
     time_since_filters_change = 0
     filter_queued = true
-    print("Filters changed")
   end
   
   prev_search_text = search_text
