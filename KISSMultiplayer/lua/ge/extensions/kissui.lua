@@ -232,14 +232,12 @@ local function draw_favorites_tab()
     favorites_count = favorites_count + 1
     
     local header = server.name
-    if server_found_in_list then
+    if server.added_manually then
+      header = header.." [USER]"
+    elseif server_found_in_list then
       header = header.." ["..server_from_list.player_count.."/"..server_from_list.max_players.."]"
     else
-      if server.added_manually then
-        header = header.." [USER]"
-      else
-        header = header.." [OFFLINE]"
-      end
+      header = header.." [OFFLINE]"
     end
     header = header .. "###favorite_server_header_"  .. tostring(favorites_count)
     
