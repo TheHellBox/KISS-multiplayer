@@ -239,7 +239,7 @@ local function draw_favorites_tab()
     else
       header = header.." [OFFLINE]"
     end
-    header = header .. "###favorite_server_header_"  .. tostring(favorites_count)
+    header = header .. "###server_header_"  .. tostring(favorites_count)
     
     if imgui.CollapsingHeader1(header) then
       imgui.PushTextWrapPos(0)
@@ -254,13 +254,13 @@ local function draw_favorites_tab()
       end
       
       imgui.PopTextWrapPos()
-      if imgui.Button("Connect") then
+      if imgui.Button("Connect###connect_button_" .. tostring(favorites_count)) then
         save_config()
         local player_name = ffi.string(player_name)
         network.connect(addr, player_name)
       end
       imgui.SameLine()
-      if imgui.Button("Remove from Favorites") then
+      if imgui.Button("Remove from Favorites###remove_favorite_button_" .. tostring(favorites_count)) then
         remove_server_from_favorites(addr)
         update_filtered_servers()
       end
@@ -307,7 +307,7 @@ local function draw_servers_tab()
       imgui.Text("Map: "..server.map)
       draw_server_description(server.description)
       imgui.PopTextWrapPos()
-      if imgui.Button("Connect") then
+      if imgui.Button("Connect###connect_button_" .. tostring(server_count)) then
         save_config()
         local player_name = ffi.string(player_name)
         network.connect(addr, player_name)
@@ -316,7 +316,7 @@ local function draw_servers_tab()
       local in_favorites_list = favorite_servers[addr] ~= nil
       if not in_favorites_list then
         imgui.SameLine()
-        if imgui.Button("Add to Favorites") then
+        if imgui.Button("Add to Favorites###add_favorite_button_" .. tostring(server_count)) then
           add_server_to_favorites(addr, server)
           update_filtered_servers()
         end
