@@ -128,6 +128,7 @@ local function spawn_vehicle(data)
     table.insert(vehicle_buffer, data)
     return
   end
+  local data = jsonDecode(data)
 
   print("Trying to spawn vehicle")
   if data.owner == network.get_client_id() then

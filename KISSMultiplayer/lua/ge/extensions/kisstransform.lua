@@ -174,7 +174,19 @@ local function update(dt)
   end
 end
 
-local function update_vehicle_transform(transform)
+local function update_vehicle_transform(data)
+  data = data..string.char(1)
+  local p = ffi.new("char[?]", #data, data)
+  local ptr = ffi.cast("float*", p)
+  local transform = {}
+  transform.position = {ptr[0], ptr[1], ptr[2]}
+  transform.rotation = {ptr[3], ptr[4], ptr[5], ptr[6]}
+  transform.velocity = {ptr[7], ptr[8], ptr[9]}
+  transform.angular_velocity = {ptr[10], ptr[11], ptr[12]}
+  transform.owner = ptr[13]
+  transform.generation = ptr[14]
+  transform.sent_at = ptr[15]
+
   local id = vehiclemanager.id_map[transform.owner or -1] or -1
   if vehiclemanager.ownership[id] then return end
   if transform.generation < (vehiclemanager.packet_gen_buffer[id] or -1) then return end

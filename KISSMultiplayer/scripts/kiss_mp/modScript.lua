@@ -1,6 +1,3 @@
-load("network")
-registerCoreModule("network")
-
 load("vehiclemanager")
 registerCoreModule("vehiclemanager")
 
@@ -15,3 +12,6 @@ registerCoreModule("kissmods")
 
 load("kissrichpresence")
 registerCoreModule("kissrichpresence")
+
+load("network")
+registerCoreModule("network")

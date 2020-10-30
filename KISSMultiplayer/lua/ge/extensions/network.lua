@@ -35,6 +35,57 @@ local MESSAGETYPE_PLAYERINFO = 12
 local MESSAGETYPE_META_UPDATE = 14
 local MESSAGETYPE_ELECTRICS_UNDEFINED = 15
 
+local message_handlers = {}
+
+local function handle_disconnected(data)
+  kissui.add_message("Disconnected.")
+  M.connection.connected = false
+end
+
+local function handle_file_transfer(data)
+  kissui.show_download = true
+  local file_len = data:sub(1, 4)
+  M.download_info.file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, file_len))[0]
+  M.download_info.file_name = data:sub(5, #data)
+  M.download_info.chunks = math.floor(M.download_info.file_len / 4096)
+  M.download_info.last_chunk = M.download_info.file_len - M.download_info.chunks * 4096
+  M.download_info.current_chunk = 0
+  M.download_info.file = kissmods.open_file(M.download_info.file_name)
+  M.downloading = true
+end
+
+local function handle_player_info(data)
+  local player_info = messagepack.unpack(data)
+  if player_info then
+    local player_info = {
+      name = player_info[1],
+      id = player_info[2],
+      current_vehicle = player_info[3]
+    }
+    M.players[player_info.id] = player_info
+  end
+end
+
+local function handle_lua(data)
+  Lua:queueLuaCommand(data)
+end
+
+local function onExtensionLoaded()
+  message_handlers[MESSAGETYPE_TRANSFORM] = kisstransform.update_vehicle_transform
+  message_handlers[MESSAGETYPE_VEHICLE_SPAWN] = vehiclemanager.spawn_vehicle
+  message_handlers[MESSAGETYPE_ELECTRICS] = vehiclemanager.update_vehicle_electrics
+  message_handlers[MESSAGETYPE_GEARBOX] = vehiclemanager.update_vehicle_gearbox
+  message_handlers[MESSAGETYPE_VEHICLE_REMOVE] = vehiclemanager.remove_vehicle
+  message_handlers[MESSAGETYPE_VEHICLE_RESET] = vehiclemanager.reset_vehicle
+  message_handlers[MESSAGETYPE_CHAT] = kissui.add_message
+  message_handlers[FILE_TRANSFER] = handle_file_transfer
+  message_handlers[DISCONNECTED] = handle_disconnected
+  message_handlers[MESSAGETYPE_LUA] = handle_lua
+  message_handlers[MESSAGETYPE_PLAYERINFO] = handle_player_info
+  message_handlers[MESSAGETYPE_META_UPDATE] = vehiclemanager.update_vehicle_meta
+  message_handlers[MESSAGETYPE_ELECTRICS_UNDEFINED] = vehiclemanager.electrics_diff_update
+end
+
 local function send_data(data_type, reliable, data)
   if not M.connection.connected then return -1 end
   local len = #data
@@ -196,66 +247,10 @@ local function onUpdate(dt)
 
     M.connection.tcp:settimeout(0.0)
 
-    if data_type == MESSAGETYPE_TRANSFORM then
-      data = data..string.char(1)
-      local p = ffi.new("char[?]", #data, data)
-      local ptr = ffi.cast("float*", p)
-      local transform = {}
-      transform.position = {ptr[0], ptr[1], ptr[2]}
-      transform.rotation = {ptr[3], ptr[4], ptr[5], ptr[6]}
-      transform.velocity = {ptr[7], ptr[8], ptr[9]}
-      transform.angular_velocity = {ptr[10], ptr[11], ptr[12]}
-      transform.owner = ptr[13]
-      transform.generation = ptr[14]
-      transform.sent_at = ptr[15]
-      kisstransform.update_vehicle_transform(transform)
-    elseif data_type == MESSAGETYPE_VEHICLE_SPAWN then
-      local decoded = jsonDecode(data)
-      if decoded then
-        vehiclemanager.spawn_vehicle(decoded)
-      end
-    elseif data_type == MESSAGETYPE_ELECTRICS then
-      vehiclemanager.update_vehicle_electrics(data)
-    elseif data_type == MESSAGETYPE_GEARBOX then
-      vehiclemanager.update_vehicle_gearbox(data)
-    elseif data_type == MESSAGETYPE_NODES then
-      vehiclemanager.update_vehicle_nodes(data)
-    elseif data_type == MESSAGETYPE_VEHICLE_REMOVE then
-      vehiclemanager.remove_vehicle(ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0])
-    elseif data_type == MESSAGETYPE_VEHICLE_RESET then
-      vehiclemanager.reset_vehicle(ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0])
-    elseif data_type == MESSAGETYPE_CHAT then
-      kissui.add_message(data)
-    elseif data_type == FILE_TRANSFER then
-      kissui.show_download = true
-      local file_len = data:sub(1, 4)
-      M.download_info.file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, file_len))[0]
-      M.download_info.file_name = data:sub(5, #data)
-      M.download_info.chunks = math.floor(M.download_info.file_len / 4096)
-      M.download_info.last_chunk = M.download_info.file_len - M.download_info.chunks * 4096
-      M.download_info.current_chunk = 0
-      M.download_info.file = kissmods.open_file(M.download_info.file_name)
-      M.downloading = true
+    message_handlers[data_type](data)
+
+    if data_type == FILE_TRANSFER then
       break
-    elseif data_type == DISCONNECTED then
-      kissui.add_message("Disconnected.")
-      M.connection.connected = false
-    elseif data_type == MESSAGETYPE_LUA then
-      Lua:queueLuaCommand(data)
-    elseif data_type == MESSAGETYPE_PLAYERINFO then
-      local player_info = messagepack.unpack(data)
-      if player_info then
-        local player_info = {
-          name = player_info[1],
-          id = player_info[2],
-          current_vehicle = player_info[3]
-        }
-        M.players[player_info.id] = player_info
-      end
-    elseif data_type == MESSAGETYPE_META_UPDATE then
-      vehiclemanager.update_vehicle_meta(data)
-    elseif data_type == MESSAGETYPE_ELECTRICS_UNDEFINED then
-      vehiclemanager.electrics_diff_update(data)
     end
   end
 end
@@ -269,5 +264,6 @@ M.connect = connect
 M.send_data = send_data
 M.onUpdate = onUpdate
 M.send_messagepack = send_messagepack
+M.onExtensionLoaded = onExtensionLoaded
 
 return M
