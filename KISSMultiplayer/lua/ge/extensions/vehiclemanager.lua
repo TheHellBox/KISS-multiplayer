@@ -129,7 +129,7 @@ local function spawn_vehicle(data)
     return
   end
   local data = jsonDecode(data)
-
+ 
   print("Trying to spawn vehicle")
   if data.owner == network.get_client_id() then
     print("Vehicle belongs to local client, setting ownership")
@@ -206,7 +206,8 @@ local function rotate_nodes(nodes, id, x, y, z, w)
 end
 
 local function remove_vehicle(id)
-  local id = M.id_map[id] or -1
+  local id = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0]
+  id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(id)
   if vehicle then
     commands.setFreeCamera()
@@ -219,7 +220,8 @@ local function remove_vehicle(id)
 end
 
 local function reset_vehicle(id)
-  local id = M.id_map[id] or -1
+  local id = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0]
+  id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(id)
   if vehicle then
     vehicle:reset()
