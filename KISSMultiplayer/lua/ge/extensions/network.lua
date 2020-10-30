@@ -161,14 +161,27 @@ local function connect(addr, player_name)
   }
 
   local mod_list = {}
+  local missing_mods = kissmods.check_mods(server_info.mods)
   for k, v in pairs(server_info.mods) do
-    table.insert(mod_list, v[1])
+    local mod_missing = false
+    for _, missing in pairs(missing_mods) do
+      if v[1] == missing then
+        mod_missing = true
+      end
+    end
+    if not mod_missing then
+      table.insert(mod_list, v[1])
+    end
   end
-  M.connection.mods_left = #mod_list
+
+  local mods_left = 0
+  for _, _ in pairs(missing_mods) do
+    mods_left = mods_left + 1
+  end
+  M.connection.mods_left = mods_left
  
   kissmods.deactivate_all_mods()
   kissmods.mount_mods(mod_list)
-  local missing_mods = kissmods.check_mods(server_info.mods)
   -- Request mods
   send_data(9, true, jsonEncode(missing_mods))
 

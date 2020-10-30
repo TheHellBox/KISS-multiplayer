@@ -29,6 +29,8 @@ end
 
 local function mount_mods(list)
   for _, mod in pairs(list) do
+    -- Demount mod in case it was mounted before, to refresh it
+    deactivate_mod(mod)
     mount_mod(mod)
     --activate_mod(mod)
   end
@@ -56,13 +58,16 @@ local function check_mods(mod_list)
 end
 
 local function open_file(name)
- if not string.endswith(name, ".zip") then return end
+  if not string.endswith(name, ".zip") then return end
   if not FS:directoryExists("/kissmp_mods/") then
     FS:directoryCreate("/kissmp_mods/")
   end
   local path = "/kissmp_mods/"..name
+  print(path)
   if FS:fileExists(path) then
-    FS:removeFile(path)
+    -- Clear the file(FS:removeFile doesn't really work for some reason)
+    local file = io.open(path, "w")
+    file:close()
   end
   local file = io.open(path, "a")
   return file
