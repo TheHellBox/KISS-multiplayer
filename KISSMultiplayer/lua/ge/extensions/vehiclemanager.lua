@@ -205,7 +205,7 @@ local function rotate_nodes(nodes, id, x, y, z, w)
   vehicle:queueLuaCommand("kiss_nodes.apply(\'"..jsonEncode(result).."\')")
 end
 
-local function remove_vehicle(id)
+local function remove_vehicle(data)
   local id = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0]
   id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(id)
@@ -219,7 +219,7 @@ local function remove_vehicle(id)
   end
 end
 
-local function reset_vehicle(id)
+local function reset_vehicle(data)
   local id = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0]
   id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(id)
