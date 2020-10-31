@@ -57,10 +57,10 @@ impl crate::Server {
                 .await;
         }
         self.lua.context(|lua_ctx| {
-            let _ = crate::lua::run_hook::<(Option<u32>, u32), ()>(
+            let _ = crate::lua::run_hook::<(u32, Option<u32>), ()>(
                 lua_ctx,
-                String::from("OnVehileRemoved"),
-                (client_id, id),
+                String::from("OnVehicleRemoved"),
+                (id, client_id),
             );
         });
     }
@@ -75,10 +75,10 @@ impl crate::Server {
                 .await;
         }
         self.lua.context(|lua_ctx| {
-            let _ = crate::lua::run_hook::<(Option<u32>, u32), ()>(
+            let _ = crate::lua::run_hook::<(u32, Option<u32>), ()>(
                 lua_ctx,
                 String::from("OnVehicleReseted"),
-                (client_id, server_id),
+                (server_id, client_id),
             );
         });
     }
