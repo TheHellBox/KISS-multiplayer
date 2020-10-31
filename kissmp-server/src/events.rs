@@ -12,26 +12,23 @@ impl Server {
                 }
 
                 let connection = self.connections.get_mut(&client_id).unwrap();
-                connection
+                let _ = connection
                     .ordered
                     .send(Outgoing::PlayerInfoUpdate(connection.client_info.clone()))
-                    .await
-                    .unwrap();
+                    .await;
 
                 for (_, vehicle) in &self.vehicles {
-                    connection
+                    let _ = connection
                         .ordered
                         .send(Outgoing::VehicleSpawn(vehicle.data.clone()))
-                        .await
-                        .unwrap();
+                        .await;
                 }
 
                 for info in client_info_list {
-                    connection
+                    let _ = connection
                         .ordered
                         .send(Outgoing::PlayerInfoUpdate(info))
-                        .await
-                        .unwrap();
+                        .await;
                 }
             }
             ConnectionLost => {
@@ -69,11 +66,10 @@ impl Server {
                     connection.client_info.name = info.name;
                     connection.client_info.current_vehicle = info.current_vehicle;
 
-                    connection
+                    let _ = connection
                         .ordered
                         .send(Outgoing::PlayerInfoUpdate(connection.client_info.clone()))
-                        .await
-                        .unwrap();
+                        .await;
                 }
             }
             Chat(initial_message) => {
@@ -124,11 +120,10 @@ impl Server {
                 data.server_id = Some(server_id);
                 data.owner = Some(client_id);
                 for (_, client) in &mut self.connections {
-                    client
+                    let _ = client
                         .ordered
                         .send(Outgoing::VehicleSpawn(data.clone()))
-                        .await
-                        .unwrap();
+                        .await;
                 }
                 if self.vehicle_ids.get(&client_id).is_none() {
                     self.vehicle_ids
@@ -212,13 +207,12 @@ impl Server {
                     if !files.contains(&file_name) {
                         continue;
                     }
-                    self.connections
+                   let _ = self.connections
                         .get_mut(&client_id)
                         .unwrap()
                         .ordered
                         .send(Outgoing::TransferFile(path))
-                        .await
-                        .unwrap();
+                        .await;
                 }
             }
             VehicleMetaUpdate(meta) => {
@@ -232,11 +226,10 @@ impl Server {
                         let mut meta = meta.clone();
                         meta.vehicle_id = server_id;
                         for (_, client) in &mut self.connections {
-                            client
+                            let _ = client
                                 .ordered
                                 .send(Outgoing::VehicleMetaUpdate(meta.clone()))
-                                .await
-                                .unwrap();
+                                .await;
                         }
                     }
                 }
@@ -255,11 +248,10 @@ impl Server {
                     let mut undefined_update = undefined_update.clone();
                     undefined_update.vehicle_id = server_id;
                     for (_, client) in &mut self.connections {
-                        client
+                        let _ = client
                             .ordered
                             .send(Outgoing::ElectricsUndefinedUpdate(undefined_update.clone()))
-                            .await
-                            .unwrap();
+                            .await;
                     }
                 }
             }

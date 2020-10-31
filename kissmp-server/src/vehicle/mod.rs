@@ -51,11 +51,10 @@ impl crate::Server {
             if Some(*cid) == client_id {
                 continue;
             }
-            client
+            let _ = client
                 .ordered
                 .send(crate::Outgoing::RemoveVehicle(id))
-                .await
-                .unwrap();
+                .await;
         }
     }
     pub async fn reset_vehicle(&mut self, server_id: u32, client_id: Option<u32>) {
@@ -63,11 +62,10 @@ impl crate::Server {
             if client_id.is_some() && *cid == client_id.unwrap() {
                 continue;
             }
-            client
+            let _ = client
                 .ordered
                 .send(crate::Outgoing::ResetVehicle(server_id))
-                .await
-                .unwrap();
+                .await;
         }
     }
 
@@ -83,11 +81,10 @@ impl crate::Server {
             .client_info
             .clone();
         for (_cid, client) in &mut self.connections {
-            client
+            let _ = client
                 .ordered
                 .send(crate::Outgoing::PlayerInfoUpdate(client_info.clone()))
-                .await
-                .unwrap();
+                .await;
         }
     }
 
