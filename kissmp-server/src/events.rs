@@ -10,26 +10,31 @@ impl Server {
                 for (_, connection) in self.connections.clone() {
                     client_info_list.push(connection.client_info.clone())
                 }
-
                 let connection = self.connections.get_mut(&client_id).unwrap();
                 let _ = connection
                     .ordered
                     .send(Outgoing::PlayerInfoUpdate(connection.client_info.clone()))
                     .await;
-
                 for (_, vehicle) in &self.vehicles {
                     let _ = connection
                         .ordered
                         .send(Outgoing::VehicleSpawn(vehicle.data.clone()))
                         .await;
                 }
-
                 for info in client_info_list {
                     let _ = connection
                         .ordered
                         .send(Outgoing::PlayerInfoUpdate(info))
                         .await;
                 }
+                let _ = self.update_lua_connections();
+                self.lua.context(|lua_ctx| {
+                    let _ = crate::lua::run_hook::<u32, ()>(
+                        lua_ctx,
+                        String::from("OnPlayerConnected"),
+                        client_id,
+                    );
+                });
             }
             ConnectionLost => {
                 let player_name = self
@@ -55,6 +60,13 @@ impl Server {
                         .send_chat_message(format!("Player {} has left the server", player_name))
                         .await;
                 }
+                self.lua.context(|lua_ctx| {
+                    let _ = crate::lua::run_hook::<u32, ()>(
+                        lua_ctx,
+                        String::from("OnPlayerDisconnected"),
+                        client_id,
+                    );
+                });
                 println!("Client has disconnected from the server");
             }
             UpdateClientInfo(info) => {
@@ -88,7 +100,7 @@ impl Server {
                         message = result;
                     }
                 });
-               
+
                 println!("{}", message);
 
                 for (_, client) in &mut self.connections {
@@ -110,42 +122,12 @@ impl Server {
                 {
                     self.remove_vehicle(server_id, Some(client_id)).await;
                 }
-
                 if let Some(client_vehicles) = self.vehicle_ids.get(&client_id) {
                     if client_vehicles.len() as u8 >= self.max_vehicles_per_client {
                         return;
                     }
                 }
-
-                let server_id = rand::random::<u16>() as u32;
-                let mut data = data.clone();
-                data.server_id = Some(server_id);
-                data.owner = Some(client_id);
-                for (_, client) in &mut self.connections {
-                    let _ = client
-                        .ordered
-                        .send(Outgoing::VehicleSpawn(data.clone()))
-                        .await;
-                }
-                if self.vehicle_ids.get(&client_id).is_none() {
-                    self.vehicle_ids
-                        .insert(client_id, HashMap::with_capacity(16));
-                }
-
-                self.vehicle_ids
-                    .get_mut(&client_id)
-                    .unwrap()
-                    .insert(data.in_game_id, server_id);
-                self.vehicles.insert(
-                    server_id,
-                    Vehicle {
-                        data,
-                        gearbox: None,
-                        electrics: None,
-                        transform: None,
-                    },
-                );
-                self.set_current_vehicle(client_id, server_id).await;
+                self.spawn_vehicle(client_id, data).await;
             }
             ElectricsUpdate(electrics) => {
                 if let Some(server_id) =

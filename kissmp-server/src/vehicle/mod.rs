@@ -20,7 +20,7 @@ pub struct VehicleData {
     pub plate: Option<String>,
     pub name: String,
     #[serde(skip_deserializing)]
-    pub server_id: Option<u32>,
+    pub server_id: u32,
     #[serde(skip_deserializing)]
     pub owner: Option<u32>,
     pub position: [f32; 3],
@@ -56,6 +56,13 @@ impl crate::Server {
                 .send(crate::Outgoing::RemoveVehicle(id))
                 .await;
         }
+        self.lua.context(|lua_ctx| {
+            let _ = crate::lua::run_hook::<(Option<u32>, u32), ()>(
+                lua_ctx,
+                String::from("OnVehileRemoved"),
+                (client_id, id),
+            );
+        });
     }
     pub async fn reset_vehicle(&mut self, server_id: u32, client_id: Option<u32>) {
         for (cid, client) in &mut self.connections {
@@ -67,6 +74,13 @@ impl crate::Server {
                 .send(crate::Outgoing::ResetVehicle(server_id))
                 .await;
         }
+        self.lua.context(|lua_ctx| {
+            let _ = crate::lua::run_hook::<(Option<u32>, u32), ()>(
+                lua_ctx,
+                String::from("OnVehicleReseted"),
+                (client_id, server_id),
+            );
+        });
     }
 
     pub async fn set_current_vehicle(&mut self, client_id: u32, vehicle_id: u32) {
@@ -98,5 +112,44 @@ impl crate::Server {
         } else {
             None
         }
+    }
+
+    pub async fn spawn_vehicle(&mut self, client_id: u32, data: VehicleData) {
+        let server_id = rand::random::<u16>() as u32;
+        let mut data = data.clone();
+        data.server_id = server_id;
+        data.owner = Some(client_id);
+        for (_, client) in &mut self.connections {
+            let _ = client
+                .ordered
+                .send(crate::Outgoing::VehicleSpawn(data.clone()))
+                .await;
+        }
+        if self.vehicle_ids.get(&client_id).is_none() {
+            self.vehicle_ids
+                .insert(client_id, std::collections::HashMap::with_capacity(16));
+        }
+        self.vehicle_ids
+            .get_mut(&client_id)
+            .unwrap()
+            .insert(data.in_game_id, server_id);
+        self.vehicles.insert(
+            server_id,
+            Vehicle {
+                data,
+                gearbox: None,
+                electrics: None,
+                transform: None,
+            },
+        );
+        self.set_current_vehicle(client_id, server_id).await;
+        let _ = self.update_lua_vehicles();
+        self.lua.context(|lua_ctx| {
+            let _ = crate::lua::run_hook::<(u32, u32), ()>(
+                lua_ctx,
+                String::from("OnVehicleSpawned"),
+                (server_id, client_id),
+            );
+        });
     }
 }

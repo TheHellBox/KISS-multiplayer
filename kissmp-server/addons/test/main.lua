@@ -5,7 +5,7 @@ end
 hooks.register("OnStdIn", "ListVehiclesCommand", function(input)
     if input == "/list_vehicles" then
       for vehicle_id, vehicle in pairs(vehicles) do
-        local position = vehicle.transform:getPosition()
+        local position = vehicle:getTransform():getPosition()
         print("Vehicle "..vehicle_id..": "..position[1]..", "..position[2]..", "..position[3])
       end
     end
@@ -17,22 +17,16 @@ hooks.register("OnChat", "HomeCommand", function(client_id, message)
     if not vehicles[vehicle_id] then return end
     local vehicle = vehicles[vehicle_id]
     if message == "/home" then
-      if vehicles[vehicle_id] then
-        vehicle.setPositionRotation(0, 0, 0, 0, 0, 0, 1)
-      end
+      vehicle:setPositionRotation(0, 0, 0, 0, 0, 0, 1)
     end
     if message == "/reset" then
-      if vehicles[vehicle_id] then
-        vehicle.reset()
-      end
+      vehicle:reset()
     end
     if message == "/remove" then
-      if vehicles[vehicle_id] then
-        vehicle.remove()
-      end
+      vehicle:remove()
     end
     if message == "/kick_me" then
-      connections[client_id]:kick()
+      connections[client_id]:kick("Kick reason")
     end
     if string.startswith(message, "/send_me_lua") then
       local message = message:gsub("%/send_me_lua", "")

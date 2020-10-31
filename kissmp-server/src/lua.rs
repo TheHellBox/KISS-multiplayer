@@ -41,53 +41,60 @@ impl rlua::UserData for Transform {
         });
     }
 }
+impl rlua::UserData for VehicleData {
+    fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("getInGameID", |_, this, _: ()| Ok(this.in_game_id));
+        methods.add_method("getID", |_, this, _: ()| Ok(this.server_id));
+        methods.add_method("getColor", |_, this, _: ()| Ok(this.color.to_vec()));
+        methods.add_method("getPalete0", |_, this, _: ()| Ok(this.palete_0.to_vec()));
+        methods.add_method("getPalete1", |_, this, _: ()| Ok(this.palete_1.to_vec()));
+        methods.add_method("getPlate", |_, this, _: ()| Ok(this.plate.clone()));
+        methods.add_method("getName", |_, this, _: ()| Ok(this.name.clone()));
+        methods.add_method("getOwner", |_, this, _: ()| Ok(this.owner));
+        methods.add_method("getPartsConfig", |_, this, _: ()| Ok(this.name.clone()));
+    }
+}
 
-impl<'lua> rlua::ToLua<'lua> for Vehicle {
-    fn to_lua(self, lua_ctx: rlua::Context<'lua>) -> rlua::Result<rlua::Value> {
-        let owner = self.data.owner.unwrap();
-        let id = self.data.server_id.unwrap();
-        let game_id = self.data.in_game_id;
-        let t = lua_ctx.create_table()?;
-        t.set("transform", self.transform)?;
-        t.set(
-            "remove",
-            lua_ctx.create_function(move |lua_ctx, _: ()| {
-                let globals = lua_ctx.globals();
-                let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
-                sender.0.send(LuaCommand::RemoveVehicle(id)).unwrap();
-                Ok(())
-            })?,
-        )?;
-        t.set(
-            "reset",
-            lua_ctx.create_function(move |lua_ctx, _: ()| {
-                let globals = lua_ctx.globals();
-                let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
-                sender.0.send(LuaCommand::ResetVehicle(id)).unwrap();
-                Ok(())
-            })?,
-        )?;
-        t.set(
+impl rlua::UserData for Vehicle {
+    fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("getTransform", |_, this, _: ()| Ok(this.transform.clone()));
+        methods.add_method("getData", |_, this, _: ()| Ok(this.data.clone()));
+        methods.add_method("remove", |lua_ctx, this, _: ()| {
+            let globals = lua_ctx.globals();
+            let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
+            sender
+                .0
+                .send(LuaCommand::RemoveVehicle(this.data.server_id))
+                .unwrap();
+            Ok(())
+        });
+        methods.add_method("reset", |lua_ctx, this, _: ()| {
+            let globals = lua_ctx.globals();
+            let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
+            sender
+                .0
+                .send(LuaCommand::ResetVehicle(this.data.server_id))
+                .unwrap();
+            Ok(())
+        });
+        methods.add_method(
             "setPositionRotation",
-            lua_ctx.create_function(
-                move |lua_ctx, (x, y, z, xr, yr, zr, w): (f32, f32, f32, f32, f32, f32, f32)| {
-                    let globals = lua_ctx.globals();
-                    let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
-                    sender
-                        .0
-                        .send(LuaCommand::SendLua(
-                            owner,
-                            format!(
-                                "be:getObjectByID({}):setPosRot({}, {}, {}, {}, {}, {}, {})",
-                                game_id, x, y, z, xr, yr, zr, w
-                            ),
-                        ))
-                        .unwrap();
-                    Ok(())
-                },
-            )?,
-        )?;
-        Ok(rlua::Value::Table(t))
+            |lua_ctx, this, (x, y, z, xr, yr, zr, w): (f32, f32, f32, f32, f32, f32, f32)| {
+                let globals = lua_ctx.globals();
+                let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
+                sender
+                    .0
+                    .send(LuaCommand::SendLua(
+                        this.data.owner.unwrap_or(0),
+                        format!(
+                            "be:getObjectByID({}):setPosRot({}, {}, {}, {}, {}, {}, {})",
+                            this.data.in_game_id, x, y, z, xr, yr, zr, w
+                        ),
+                    ))
+                    .unwrap();
+                Ok(())
+            },
+        );
     }
 }
 
@@ -151,9 +158,16 @@ impl<'lua> rlua::ToLua<'lua> for Connections {
 }
 
 impl Server {
-    pub async fn lua_tick(&mut self) -> rlua::Result<()> {
-        // Kinda expensive... At least I think so
+    pub fn update_lua_vehicles(&self) -> rlua::Result<()> {
         let vehicles = Vehicles(self.vehicles.clone());
+        self.lua.context(|lua_ctx| {
+            let globals = lua_ctx.globals();
+            globals.set("vehicles", vehicles)?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+    pub fn update_lua_connections(&self) -> rlua::Result<()> {
         let mut connections = Connections(HashMap::new());
         for (id, connection) in &self.connections {
             connections.0.insert(
@@ -166,10 +180,14 @@ impl Server {
         }
         self.lua.context(|lua_ctx| {
             let globals = lua_ctx.globals();
-            globals.set("vehicles", vehicles)?;
             globals.set("connections", connections)?;
             Ok(())
         })?;
+        Ok(())
+    }
+    pub async fn lua_tick(&mut self) -> rlua::Result<()> {
+        let _ = self.update_lua_connections();
+        let _ = self.update_lua_vehicles();
         for command in self.lua_commands.try_iter().collect::<Vec<LuaCommand>>() {
             use LuaCommand::*;
             match command {
@@ -217,15 +235,17 @@ impl Server {
     }
 
     pub fn load_lua_addon(&mut self, path: &std::path::Path) {
-        use std::io::Read;
         use notify::Watcher;
+        use std::io::Read;
         let mut file = std::fs::File::open(path).unwrap();
         let mut buf = String::new();
         file.read_to_string(&mut buf).unwrap();
         self.lua.context(|lua_ctx| {
             lua_ctx.load(&buf).eval::<()>().unwrap();
         });
-        self.lua_watcher.watch(path, notify::RecursiveMode::NonRecursive).unwrap();
+        self.lua_watcher
+            .watch(path, notify::RecursiveMode::NonRecursive)
+            .unwrap();
     }
 
     pub fn load_lua_addons(&mut self) {
@@ -260,18 +280,20 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
             .set(
                 "register",
                 lua_ctx
-                    .create_function(|lua_ctx, (hook, name, function): (String, String, rlua::Function)| {
-                        let globals = lua_ctx.globals();
-                        let hooks_table: rlua::Table = globals.get("hooks").unwrap();
-                        if !hooks_table.contains_key(hook.clone()).unwrap() {
-                            hooks_table
-                                .set(hook.clone(), Vec::new() as Vec<rlua::Function>)
-                                .unwrap();
-                        }
-                        let hooks: rlua::Table = hooks_table.get(hook.clone()).unwrap();
-                        hooks.set(name, function).unwrap();
-                        Ok(())
-                    })
+                    .create_function(
+                        |lua_ctx, (hook, name, function): (String, String, rlua::Function)| {
+                            let globals = lua_ctx.globals();
+                            let hooks_table: rlua::Table = globals.get("hooks").unwrap();
+                            if !hooks_table.contains_key(hook.clone()).unwrap() {
+                                hooks_table
+                                    .set(hook.clone(), Vec::new() as Vec<rlua::Function>)
+                                    .unwrap();
+                            }
+                            let hooks: rlua::Table = hooks_table.get(hook.clone()).unwrap();
+                            hooks.set(name, function).unwrap();
+                            Ok(())
+                        },
+                    )
                     .unwrap(),
             )
             .unwrap();

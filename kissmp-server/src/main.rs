@@ -317,8 +317,10 @@ impl Server {
                     let (data_type, data) = data?;
                     Self::handle_incoming_data(id, data_type, data, &mut client_events_tx).await?;
                 }
+                complete => break
             }
         }
+        Ok(())
     }
 
     async fn tick(&mut self) {
