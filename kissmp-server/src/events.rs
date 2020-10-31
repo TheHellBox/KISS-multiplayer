@@ -80,7 +80,7 @@ impl Server {
                 );
 
                 self.lua.context(|lua_ctx| {
-                    if let Some(result) = crate::lua::run_hook::<(u32, String), String>(
+                    if let Some(Some(result)) = crate::lua::run_hook::<(u32, String), Option<String>>(
                         lua_ctx,
                         String::from("OnChat"),
                         (client_id, initial_message.clone()),
@@ -88,6 +88,8 @@ impl Server {
                         message = result;
                     }
                 });
+               
+                println!("{}", message);
 
                 for (_, client) in &mut self.connections {
                     client.send_chat_message(message.clone()).await;
@@ -207,7 +209,8 @@ impl Server {
                     if !files.contains(&file_name) {
                         continue;
                     }
-                   let _ = self.connections
+                    let _ = self
+                        .connections
                         .get_mut(&client_id)
                         .unwrap()
                         .ordered

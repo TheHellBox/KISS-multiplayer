@@ -89,6 +89,8 @@ struct Server {
     port: u16,
     show_in_list: bool,
     lua: rlua::Lua,
+    lua_watcher: notify::RecommendedWatcher,
+    lua_watcher_rx: std::sync::mpsc::Receiver<notify::DebouncedEvent>,
     lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
 }
 
@@ -391,6 +393,8 @@ async fn main() {
     println!("Gas, Gas, Gas!");
     let config = config::Config::load(std::path::Path::new("./config.json"));
     let (lua, receiver) = lua::setup_lua();
+    let (watcher_tx, watcher_rx) = std::sync::mpsc::channel();
+    let lua_watcher = notify::Watcher::new(watcher_tx, std::time::Duration::from_secs(2)).unwrap();
     let server = Server {
         connections: HashMap::with_capacity(8),
         reqwest_client: reqwest::Client::new(),
@@ -405,6 +409,8 @@ async fn main() {
         max_vehicles_per_client: config.max_vehicles_per_client,
         show_in_list: config.show_in_server_list,
         lua: lua,
+        lua_watcher,
+        lua_watcher_rx: watcher_rx,
         lua_commands: receiver,
     };
     server.run().await;

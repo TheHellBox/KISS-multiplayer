@@ -46,6 +46,7 @@ impl<'lua> rlua::ToLua<'lua> for Vehicle {
     fn to_lua(self, lua_ctx: rlua::Context<'lua>) -> rlua::Result<rlua::Value> {
         let owner = self.data.owner.unwrap();
         let id = self.data.server_id.unwrap();
+        let game_id = self.data.in_game_id;
         let t = lua_ctx.create_table()?;
         t.set("transform", self.transform)?;
         t.set(
@@ -78,7 +79,7 @@ impl<'lua> rlua::ToLua<'lua> for Vehicle {
                             owner,
                             format!(
                                 "be:getObjectByID({}):setPosRot({}, {}, {}, {}, {}, {}, {})",
-                                id, x, y, z, xr, yr, zr, w
+                                game_id, x, y, z, xr, yr, zr, w
                             ),
                         ))
                         .unwrap();
@@ -202,17 +203,31 @@ impl Server {
         self.lua.context(|lua_ctx| {
             let _ = run_hook::<(), ()>(lua_ctx, String::from("Tick"), ());
         });
+        for event in self.lua_watcher_rx.try_recv() {
+            use notify::DebouncedEvent::*;
+            match event {
+                Write(path) => {
+                    println!("Lua file {} has been changed. Reloading...", path.display());
+                    self.load_lua_addon(&path);
+                }
+                _ => {}
+            }
+        }
         Ok(())
     }
+
     pub fn load_lua_addon(&mut self, path: &std::path::Path) {
         use std::io::Read;
+        use notify::Watcher;
         let mut file = std::fs::File::open(path).unwrap();
         let mut buf = String::new();
         file.read_to_string(&mut buf).unwrap();
         self.lua.context(|lua_ctx| {
             lua_ctx.load(&buf).eval::<()>().unwrap();
         });
+        self.lua_watcher.watch(path, notify::RecursiveMode::NonRecursive).unwrap();
     }
+
     pub fn load_lua_addons(&mut self) {
         let path = std::path::Path::new("./addons/");
         if !path.exists() {
@@ -245,7 +260,7 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
             .set(
                 "register",
                 lua_ctx
-                    .create_function(|lua_ctx, (hook, function): (String, rlua::Function)| {
+                    .create_function(|lua_ctx, (hook, name, function): (String, String, rlua::Function)| {
                         let globals = lua_ctx.globals();
                         let hooks_table: rlua::Table = globals.get("hooks").unwrap();
                         if !hooks_table.contains_key(hook.clone()).unwrap() {
@@ -254,7 +269,7 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
                                 .unwrap();
                         }
                         let hooks: rlua::Table = hooks_table.get(hook.clone()).unwrap();
-                        hooks.set(hooks.len().unwrap(), function).unwrap();
+                        hooks.set(name, function).unwrap();
                         Ok(())
                     })
                     .unwrap(),
@@ -297,7 +312,7 @@ pub fn run_hook<
     let hooks = hooks_table.get(name);
     if let Ok::<rlua::Table, _>(hooks) = hooks {
         for pair in hooks.pairs() {
-            let (_, function): (usize, rlua::Function) = pair.unwrap();
+            let (_, function): (String, rlua::Function) = pair.unwrap();
             match function.call::<A, R>(args.clone()) {
                 Ok(r) => return Some(r),
                 Err(r) => println!("{}", r),

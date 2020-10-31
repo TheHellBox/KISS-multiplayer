@@ -132,6 +132,8 @@ local function apply_transform(dt, id, transform, apply_velocity)
     required_acceleration = required_acceleration * (1 - clamp((1 / (required_acceleration:squaredLength() + 64 * dt)), 0, 1))
     required_angular_acceleration = required_angular_acceleration * (1 - clamp((1 / (required_angular_acceleration:squaredLength() + 128 * dt)), 0, 1))
 
+    if required_acceleration:length() > 500 then return end
+    if required_angular_acceleration:length() > 500 then return end
     vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
                               ..required_acceleration.x..","
                               ..required_acceleration.y..","
