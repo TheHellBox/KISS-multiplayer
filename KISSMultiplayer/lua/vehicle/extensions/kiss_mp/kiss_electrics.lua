@@ -1,7 +1,6 @@
 local M = {}
 local prev_electrics = {}
 local prev_signal_electrics = {}
-local timer = 0
 local ignored_keys = {
   throttle = true,
   throttle_input = true,
