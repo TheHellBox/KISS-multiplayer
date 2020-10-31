@@ -13,6 +13,7 @@ local ignored_keys = {
   parkingbrake_input = true,
   steering = true,
   steering_input = true,
+  regenThrottle = true,
   reverse = true,
   parking = true,
   lights = true,
@@ -34,6 +35,7 @@ local ignored_keys = {
   driveshaft_F = true,
   rpmspin = true,
   wheelspeed = true,
+  oil = true,
   rpm = true,
   altitude = true,
   avgWheelAV = true,
@@ -48,6 +50,7 @@ local ignored_keys = {
   driveshaft = true,
   fuel = true,
   engineThrottle = true,
+  fuelCapacity = true,
   fuelVolume = true,
   turboSpin = true,
   turboRPM = true,
@@ -140,6 +143,12 @@ local function apply_diff(data)
       controller.mainController.setStarter(v > 0.5)
     elseif k == "horn" then
       electrics.horn(v > 0.5)
+    elseif k == "hasABS" then
+      if v > 0.5 then
+        wheels.setABSBehavior("realistic")
+      else
+        wheels.setABSBehavior("off")
+      end
     end
   end
 end
@@ -165,7 +174,7 @@ local function kissInit()
     end
   end
   
-  -- Ignore lightbar electrics
+  -- Ignore lightbar electrics, and jato fuel electrics
   for _, controller in pairs(v.data.controller) do
     if controller.name == "lightbar" and controller.modes then
         local modes = tableFromHeaderTable(controller.modes)
@@ -175,7 +184,33 @@ local function kissInit()
             ignored_keys[j.electric] = true
           end 
         end
+    elseif controller.name == "jato" then
+      ignored_keys["jatofuel"] = true
     end
+  end
+  
+  -- Ignore known vehicle specific, automatically set electrics
+  local vehicleDirectory = v.vehicleDirectory or v.data.vehicleDirectory
+  if vehicleDirectory == "/vehicles/sbr/" and display and type(display) == 'table' then
+    ignored_keys["disp_P"] = true
+    ignored_keys["disp_R"] = true
+    ignored_keys["disp_Ra"] = true
+    ignored_keys["disp_N"] = true
+    ignored_keys["disp_Na"] = true
+    ignored_keys["disp_D"] = true
+    ignored_keys["disp_1"] = true
+    ignored_keys["disp_2"] = true
+    ignored_keys["disp_3"] = true
+    ignored_keys["disp_4"] = true
+    ignored_keys["disp_5"] = true
+    ignored_keys["disp_6"] = true
+    ignored_keys["disp_7"] = true
+    ignored_keys["spoiler"] = true
+  end
+  
+  -- Ignore common extension/controller electrics
+  if _G["4ws"] and type(_G["4ws"]) == 'table' then
+    ignored_keys["4ws"] = true
   end
 end
 
