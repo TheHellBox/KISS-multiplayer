@@ -20,6 +20,9 @@ local imgui = ui_imgui
 local addr = imgui.ArrayChar(128)
 local player_name = imgui.ArrayChar(32, "Unknown")
 
+local add_favorite_addr = imgui.ArrayChar(128)
+local add_favorite_name = imgui.ArrayChar(64, "KissMP Server")
+
 local filter_servers_notfull = imgui.BoolPtr(false)
 local filter_servers_online = imgui.BoolPtr(false)
 
@@ -85,13 +88,15 @@ end
 local function update_favorites()
   local update_count = 0
   for addr, server in pairs(favorite_servers) do
-    local server_from_list = M.server_list[addr]
-    local server_found_in_list = server_from_list ~= nil
-    
-    if server_found_in_list then
-      server.name = server_from_list.name
-      server.description = server_from_list.description
-      update_count = update_count + 1
+    if not server.added_manually then
+      local server_from_list = M.server_list[addr]
+      local server_found_in_list = server_from_list ~= nil
+      
+      if server_found_in_list then
+        server.name = server_from_list.name
+        server.description = server_from_list.description
+        update_count = update_count + 1
+      end
     end
   end
   
@@ -197,7 +202,7 @@ local function add_server_to_favorites(addr, server)
   favorite_servers[addr] = {
     name = server.name,
     description = server.description,
-    direct = false
+    added_manually = false
   }
   save_favorites()
 end
@@ -205,7 +210,7 @@ end
 local function add_direct_server_to_favorites(addr, name)
   favorite_servers[addr] = {
     name = name,
-    direct = true
+    added_manually = true
   }
   save_favorites()
 end
@@ -227,12 +232,14 @@ local function draw_favorites_tab()
     favorites_count = favorites_count + 1
     
     local header = server.name
-    if server_found_in_list then
+    if server.added_manually then
+      header = header.." [USER]"
+    elseif server_found_in_list then
       header = header.." ["..server_from_list.player_count.."/"..server_from_list.max_players.."]"
     else
       header = header.." [OFFLINE]"
     end
-    header = header .. "###favorite_server_header_"  .. tostring(favorites_count)
+    header = header .. "###server_header_"  .. tostring(favorites_count)
     
     if imgui.CollapsingHeader1(header) then
       imgui.PushTextWrapPos(0)
@@ -242,16 +249,18 @@ local function draw_favorites_tab()
         imgui.Text("Map: "..server_from_list.map)
       end
       
-      draw_server_description(server.description)
+      if server.description and server.description:len() > 0 then
+        draw_server_description(server.description)
+      end
       
       imgui.PopTextWrapPos()
-      if imgui.Button("Connect") then
+      if imgui.Button("Connect###connect_button_" .. tostring(favorites_count)) then
         save_config()
         local player_name = ffi.string(player_name)
         network.connect(addr, player_name)
       end
       imgui.SameLine()
-      if imgui.Button("Remove from Favorites") then
+      if imgui.Button("Remove from Favorites###remove_favorite_button_" .. tostring(favorites_count)) then
         remove_server_from_favorites(addr)
         update_filtered_servers()
       end
@@ -266,9 +275,16 @@ local function draw_favorites_tab()
   
   imgui.EndChild()
   
-  if imgui.Button("Refresh list", imgui.ImVec2(-1, 0)) then
+  local content_width = imgui.GetWindowContentRegionWidth()
+  local button_width = content_width * 0.495
+  
+  if imgui.Button("Refresh list", imgui.ImVec2(button_width, 0)) then
     refresh_server_list()
     update_filtered_servers()
+  end
+  imgui.SameLine()
+  if imgui.Button("Add", imgui.ImVec2(button_width, 0)) then
+    gui.showWindow("Add Favorite")
   end
 end
 
@@ -291,7 +307,7 @@ local function draw_servers_tab()
       imgui.Text("Map: "..server.map)
       draw_server_description(server.description)
       imgui.PopTextWrapPos()
-      if imgui.Button("Connect") then
+      if imgui.Button("Connect###connect_button_" .. tostring(server_count)) then
         save_config()
         local player_name = ffi.string(player_name)
         network.connect(addr, player_name)
@@ -300,7 +316,7 @@ local function draw_servers_tab()
       local in_favorites_list = favorite_servers[addr] ~= nil
       if not in_favorites_list then
         imgui.SameLine()
-        if imgui.Button("Add to Favorites") then
+        if imgui.Button("Add to Favorites###add_favorite_button_" .. tostring(server_count)) then
           add_server_to_favorites(addr, server)
           update_filtered_servers()
         end
@@ -351,8 +367,52 @@ local function open_ui()
   gui.showWindow("Chat")
   gui.registerWindow("Download", imgui.ImVec2(256, 132))
   gui.showWindow("Download")
+  gui.registerWindow("Add Favorite", imgui.ImVec2(256, 128))
+  gui.hideWindow("Add Favorite")
 end
 
+local function draw_add_favorite_window()
+  if not gui.isWindowVisible("Add Favorite") then return end
+  
+  local display_size = imgui.GetIO().DisplaySize
+  imgui.SetNextWindowPos(imgui.ImVec2(display_size.x / 2, display_size.y / 2), imgui.Cond_Always, imgui.ImVec2(0.5, 0.5))
+  
+  if imgui.Begin("Add Favorite", gui.getWindowVisibleBoolPtr("Add Favorite"), bor(imgui.WindowFlags_NoScrollbar ,imgui.WindowFlags_NoResize, imgui.WindowFlags_AlwaysAutoResize)) then        
+    imgui.Text("Name:")
+    imgui.SameLine()
+    imgui.PushItemWidth(-1)
+    imgui.InputText("##favorite_name", add_favorite_name)
+    imgui.PopItemWidth()
+    
+    imgui.Text("Address:")
+    imgui.SameLine()
+    imgui.PushItemWidth(-1)
+    imgui.InputText("##favorite_addr", add_favorite_addr)
+    imgui.PopItemWidth()
+    
+    imgui.Dummy(imgui.ImVec2(0, 5))
+  
+    local content_width = imgui.GetWindowContentRegionWidth()
+    local button_width = content_width * 0.495
+    
+    if imgui.Button("Add", imgui.ImVec2(button_width, 0)) then
+      local addr = ffi.string(add_favorite_addr)
+      local name = ffi.string(add_favorite_name)
+      
+      if addr:len() > 0 and name:len() > 0 then
+        add_direct_server_to_favorites(addr, name)
+      end
+      
+      update_filtered_servers()
+      gui.hideWindow("Add Favorite")
+    end
+    imgui.SameLine()
+    if imgui.Button("Cancel", imgui.ImVec2(button_width, 0)) then
+      gui.hideWindow("Add Favorite")
+    end    
+  end
+  imgui.End()
+end
 
 local function draw_menu()
   if not gui.isWindowVisible("KissMP") then return end
@@ -392,6 +452,8 @@ end
 
 local function draw_chat()
   if not gui.isWindowVisible("Chat") then return end
+  imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(200, -1))
+  
   if imgui.Begin("Chat", gui.getWindowVisibleBoolPtr("Chat")) then
     imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
 
@@ -408,24 +470,32 @@ local function draw_chat()
     prev_chat_scroll_max = imgui.GetScrollMaxY()
     imgui.EndChild()
     
+    local content_width = imgui.GetWindowContentRegionWidth()
+    local button_width = 75
+    local textbox_width = content_width - (button_width * 1.075)
     
     imgui.Spacing()
+    
+    imgui.PushItemWidth(textbox_width)
     if imgui.InputText("##chat", message_buffer, 128, imgui.InputTextFlags_EnterReturnsTrue) then
       send_current_chat_message()
       imgui.SetKeyboardFocusHere(-1)
     end
+    imgui.PopItemWidth()
     imgui.SameLine()
-    if imgui.Button("Send") then
+    if imgui.Button("Send", imgui.ImVec2(button_width, -1)) then
       send_current_chat_message()
     end
+    imgui.PopItemWidth()
   end
   imgui.End()
+  imgui.PopStyleVar(1)
 end
 
 local function draw_download()
   if not M.show_download then return end
   if not gui.isWindowVisible("Download") then return end
-  if imgui.Begin("Download", gui.getWindowVisibleBoolPtr("Download"), imgui.WindowFlags_NoScrollbar + imgui.WindowFlags_NoResize) then        
+  if imgui.Begin("Download", gui.getWindowVisibleBoolPtr("Download"), bor(imgui.WindowFlags_NoScrollbar, imgui.WindowFlags_NoResize)) then        
     imgui.Text("Downloading "..network.download_info.file_name.."...")
     imgui.ProgressBar(M.download_progress, imgui.ImVec2(-1, 0))
   end
@@ -457,6 +527,7 @@ local function onUpdate(dt)
   draw_menu()
   draw_chat()
   draw_download()
+  draw_add_favorite_window()
   draw_names()
   
   -- Search update
