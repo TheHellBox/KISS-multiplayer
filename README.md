@@ -18,8 +18,9 @@ zip KISSMultiplayer.zip -r *
 Copy KISSMultiplayer.zip in your game's mod folder, for example `~/.steam/steam/steamapps/compatdata/284160/pfx/drive_c/users/steamuser/My Documents/BeamNG.drive/mods/`
 
 ## Play:
-First, download and install a Rust toolchain
+First, download and install a [Rust toolchain](https://rustup.rs/)
 
+After you install rust toolchain, compile the bridge and run it.
 ```sh
 cd kissmp-bridge/
 cargo run --release
