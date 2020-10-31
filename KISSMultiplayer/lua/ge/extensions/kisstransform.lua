@@ -14,7 +14,7 @@ M.rot_threshold = 1.5
 M.smoothing_coef = 4
 M.angular_velocity_error_limit = 0.1
 M.velocity_error_limit = 10
-M.smoothing_coef_rot = 2
+M.smoothing_coef_rot = 2.5
 
 local function lerp(a,b,t)
   local t = math.min(t, 1)
@@ -114,8 +114,7 @@ local function apply_transform(dt, id, transform, apply_velocity)
 
     local velocity_error = vec3(transform.velocity) - vec3(vehicle:getVelocity())
     local error_length = velocity_error:length()
-    -- The value is so high is bacause of the breaking.
-    -- When vehicle break, it's accelearion is actually quite high
+
     if error_length > M.velocity_error_limit then
       velocity_error:normalize()
       velocity_error = velocity_error * M.velocity_error_limit
@@ -130,8 +129,8 @@ local function apply_transform(dt, id, transform, apply_velocity)
 
     local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 5, 1)
     local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 7, 1)
-    required_acceleration = required_acceleration * (1 - clamp((1 / (required_acceleration:squaredLength() + 32 * dt)), 0, 1))
-    required_angular_acceleration = required_angular_acceleration * (1 - clamp((1 / (required_angular_acceleration:squaredLength() + 32 * dt)), 0, 1))
+    required_acceleration = required_acceleration * (1 - clamp((1 / (required_acceleration:squaredLength() + 64 * dt)), 0, 1))
+    required_angular_acceleration = required_angular_acceleration * (1 - clamp((1 / (required_angular_acceleration:squaredLength() + 128 * dt)), 0, 1))
 
     vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
                               ..required_acceleration.x..","
