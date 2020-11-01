@@ -179,7 +179,7 @@ pub async fn drive_receive(
             result.append(&mut data);
             Ok::<_, anyhow::Error>(result)
         })
-        .buffer_unordered(32);
+        .buffer_unordered(1024);
     loop {
         tokio::select! {
             stream = connection.uni_streams.try_next() => {

@@ -168,12 +168,17 @@ impl Server {
             "map": self.map.clone(),
             "port": self.port
         })
-        .to_string();
-        self.reqwest_client
-            .post("http://185.87.49.206:3692")
-            .body(server_info)
-            .send()
-            .await?;
+            .to_string();
+       
+        let client = self.reqwest_client.clone();
+        tokio::spawn(async move {
+            client
+                .post("http://185.87.49.206:3692")
+                .body(server_info)
+                .send()
+                .await;
+        });
+       
         Ok(())
     }
 
@@ -255,16 +260,18 @@ impl Server {
             select! {
                 command = ordered.select_next_some() => {
                     let mut stream = connection.open_uni().await?;
-                    // Kinda ugly and hacky tbh
-                    match command {
-                        Outgoing::TransferFile(file) => {
-                            file_transfer::transfer_file(&mut stream, std::path::Path::new(&file)).await?;
-                            continue;
+                    tokio::spawn(async move {
+                        // Kinda ugly and hacky tbh
+                        match command {
+                            Outgoing::TransferFile(file) => {
+                                let _ = file_transfer::transfer_file(&mut stream, std::path::Path::new(&file)).await;
+                            }
+                            _ => {
+                                let data_type = outgoing::get_data_type(&command);
+                                let _ = send(&mut stream, data_type, &Self::handle_outgoing_data(command)).await;
+                            }
                         }
-                        _ => {}
-                    }
-                    let data_type = outgoing::get_data_type(&command);
-                    send(&mut stream, data_type, &Self::handle_outgoing_data(command)).await?;
+                    });
                 }
                 command = unreliable.select_next_some() => {
                     let mut data = vec![outgoing::get_data_type(&command)];
