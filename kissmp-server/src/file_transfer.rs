@@ -22,6 +22,8 @@ pub async fn transfer_file(
             break;
         }
         stream.write_all(&buf[0..n]).await?;
+        // Should limit download speed
+        std::thread::sleep(std::time::Duration::from_millis(1));
     }
     Ok(())
 }

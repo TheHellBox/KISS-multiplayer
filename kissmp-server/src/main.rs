@@ -30,16 +30,14 @@ struct Connection {
 
 impl Connection {
     pub async fn send_chat_message(&mut self, message: String) {
-        self.ordered
+        let _ = self.ordered
             .send(Outgoing::Chat(message.clone()))
-            .await
-            .unwrap();
+            .await;
     }
     pub async fn send_lua(&mut self, lua: String) {
-        self.ordered
+        let _ = self.ordered
             .send(Outgoing::SendLua(lua.clone()))
-            .await
-            .unwrap();
+            .await;
     }
 }
 
@@ -109,7 +107,7 @@ impl Server {
 
         let mut transport = quinn::TransportConfig::default();
         transport
-            .max_idle_timeout(Some(std::time::Duration::from_secs(120)))
+            .max_idle_timeout(Some(std::time::Duration::from_secs(60)))
             .unwrap();
         server_config.transport = std::sync::Arc::new(transport);
 
@@ -191,8 +189,8 @@ impl Server {
         }
         // Should be strong enough for our targets. TODO: Check for collisions anyway
         let id = rand::random::<u32>();
-        let (ordered_tx, ordered_rx) = mpsc::channel(128);
-        let (unreliable_tx, unreliable_rx) = mpsc::channel(128);
+        let (ordered_tx, ordered_rx) = mpsc::channel(256);
+        let (unreliable_tx, unreliable_rx) = mpsc::channel(512);
         let client_connection = Connection {
             conn: connection.clone(),
             ordered: ordered_tx,
@@ -201,6 +199,7 @@ impl Server {
         };
         self.connections.insert(id, client_connection);
         println!("Client has connected to the server");
+        let connection_clone = connection.clone();
         // Receiver
         tokio::spawn(async move {
             client_events_tx
@@ -211,6 +210,7 @@ impl Server {
                 id,
                 new_connection.uni_streams,
                 new_connection.datagrams,
+                connection_clone,
                 client_events_tx.clone(),
             )
             .await
@@ -283,6 +283,7 @@ impl Server {
         id: u32,
         streams: quinn::IncomingUniStreams,
         datagrams: quinn::generic::Datagrams<quinn::crypto::rustls::TlsSession>,
+        connection: quinn::Connection,
         mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
         let mut cmds = streams
@@ -298,7 +299,7 @@ impl Server {
                 stream.read_exact(&mut buf).await?;
                 Ok::<_, Error>((data_type, buf))
             })
-            .buffer_unordered(16);
+            .buffer_unordered(128);
 
         let mut datagrams = datagrams
             .map(|data| async {
@@ -306,19 +307,28 @@ impl Server {
                 let data_type = data.remove(0);
                 Ok::<_, Error>((data_type, data))
             })
-            .buffer_unordered(32);
+            .buffer_unordered(128);
         loop {
-            select! {
+            let (data_type, data) = select! {
                 data = cmds.select_next_some() => {
-                    let (data_type, data) = data?;
-                    Self::handle_incoming_data(id, data_type, data, &mut client_events_tx).await?;
+                    data?
                 }
                 data = datagrams.select_next_some() => {
-                    let (data_type, data) = data?;
-                    Self::handle_incoming_data(id, data_type, data, &mut client_events_tx).await?;
+                    data?
                 }
                 complete => break
+            };
+            // React to ping with pong. Quite hacky
+            if data_type == 254 {
+                let start = std::time::SystemTime::now();
+                let since_the_epoch = start
+                    .duration_since(std::time::UNIX_EPOCH).unwrap();
+                let mut header = vec![254];
+                header.append(&mut since_the_epoch.as_secs_f64().to_le_bytes().to_vec());
+                let _ = connection.send_datagram(header.into());
+                continue;
             }
+            Self::handle_incoming_data(id, data_type, data, &mut client_events_tx).await?;
         }
         Ok(())
     }
@@ -347,20 +357,6 @@ impl Server {
             }
         }
         self.lua_tick().await.unwrap();
-    }
-
-    pub fn _client_owns_vehicle(&self, client_id: u32, vehicle_id: u32) -> bool {
-        if let Some(vehicles) = self.vehicle_ids.get(&client_id) {
-            // FIXME: I think that can be optimized
-            for (_, server_id) in vehicles {
-                if *server_id == vehicle_id {
-                    return true;
-                }
-            }
-            false
-        } else {
-            false
-        }
     }
 
     async fn on_console_input(&self, input: String) {

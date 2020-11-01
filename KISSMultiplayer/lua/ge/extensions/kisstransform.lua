@@ -25,7 +25,7 @@ local function get_current_time()
   local date = os.date("*t", os.time())
   date.sec = 0
   date.min = 0
-  return network.socket.gettime() - os.time(date)
+  return (network.socket.gettime() - os.time(date)) + network.connection.time_offset
 end
 
 local function send_transform_updates(obj)
@@ -176,8 +176,7 @@ local function update(dt)
 end
 
 local function update_vehicle_transform(data)
-  data = data..string.char(1)
-  local p = ffi.new("char[?]", #data, data)
+  local p = ffi.new("char[?]", #data + 1, data)
   local ptr = ffi.cast("float*", p)
   local transform = {}
   transform.position = {ptr[0], ptr[1], ptr[2]}
@@ -194,7 +193,7 @@ local function update_vehicle_transform(data)
   vehiclemanager.packet_gen_buffer[id] = transform.generation
   local vehicle = be:getObjectByID(id)
   if vehicle then
-    transform.time_past = 0 --get_current_time() - transform.sent_at
+    transform.time_past = get_current_time() - transform.sent_at
     M.received_transforms[id] = transform
   end
 end

@@ -4,6 +4,7 @@ M.download_info = {}
 
 local socket = require("socket")
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
+local ping_send_time = 0
 
 M.players = {}
 M.socket = socket
@@ -16,7 +17,8 @@ M.connection = {
   timer = 0,
   tickrate = 33,
   mods_left = 0,
-  timeout_buffer = nil
+  ping = 0,
+  time_offset = 0
 }
 
 local MESSAGETYPE_TRANSFORM = 0
@@ -34,8 +36,29 @@ local MESSAGETYPE_LUA = 11
 local MESSAGETYPE_PLAYERINFO = 12
 local MESSAGETYPE_META_UPDATE = 14
 local MESSAGETYPE_ELECTRICS_UNDEFINED = 15
+local PONG = 254
 
 local message_handlers = {}
+
+local ping_calculator = {
+  samples = {},
+  current_sample = 1,
+}
+
+ping_calculator.get = function(new_sample)
+  if ping_calculator.current_sample < 10 then
+    ping_calculator.samples[ping_calculator.current_sample] = new_sample
+  else
+    ping_calculator.current_sample = 0
+  end
+  local sum = 0
+  local n = 0
+  for _, v in pairs(ping_calculator.samples) do
+    sum = sum + v
+    n = n + 1
+  end
+  return sum / n
+end
 
 local function handle_disconnected(data)
   kissui.add_message("Disconnected.")
@@ -70,6 +93,16 @@ local function handle_lua(data)
   Lua:queueLuaCommand(data)
 end
 
+local function handle_pong(data)
+  local server_time = ffi.cast("double*", ffi.new("char[?]", 9, data))[0]
+  local local_time = socket.gettime()
+  local ping = local_time - ping_send_time
+  if ping > 1.5 then return end
+  local ping = ping_calculator.get(ping)
+  local time_diff = server_time - local_time + (ping / 2)
+  M.connection.time_offset = time_diff
+end
+
 local function onExtensionLoaded()
   message_handlers[MESSAGETYPE_TRANSFORM] = kisstransform.update_vehicle_transform
   message_handlers[MESSAGETYPE_VEHICLE_SPAWN] = vehiclemanager.spawn_vehicle
@@ -84,6 +117,7 @@ local function onExtensionLoaded()
   message_handlers[MESSAGETYPE_PLAYERINFO] = handle_player_info
   message_handlers[MESSAGETYPE_META_UPDATE] = vehiclemanager.update_vehicle_meta
   message_handlers[MESSAGETYPE_ELECTRICS_UNDEFINED] = vehiclemanager.electrics_diff_update
+  message_handlers[PONG] = handle_pong
 end
 
 local function send_data(data_type, reliable, data)
@@ -136,7 +170,7 @@ local function connect(addr, player_name)
 
   local _ = M.connection.tcp:receive(1)
   local len, _, _ = M.connection.tcp:receive(4)
-  local len = ffi.cast("uint32_t*", ffi.new("char[?]", #len, len))
+  local len = ffi.cast("uint32_t*", ffi.new("char[?]", #len + 1, len))
   local len = len[0]
 
   local received, _, _ = M.connection.tcp:receive(len)
@@ -204,8 +238,13 @@ local function on_finished_download()
   end
 end
 
-local function continue_download()
+local function send_ping()
+  ping_send_time = socket.gettime()
   send_data(254, false, "hi")
+end
+
+local function continue_download()
+  send_ping()
   kissui.show_download = true
   local packets = 0
   while M.download_info.current_chunk < M.download_info.chunks do
@@ -244,7 +283,7 @@ local function onUpdate(dt)
     M.connection.timer = M.connection.timer + dt
   else
     M.connection.timer = 0
-    send_data(254, false, "hi")
+    send_ping()
   end
 
   while true do
@@ -254,7 +293,7 @@ local function onUpdate(dt)
     local data_type = string.byte(received)
     --print(data_type)
     local data = M.connection.tcp:receive(4)
-    local len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))
+    local len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data))
 
     local data, _, _ = M.connection.tcp:receive(len[0])
     M.connection.tcp:settimeout(0.0)
