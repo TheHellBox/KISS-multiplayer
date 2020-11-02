@@ -25,7 +25,7 @@ M.connection = {
 
 local MESSAGETYPE_TRANSFORM = 0
 local MESSAGETYPE_VEHICLE_SPAWN = 1
-local MESSAGETYPE_ELECTRICS = 2
+local MESSAGETYPE_INPUT = 2
 local MESSAGETYPE_GEARBOX = 3
 local MESSAGETYPE_NODES = 4
 local MESSAGETYPE_VEHICLE_REMOVE = 5
@@ -124,7 +124,7 @@ end
 local function onExtensionLoaded()
   message_handlers[MESSAGETYPE_TRANSFORM] = kisstransform.update_vehicle_transform
   message_handlers[MESSAGETYPE_VEHICLE_SPAWN] = vehiclemanager.spawn_vehicle
-  message_handlers[MESSAGETYPE_ELECTRICS] = vehiclemanager.update_vehicle_electrics
+  message_handlers[MESSAGETYPE_INPUT] = vehiclemanager.update_vehicle_input
   message_handlers[MESSAGETYPE_GEARBOX] = vehiclemanager.update_vehicle_gearbox
   message_handlers[MESSAGETYPE_VEHICLE_REMOVE] = vehiclemanager.remove_vehicle
   message_handlers[MESSAGETYPE_VEHICLE_RESET] = vehiclemanager.reset_vehicle

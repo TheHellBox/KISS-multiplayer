@@ -3,6 +3,7 @@ local M = {}
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 
 local timer = 0
+local meta_timer = 0
 local vehicle_buffer = {}
 local colors_buffer = {}
 local plates_buffer = {}
@@ -69,17 +70,33 @@ local function onUpdate(dt)
   if not network.connection.connected then return end
 
   -- Track color and plate changes
-  timer = timer + dt
-  if timer >= 1 then
+  meta_timer = meta_timer + dt
+  if meta_timer >= 1 then
     send_vehicle_meta_updates()
-    timer = timer - 1
+    meta_timer = meta_timer - 1
+  end
+  
+  local tick_time = (1/network.connection.tickrate)
+  if timer <  tick_time then
+    timer = timer + dt
+  else
+    timer = timer - tick_time
+    for i, v in pairs(vehiclemanager.ownership) do
+      local vehicle = be:getObjectByID(i)
+      if vehicle then
+        kisstransform.send_transform_updates(vehicle)
+        vehicle:queueLuaCommand("kiss_input.send()")
+        vehicle:queueLuaCommand("kiss_electrics.send()")
+        vehicle:queueLuaCommand("kiss_gearbox.send()")
+      end
+    end
   end
   
   for id, updates in pairs(M.vehicle_updates_buffer) do
     local vehicle = be:getObjectByID(id)
     if vehicle then
-      if updates.electronics then
-        vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(updates.electrics).."\')")
+      if updates.input then
+        vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(updates.input).."\')")
       end
       if updates.gearbox then
         vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(updates.gearbox).."\')")
@@ -153,6 +170,7 @@ local function spawn_vehicle(data)
     M.id_map[data.server_id] = data.in_game_id
     M.ownership[data.in_game_id] = data.server_id
     update_ownership_limits()
+    be:getObjectByID(data.in_game_id):queueLuaCommand("extensions.hook('kissUpdateOwnership', true)")
     return
   end
   if M.id_map[data.server_id] then return end
@@ -182,17 +200,18 @@ local function spawn_vehicle(data)
     print("ERROR: Server ID is invalid")
   end
   if current_vehicle then be:enterVehicle(0, current_vehicle) end
+  spawned:queueLuaCommand("extensions.hook('kissUpdateOwnership', false)")
 end
 
-local function update_vehicle_electrics(data)
+local function update_vehicle_input(data)
   local data = messagepack.unpack(data)
   local id = M.id_map[data[1] or -1] or -1
   if M.ownership[id] then return end
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
   if not M.vehicle_updates_buffer[id] then M.vehicle_updates_buffer[id] = {} end
-  M.vehicle_updates_buffer[id].electrics = data
-  vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(data).."\')")
+  M.vehicle_updates_buffer[id].input = data
+  vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(data).."\')")
 end
 
 local function update_vehicle_gearbox(data)
@@ -290,11 +309,9 @@ end
 local function onVehicleSpawned(id)
   if not network.connection.connected then return end
   local vehicle = be:getObjectByID(id)
-  local owned = M.ownership[id] ~= nil and M.ownership[id]
   vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.hook('kissInit')")
-  vehicle:queueLuaCommand("extensions.hook('kissUpdateOwnership', " .. tostring(owned) .. ")")
   send_vehicle_config(id)
 end
 
@@ -328,7 +345,7 @@ M.onUpdate = onUpdate
 M.send_vehicle_config = send_vehicle_config
 M.send_vehicle_config_inner = send_vehicle_config_inner
 M.spawn_vehicle = spawn_vehicle
-M.update_vehicle_electrics = update_vehicle_electrics
+M.update_vehicle_input = update_vehicle_input
 M.update_vehicle_gearbox = update_vehicle_gearbox
 M.rotate_nodes = rotate_nodes
 M.remove_vehicle = remove_vehicle
