@@ -62,8 +62,14 @@ ping_calculator.get = function(new_sample)
   return sum / n
 end
 
+local function disconnect(data)
+  kissui.add_message("Disconnected! Reason: "..data)
+  connection.tcp:close()
+  connection.connected = false
+end
+
 local function handle_disconnected(data)
-  disconnect()
+  disconnect(data)
 end
 
 local function handle_file_transfer(data)
@@ -148,11 +154,6 @@ local function sanitize_addr(addr)
     sanitized = sanitized .. ":3698" 
   end
   return sanitized
-end
-
-local function disconnect()
-  kissui.add_message("Disconnected.")
-  connection.connected = false
 end
 
 local function connect(addr, player_name)
@@ -282,6 +283,7 @@ local function continue_download()
         kissui.show_download = false
         M.connection.tcp:close()
         kissui.add_message("Download failed, disconnecting.")
+        return
       end
       attempts = attempts + 1
     end

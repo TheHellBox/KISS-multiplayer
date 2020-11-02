@@ -156,10 +156,14 @@ async fn main() {
 
         //let mut ordered = connection.uni_streams.next().await.unwrap().unwrap();
         tokio::spawn(async move {
-            if let Err(_r) = drive_receive(connection, &mut writer).await {
-                println!("Disconnected!");
+            if let Err(r) = drive_receive(connection, &mut writer).await {
+                let reason = r.to_string();
+                println!("Disconnected! Reason: {}", reason);
+                let reason_bytes = reason.into_bytes();
                 // Send message type 10(Disconnected) to the game
-                let _ = writer.write_all(&[10, 0, 0, 0, 1, 0]).await;
+                let _ = writer.write_all(&[10]).await;
+                let _ = writer.write_all(&(reason_bytes.len() as u32).to_le_bytes()).await;
+                let _ = writer.write_all(&reason_bytes).await;
             }
         });
     }
@@ -194,7 +198,7 @@ pub async fn drive_receive(
                     }
                 }
                 else{
-                    return Err(anyhow::Error::msg(""));
+                    return Err(anyhow::Error::msg("Connection lost"));
                 }
             },
             data = datagrams.select_next_some() => {
