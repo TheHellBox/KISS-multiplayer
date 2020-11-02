@@ -15,6 +15,7 @@ pub enum IncomingEvent {
     RequestMods(Vec<String>),
     VehicleMetaUpdate(VehicleMeta),
     ElectricsUndefinedUpdate(ElectricsUndefined),
+    PingUpdate(u32)
 }
 
 impl Server {
@@ -122,7 +123,11 @@ impl Server {
                 }
             }
             254 => {
-                // heartbeat
+                let ping = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+                client_events_tx
+                    .send((id, IncomingEvent::PingUpdate(ping)))
+                    .await
+                    .unwrap();
             }
             _ => println!("Warning: Client sent unknown data type"),
         }

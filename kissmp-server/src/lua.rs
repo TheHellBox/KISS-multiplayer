@@ -18,27 +18,27 @@ pub enum LuaCommand {
 
 impl rlua::UserData for Transform {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("getPosition", |_, this, _: ()| {
+        methods.add_method("getPosition", |_, this, _: ()|
             Ok(vec![this.position[0], this.position[1], this.position[2]])
-        });
-        methods.add_method("getRotation", |_, this, _: ()| {
+        );
+        methods.add_method("getRotation", |_, this, _: ()|
             Ok(vec![
                 this.rotation[0],
                 this.rotation[1],
                 this.rotation[2],
                 this.rotation[3],
             ])
-        });
+        );
         methods.add_method("getVelocity", |_, this, _: ()| {
             Ok(vec![this.velocity[0], this.velocity[1], this.velocity[2]])
         });
-        methods.add_method("getAngularVelocity", |_, this, _: ()| {
+        methods.add_method("getAngularVelocity", |_, this, _: ()|
             Ok(vec![
                 this.angular_velocity[0],
                 this.angular_velocity[1],
                 this.angular_velocity[2],
             ])
-        });
+        );
     }
 }
 impl rlua::UserData for VehicleData {
@@ -100,15 +100,15 @@ impl rlua::UserData for Vehicle {
 
 struct LuaConnection {
     id: u32,
+    name: String,
     current_vehicle: u32,
 }
 
 impl rlua::UserData for LuaConnection {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("getID", |_, this, _: ()| Ok(this.id));
-        methods.add_method("getCurrentVehicle", |_, this, _: ()| {
-            Ok(this.current_vehicle)
-        });
+        methods.add_method("getCurrentVehicle", |_, this, _: ()| Ok(this.current_vehicle));
+        methods.add_method("getName", |_, this, _: ()| Ok(this.name.clone()));
         methods.add_method("sendChatMessage", |lua_ctx, this, message: String| {
             let globals = lua_ctx.globals();
             let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
@@ -175,6 +175,7 @@ impl Server {
                 LuaConnection {
                     id: *id,
                     current_vehicle: connection.client_info.current_vehicle,
+                    name: connection.client_info.name.clone()
                 },
             );
         }
@@ -332,14 +333,15 @@ pub fn run_hook<
     let globals = lua_ctx.globals();
     let hooks_table: rlua::Table = globals.get("hooks").unwrap();
     let hooks = hooks_table.get(name);
+    let mut result = None;
     if let Ok::<rlua::Table, _>(hooks) = hooks {
         for pair in hooks.pairs() {
             let (_, function): (String, rlua::Function) = pair.unwrap();
             match function.call::<A, R>(args.clone()) {
-                Ok(r) => return Some(r),
+                Ok(r) => result = Some(r),
                 Err(r) => println!("{}", r),
             }
         }
     }
-    None
+    result
 }

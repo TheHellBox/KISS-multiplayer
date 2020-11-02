@@ -450,12 +450,27 @@ local function send_current_chat_message()
   message_buffer = imgui.ArrayChar(128)
 end
 
+local function draw_player_list()
+  imgui.BeginGroup();
+  imgui.Text("Player list:")
+  imgui.BeginChild1("PlayerList", imgui.ImVec2(0, -30), true)
+  if network.connection.connected then
+    for _, player in pairs(network.players) do
+      imgui.Text(player.name.."("..player.ping.." ms)")
+    end
+  end
+  imgui.EndChild()
+  imgui.EndGroup()
+end
+
 local function draw_chat()
   if not gui.isWindowVisible("Chat") then return end
-  imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(200, -1))
-  
+  imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 100))
+
   if imgui.Begin("Chat", gui.getWindowVisibleBoolPtr("Chat")) then
-    imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
+    local content_width = imgui.GetWindowContentRegionWidth()
+
+    imgui.BeginChild1("Scrolling", imgui.ImVec2(content_width - 150, -30), true)
 
     for _, message in pairs(M.chat) do
       imgui.PushTextWrapPos(0)
@@ -469,7 +484,10 @@ local function draw_chat()
     end
     prev_chat_scroll_max = imgui.GetScrollMaxY()
     imgui.EndChild()
-    
+   
+    imgui.SameLine()
+    draw_player_list()
+   
     local content_width = imgui.GetWindowContentRegionWidth()
     local button_width = 75
     local textbox_width = content_width - (button_width * 1.075)

@@ -48,6 +48,8 @@ pub struct ClientInfo {
     pub id: u32,
     #[serde(skip_deserializing)]
     pub current_vehicle: u32,
+    #[serde(skip_deserializing)]
+    pub ping: u32
 }
 
 impl ClientInfo {
@@ -68,6 +70,7 @@ impl Default for ClientInfo {
             name: String::from("Unknown"),
             id: 0,
             current_vehicle: 0,
+            ping: 0
         }
     }
 }
@@ -138,6 +141,7 @@ impl Server {
                 },
                 _ = send_info_ticks.next() => {
                     let _ = self.send_server_info().await;
+                    self.send_players_info().await;
                 }
                 conn = incoming.select_next_some() => {
                     if let Ok(conn) = conn {
@@ -155,7 +159,20 @@ impl Server {
             }
         }
     }
-
+    async fn send_players_info(&mut self) {
+        let mut client_infos = vec![];
+        for (_, client) in &self.connections {
+            client_infos.push(client.client_info.clone());
+        }
+        for (_, client) in &mut self.connections {
+            for client_info in &client_infos {
+                let _ = client
+                    .unreliable
+                    .send(Outgoing::PlayerInfoUpdate(client_info.clone()))
+                    .await;
+            }
+        }
+    }
     async fn send_server_info(&self) -> anyhow::Result<()> {
         if !self.show_in_list {
             return Ok(());
@@ -172,7 +189,7 @@ impl Server {
        
         let client = self.reqwest_client.clone();
         tokio::spawn(async move {
-            client
+            let _ = client
                 .post("http://185.87.49.206:3692")
                 .body(server_info)
                 .send()

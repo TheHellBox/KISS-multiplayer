@@ -63,9 +63,13 @@ ping_calculator.get = function(new_sample)
 end
 
 local function disconnect(data)
-  kissui.add_message("Disconnected! Reason: "..data)
-  connection.tcp:close()
-  connection.connected = false
+  local text = "Disconnected!"
+  if data then
+    text = text.." Reason: "..data
+  end
+  kissui.add_message(text)
+  M.connection.connected = false
+  M.players = {}
 end
 
 local function handle_disconnected(data)
@@ -95,7 +99,8 @@ local function handle_player_info(data)
     local player_info = {
       name = player_info[1],
       id = player_info[2],
-      current_vehicle = player_info[3]
+      current_vehicle = player_info[3],
+      ping = player_info[4]
     }
     M.players[player_info.id] = player_info
   end
@@ -113,6 +118,7 @@ local function handle_pong(data)
   local ping = ping_calculator.get(ping)
   local time_diff = server_time - local_time + (ping / 2)
   M.connection.time_offset = time_diff
+  M.connection.ping = ping
 end
 
 local function onExtensionLoaded()
@@ -225,8 +231,8 @@ local function connect(addr, player_name)
   
   -- Request mods
   send_data(9, true, jsonEncode(missing_mods))
-
   send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
+ 
   if server_info.map ~= "any" and #missing_mods == 0 then
     freeroam_freeroam.startFreeroam(server_info.map)
     vehiclemanager.loading_map = true
@@ -247,7 +253,9 @@ end
 
 local function send_ping()
   ping_send_time = socket.gettime()
-  send_data(254, false, "hi")
+  -- Btw, this is actually used to send player's ping value
+  local ping = ffi.string(ffi.new("uint32_t[?]", 1, {math.floor(M.connection.ping)}), 4)
+  send_data(254, false, ping)
 end
 
 local function cancel_download()

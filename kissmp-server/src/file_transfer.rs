@@ -1,5 +1,4 @@
 use crate::*;
-use std::io::Read;
 use tokio::io::AsyncReadExt;
 
 const CHUNK_SIZE: usize = 4096;

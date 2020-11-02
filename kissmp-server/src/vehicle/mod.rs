@@ -84,22 +84,8 @@ impl crate::Server {
     }
 
     pub async fn set_current_vehicle(&mut self, client_id: u32, vehicle_id: u32) {
-        {
-            let connection = self.connections.get_mut(&client_id).unwrap();
-            connection.client_info.current_vehicle = vehicle_id;
-        }
-        let client_info = self
-            .connections
-            .get(&client_id)
-            .unwrap()
-            .client_info
-            .clone();
-        for (_cid, client) in &mut self.connections {
-            let _ = client
-                .ordered
-                .send(crate::Outgoing::PlayerInfoUpdate(client_info.clone()))
-                .await;
-        }
+        let connection = self.connections.get_mut(&client_id).unwrap();
+        connection.client_info.current_vehicle = vehicle_id;
     }
 
     pub fn get_server_id_from_game_id(&self, client_id: u32, game_id: u32) -> Option<u32> {

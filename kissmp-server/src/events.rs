@@ -77,11 +77,6 @@ impl Server {
                     }
                     connection.client_info.name = info.name;
                     connection.client_info.current_vehicle = info.current_vehicle;
-
-                    let _ = connection
-                        .ordered
-                        .send(Outgoing::PlayerInfoUpdate(connection.client_info.clone()))
-                        .await;
                 }
             }
             Chat(initial_message) => {
@@ -239,6 +234,9 @@ impl Server {
                             .await;
                     }
                 }
+            }
+            PingUpdate(ping) => {
+                self.connections.get_mut(&client_id).unwrap().client_info.ping = ping;
             }
         }
     }
