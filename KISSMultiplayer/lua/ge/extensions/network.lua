@@ -289,8 +289,8 @@ local function continue_download()
         current_download.file:close()
         current_download = nil
         kissui.show_download = false
-        M.connection.tcp:close()
         kissui.add_message("Download failed, disconnecting.")
+        disconnect()
         return
       end
       attempts = attempts + 1

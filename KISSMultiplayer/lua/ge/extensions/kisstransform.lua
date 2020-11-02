@@ -2,24 +2,21 @@ local M = {}
 
 local generation = 0
 local timer = 0
-local buffered_position_errors = {}
-local buffered_rotation_errors = {}
-local buffered_ang_vel_errors = {}
+local velocity_buffer = {}
+local angular_velocity_buffer = {}
 
 M.received_transforms = {}
 M.local_transforms = {}
 
 M.threshold = 4
-M.rot_threshold = 1.5
-M.smoothing_coef = 4
-M.angular_velocity_error_limit = 0.1
+M.rot_threshold = 2.5
 M.velocity_error_limit = 10
-M.smoothing_coef_rot = 2.5
 
-local function lerp(a,b,t)
+--[[local function lerp(a,b,t)
   local t = math.min(t, 1)
   return a * (1-t) + b * t
-end
+  --return a + (b - a) * t
+  end--]]
 
 local function get_current_time()
   local date = os.date("*t", os.time())
@@ -65,83 +62,92 @@ local function send_transform_updates(obj)
 end
 
 local function apply_transform(dt, id, transform, apply_velocity)
+  local vehicle = be:getObjectByID(id)
+  if not vehicle then return end
+  if not M.local_transforms[id] then return end
+
   transform.time_past = (transform.time_past or 0) + dt
 
-  local predicted_position = vec3(transform.position) + vec3(transform.velocity) * transform.time_past
-  local rotation_delta = vec3(transform.angular_velocity) * transform.time_past
+  local local_ang_vel = vec3(
+    M.local_transforms[id].vel_yaw,
+    M.local_transforms[id].vel_pitch,
+    M.local_transforms[id].vel_roll
+  )
+
+  local acceleration = vec3(vehicle:getVelocity()) - (velocity_buffer[id] or vec3(vehicle:getVelocity()))
+  velocity_buffer[id] = vec3(vehicle:getVelocity())
+  local angular_acceleration = local_ang_vel - (angular_velocity_buffer[id] or local_ang_vel)
+  angular_velocity_buffer[id] = local_ang_vel
+
+  local predicted_velocity = vec3(transform.velocity) + transform.acceleration * transform.time_past
+  local predicted_position = vec3(transform.position) + predicted_velocity * transform.time_past
+
+  local predicted_angular_velocity = vec3(transform.angular_velocity) + transform.angular_acceleration * transform.time_past
+  local rotation_delta = predicted_angular_velocity * transform.time_past
   local predicted_rotation = quat(transform.rotation) * quatFromEuler(rotation_delta.x, rotation_delta.y, rotation_delta.z)
 
-  local vehicle = be:getObjectByID(id)
-  if vehicle and M.local_transforms[id] then
-    local position_error = predicted_position - vec3(vehicle:getPosition())
-    local rotation_error = predicted_rotation / quat(M.local_transforms[id].rotation)
-    local rotation_error_euler = rotation_error:toEulerYXZ()
-    if position_error:length() > M.threshold then
-      vehicle:setPosition(
-        Point3F(
-          predicted_position.x,
-          predicted_position.y,
-          predicted_position.z
-        )
-      )
-      return
-    end
-    
-    if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 5) then
-      vehicle:setPosRot(
+  local position_error = predicted_position - vec3(vehicle:getPosition())
+  local rotation_error = predicted_rotation / quat(M.local_transforms[id].rotation)
+  local rotation_error_euler = rotation_error:toEulerYXZ()
+
+  if position_error:length() > M.threshold then
+    vehicle:setPosition(
+      Point3F(
         predicted_position.x,
         predicted_position.y,
-        predicted_position.z,
-        predicted_rotation.x,
-        predicted_rotation.y,
-        predicted_rotation.z,
-        predicted_rotation.w
+        predicted_position.z
       )
-      return
-    end
-
-    -- Velocity is computed and applied past this point
-    -- Return now if it's requested not to be applied
-    if not apply_velocity then return end
-
-    --rotation_error = (buffered_rotation_errors[id] or rotation_error):slerp(rotation_error, dt * M.smoothing_coef_rot)
-    --buffered_rotation_errors[id] = rotation_error
-
-    if position_error:length() > 5 then
-      position_error:normalize()
-      position_error = position_error * 5
-    end
-
-    local velocity_error = vec3(transform.velocity) - vec3(vehicle:getVelocity())
-    local error_length = velocity_error:length()
-
-    if error_length > M.velocity_error_limit then
-      velocity_error:normalize()
-      velocity_error = velocity_error * M.velocity_error_limit
-    end
-
-    local local_ang_vel = vec3(
-      M.local_transforms[id].vel_yaw,
-      M.local_transforms[id].vel_pitch,
-      M.local_transforms[id].vel_roll
     )
-    local angular_velocity_error = vec3(transform.angular_velocity) - local_ang_vel
-
-    local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 5, 1)
-    local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 7, 1)
-    required_acceleration = required_acceleration * (1 - clamp((1 / (required_acceleration:squaredLength() + 64 * dt)), 0, 1))
-    required_angular_acceleration = required_angular_acceleration * (1 - clamp((1 / (required_angular_acceleration:squaredLength() + 128 * dt)), 0, 1))
-
-    if required_acceleration:length() > 500 then return end
-    if required_angular_acceleration:length() > 500 then return end
-    vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
-                              ..required_acceleration.x..","
-                              ..required_acceleration.y..","
-                              ..required_acceleration.z..","
-                              ..required_angular_acceleration.y..","
-                              ..required_angular_acceleration.z..","
-                              ..required_angular_acceleration.x..")")
+    return
   end
+
+  if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 5) then
+    vehicle:setPosRot(
+      predicted_position.x,
+      predicted_position.y,
+      predicted_position.z,
+      predicted_rotation.x,
+      predicted_rotation.y,
+      predicted_rotation.z,
+      predicted_rotation.w
+    )
+    return
+  end
+
+  -- Velocity is computed and applied past this point
+  -- Return now if it's requested not to be applied
+  if not apply_velocity then return end
+
+  if position_error:length() > 5 then
+    position_error:normalize()
+    position_error = position_error * 5
+  end
+
+  local velocity_error = vec3(transform.velocity) - vec3(vehicle:getVelocity())
+  local error_length = velocity_error:length()
+  if error_length > M.velocity_error_limit then
+    velocity_error:normalize()
+    velocity_error = velocity_error * M.velocity_error_limit
+  end
+
+  local angular_velocity_error = vec3(transform.angular_velocity) - local_ang_vel
+
+  local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 5, 1)
+  local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 7, 1)
+
+  required_acceleration = required_acceleration * (1 - clamp((1 / (required_acceleration:squaredLength() + 64 * dt)), 0, 1))
+  required_angular_acceleration = required_angular_acceleration * (1 - clamp((1 / (required_angular_acceleration:squaredLength() + 128 * dt)), 0, 1))
+
+  if required_acceleration:length() > 100 then return end
+  if required_angular_acceleration:length() > 100 then return end
+ 
+  vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
+                            ..required_acceleration.x..","
+                            ..required_acceleration.y..","
+                            ..required_acceleration.z..","
+                            ..required_angular_acceleration.y..","
+                            ..required_angular_acceleration.z..","
+                            ..required_angular_acceleration.x..")")
 end 
 
 local function update(dt)
@@ -179,6 +185,7 @@ local function update_vehicle_transform(data)
   local p = ffi.new("char[?]", #data + 1, data)
   local ptr = ffi.cast("float*", p)
   local transform = {}
+
   transform.position = {ptr[0], ptr[1], ptr[2]}
   transform.rotation = {ptr[3], ptr[4], ptr[5], ptr[6]}
   transform.velocity = {ptr[7], ptr[8], ptr[9]}
@@ -189,11 +196,24 @@ local function update_vehicle_transform(data)
 
   local id = vehiclemanager.id_map[transform.owner or -1] or -1
   if vehiclemanager.ownership[id] then return end
-  if transform.generation < (vehiclemanager.packet_gen_buffer[id] or -1) then return end
+  if transform.generation <= (vehiclemanager.packet_gen_buffer[id] or -1) then return end
+
   vehiclemanager.packet_gen_buffer[id] = transform.generation
   local vehicle = be:getObjectByID(id)
+
   if vehicle then
     transform.time_past = clamp(get_current_time() - transform.sent_at, 0, 0.5) * 0.7
+
+    if M.received_transforms[id] then
+      local old_velocity = vec3(M.received_transforms[id].velocity)
+      transform.acceleration = (vec3(transform.velocity) - old_velocity) / transform.time_past
+      print(transform.acceleration)
+      local old_angular_velocity = vec3(M.received_transforms[id].angular_velocity)
+      transform.angular_acceleration = (vec3(transform.angular_velocity) - old_angular_velocity) / transform.time_past
+    else
+      transform.acceleration = vec3(0, 0, 0)
+    end
+
     M.received_transforms[id] = transform
   end
 end
