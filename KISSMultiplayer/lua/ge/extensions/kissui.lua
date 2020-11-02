@@ -106,6 +106,30 @@ local function update_favorites()
 end
 
 -- Server list update and search
+-- spairs from https://stackoverflow.com/a/15706820
+local function spairs(t, order)
+    -- collect the keys
+    local keys = {}
+    for k in pairs(t) do keys[#keys+1] = k end
+
+    -- if order function given, sort by it by passing the table and keys a, b,
+    -- otherwise just sort the keys 
+    if order then
+        table.sort(keys, function(a,b) return order(t, a, b) end)
+    else
+        table.sort(keys)
+    end
+
+    -- return the iterator function
+    local i = 0
+    return function()
+        i = i + 1
+        if keys[i] then
+            return keys[i], t[keys[i]]
+        end
+    end
+end
+
 local function filter_server_list(list, term, filter_notfull, filter_online)
   local return_servers = {}
    
@@ -226,7 +250,7 @@ local function draw_favorites_tab()
   local favorites_count = 0
   
   imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
-  for addr, server in pairs(filtered_favorite_servers) do
+  for addr, server in spairs(filtered_favorite_servers, function(t,a,b) return t[b].name:lower() > t[a].name:lower() end) do
     local server_from_list = M.server_list[addr]
     local server_found_in_list = server_from_list ~= nil
     favorites_count = favorites_count + 1
@@ -295,7 +319,7 @@ local function draw_servers_tab()
   local server_count = 0
   
   imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
-  for addr, server in pairs(filtered_servers) do
+  for addr, server in spairs(filtered_servers, function(t,a,b) return t[b].name:lower() > t[a].name:lower() end) do
     server_count = server_count + 1
 
     local header = server.name.." ["..server.player_count.."/"..server.max_players.."]"
