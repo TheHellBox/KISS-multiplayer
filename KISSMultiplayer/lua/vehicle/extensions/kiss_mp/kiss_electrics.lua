@@ -68,6 +68,10 @@ local ignored_keys = {
   radiatorFanSpin = true
 }
 
+local function ignore_key(key)
+  ignored_keys[key] = true
+end
+
 local function send()
   local data = {
     vehicle_id = obj:getID(),
@@ -189,23 +193,12 @@ local function kissInit()
     end
   end
   
-  -- Ignore known vehicle specific, automatically set electrics
-  local vehicleDirectory = v.vehicleDirectory or v.data.vehicleDirectory
-  if vehicleDirectory == "/vehicles/sbr/" and display and type(display) == 'table' then
-    ignored_keys["disp_P"] = true
-    ignored_keys["disp_R"] = true
-    ignored_keys["disp_Ra"] = true
-    ignored_keys["disp_N"] = true
-    ignored_keys["disp_Na"] = true
-    ignored_keys["disp_D"] = true
-    ignored_keys["disp_1"] = true
-    ignored_keys["disp_2"] = true
-    ignored_keys["disp_3"] = true
-    ignored_keys["disp_4"] = true
-    ignored_keys["disp_5"] = true
-    ignored_keys["disp_6"] = true
-    ignored_keys["disp_7"] = true
-    ignored_keys["spoiler"] = true
+  -- Ignore commonly used disp_* electrics used on vehicles with gear displays
+  for k,v in pairs(electrics.values) do
+    if type(k) == 'string' and k:sub(1,5) == "disp_" then
+      ignored_keys[k] = true
+      print("Ignoring display electric " .. k)
+    end
   end
   
   -- Ignore common extension/controller electrics
@@ -217,6 +210,7 @@ end
 M.send = send
 M.apply = apply
 M.apply_diff = apply_diff
+M.ignore_key = ignore_key
 
 M.kissInit = kissInit
 
