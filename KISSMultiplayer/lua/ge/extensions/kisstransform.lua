@@ -193,7 +193,7 @@ local function update_vehicle_transform(data)
   vehiclemanager.packet_gen_buffer[id] = transform.generation
   local vehicle = be:getObjectByID(id)
   if vehicle then
-    transform.time_past = get_current_time() - transform.sent_at
+    transform.time_past = clamp(get_current_time() - transform.sent_at, 0, 0.5) * 0.7
     M.received_transforms[id] = transform
   end
 end
