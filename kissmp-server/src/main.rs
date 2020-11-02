@@ -350,7 +350,6 @@ impl Server {
                 let mut header = vec![254];
                 header.append(&mut since_the_epoch.as_secs_f64().to_le_bytes().to_vec());
                 let _ = connection.send_datagram(header.into());
-                continue;
             }
             Self::handle_incoming_data(id, data_type, data, &mut client_events_tx).await?;
         }
