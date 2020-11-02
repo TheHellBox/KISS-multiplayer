@@ -203,15 +203,15 @@ local function spawn_vehicle(data)
   spawned:queueLuaCommand("extensions.hook('kissUpdateOwnership', false)")
 end
 
-local function update_vehicle_electrics(data)
+local function update_vehicle_input(data)
   local data = messagepack.unpack(data)
   local id = M.id_map[data[1] or -1] or -1
   if M.ownership[id] then return end
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
   if not M.vehicle_updates_buffer[id] then M.vehicle_updates_buffer[id] = {} end
-  M.vehicle_updates_buffer[id].electrics = data
-  vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(data).."\')")
+  M.vehicle_updates_buffer[id].input = data
+  vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(data).."\')")
 end
 
 local function update_vehicle_gearbox(data)
@@ -345,7 +345,7 @@ M.onUpdate = onUpdate
 M.send_vehicle_config = send_vehicle_config
 M.send_vehicle_config_inner = send_vehicle_config_inner
 M.spawn_vehicle = spawn_vehicle
-M.update_vehicle_electrics = update_vehicle_electrics
+M.update_vehicle_input = update_vehicle_input
 M.update_vehicle_gearbox = update_vehicle_gearbox
 M.rotate_nodes = rotate_nodes
 M.remove_vehicle = remove_vehicle
