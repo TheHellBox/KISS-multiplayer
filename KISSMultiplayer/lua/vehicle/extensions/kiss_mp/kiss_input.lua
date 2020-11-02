@@ -22,7 +22,6 @@ local function apply(data)
 end
 
 local function kissUpdateOwnership(owned)
-  print("kissUpdateOwnership(" .. tostring(owned) .. ") on objID " .. tostring(obj:getID()))
   if owned then return end
   hydros.enableFFB = false
   hydros.onFFBConfigChanged(nil)
