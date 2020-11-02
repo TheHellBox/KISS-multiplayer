@@ -261,15 +261,29 @@ local function continue_download()
   kissui.show_download = true
   
   local packets = 0
+  local attempts = 0
   while current_download.current_chunk < current_download.chunks do
     M.downloads_status[current_download.file_name].progress = current_download.current_chunk / current_download.chunks
     M.connection.tcp:settimeout(2.0)
     local data, _, _ = M.connection.tcp:receive(4096)
-    current_download.file:write(data or "")
-    current_download.current_chunk =  current_download.current_chunk + 1
-    packets = packets + 1
-    if packets > 10 then
-      return
+    if data then
+      attempts = 0
+      current_download.file:write(data)
+      current_download.current_chunk =  current_download.current_chunk + 1
+      packets = packets + 1
+      if packets > 10 then
+        return
+      end
+    else
+      if attempts > 5 then
+        M.downloading = false
+        current_download.file:close()
+        current_download = nil
+        kissui.show_download = false
+        M.connection.tcp:close()
+        kissui.add_message("Download failed, disconnecting.")
+      end
+      attempts = attempts + 1
     end
   end
   local data, _, _ = M.connection.tcp:receive(current_download.last_chunk)
