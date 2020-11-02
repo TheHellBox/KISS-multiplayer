@@ -118,7 +118,7 @@ local function handle_pong(data)
   local ping = ping_calculator.get(ping)
   local time_diff = server_time - local_time + (ping / 2)
   M.connection.time_offset = time_diff
-  M.connection.ping = ping
+  M.connection.ping = ping * 1000
 end
 
 local function onExtensionLoaded()
