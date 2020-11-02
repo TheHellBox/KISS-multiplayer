@@ -365,7 +365,7 @@ local function open_ui()
   gui.showWindow("KissMP")
   gui.registerWindow("Chat", imgui.ImVec2(256, 256))
   gui.showWindow("Chat")
-  gui.registerWindow("Downloads", imgui.ImVec2(256, 132))
+  gui.registerWindow("Downloads", imgui.ImVec2(512, 512))
   gui.showWindow("Downloads")
   gui.registerWindow("Add Favorite", imgui.ImVec2(256, 128))
   gui.hideWindow("Add Favorite")
@@ -499,46 +499,59 @@ end
 
 local function draw_download()
   if not M.show_download then return end
+  
   if not gui.isWindowVisible("Downloads") then return end
-  if imgui.Begin("Download", gui.getWindowVisibleBoolPtr("Downloads")) then
-
-    
-    imgui.Text("Download Status")
+  if imgui.Begin("Downloading Required Mods", gui.getWindowVisibleBoolPtr("Downloads")) then
     imgui.BeginChild1("DownloadsScrolling", imgui.ImVec2(0, -30), true)
     
     -- Draw a list of all the downloads, and finish by drawing a total/max size
     local total_size = 0
-    local total_progress = 0
-    local max_progress = 0
+    local downloaded_size = 0
     
     local content_width = imgui.GetWindowContentRegionWidth()
+    local split_width = content_width * 0.495
+    
     imgui.PushItemWidth(content_width / 2)
-    for _, download_status in pairs(network.download_status) do
-      imgui.Text(download_status.name)
-      imgui.SameLine()
-      imgui.ProgressBar(download_status.progress, imgui.ImVec2(-1, 0))
-      
-      local mod = kissmods.mods[download_status.name]
-      total_size = total_size + mod.size
-      total_progress = total_progress + download_status.progress
-      max_progress = max_progress + 1
+    if network.downloads_status then
+      for _, download_status in pairs(network.downloads_status) do
+        local text_size = imgui.CalcTextSize(download_status.name)
+        local extra_size = split_width - text_size.x
+        
+        imgui.Text(download_status.name)
+        if extra_size > 0 then
+          imgui.SameLine()
+          imgui.Dummy(imgui.ImVec2(extra_size, -1))
+        end
+        imgui.SameLine()
+        imgui.ProgressBar(download_status.progress, imgui.ImVec2(split_width, 0))
+        
+        local mod = kissmods.mods[download_status.name]
+        total_size = total_size + mod.size
+        downloaded_size = downloaded_size + (mod.size * download_status.progress)
+      end
     end
-    imgui.PopItemWidth()
     imgui.EndChild()
     
     total_size = bytes_to_mb(total_size)
-    local progress = total_progress / max_progress
-    local downloaded_size = progress * total_size
+    downloaded_size = bytes_to_mb(downloaded_size)
+    local progress = downloaded_size / total_size
+    local progress_text = tostring(math.floor(downloaded_size)) .. "MB / " .. tostring(math.floor(total_size)) .. "MB"
     
-    
-    local split_width = content_width * 0.495
-    
-    imgui.PushItemWidth(split_width)
-    imgui.Text(tostring(math.floor(downloaded_size)) .. "mb / " .. tostring(math.floor(total_size)) .. "mb")
-    imgui.PopItemWidth() 
-    
+    content_width = imgui.GetWindowContentRegionWidth()
+    split_width = content_width * 0.495
+    local text_size = imgui.CalcTextSize(progress_text)
+    local extra_size = split_width - text_size.x
+        
+    imgui.Text(progress_text)
+    if extra_size > 0 then
+      imgui.SameLine()
+      imgui.Dummy(imgui.ImVec2(extra_size, -1))
+    end
+    imgui.SameLine()
     if imgui.Button("Cancel###cancel_download", imgui.ImVec2(split_width, -1)) then
-    
+      network.cancel_download()
+      M.show_download = false
+      network.disconnect()
     end
   end
   imgui.End()

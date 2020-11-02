@@ -93,6 +93,7 @@ M.check_mods = check_mods
 M.mount_mod = mount_mod
 M.mount_mods = mount_mods
 M.deactivate_all_mods = deactivate_all_mods
+M.set_mods_list = set_mods_list
 M.update_status_all = update_status_all
 M.update_status = update_status
 
