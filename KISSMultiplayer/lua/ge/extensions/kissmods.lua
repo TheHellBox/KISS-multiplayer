@@ -20,6 +20,9 @@ local function deactivate_all_mods()
       FS:unmount(string.lower(mod_path))
     end
   end
+  for k, mod_path in pairs(FS:findFiles("/kissmp_mods/", "*.zip", 1000)) do
+    FS:unmount(string.lower(mod_path))
+  end
 end
 
 local function mount_mod(name)
