@@ -1,4 +1,5 @@
 local M = {}
+M.mods = {}
 
 local function get_mod_name(name)
   local name = string.lower(name)
@@ -36,25 +37,39 @@ local function mount_mods(list)
   end
 end
 
-local function check_mods(mod_list)
-  local result = {}
-  for _, mod in pairs(mod_list) do
-    local search_result = FS:findFiles("/kissmp_mods/", mod[1], 1)
-
-    if not search_result[1] then
-      table.insert(result, mod[1])
+local function update_status(mod)
+  local search_result = FS:findFiles("/kissmp_mods/", mod.name, 1)
+  if not search_result[1] then
+    mod.status = "missing"
+  else
+    local file = io.open(search_result[1])
+    local len = file:seek("end")
+    if len ~= mod.size then
+      mod.status = "different"
     else
-      local file = io.open(search_result[1])
-      local len = file:seek("end")
-      print("Comparing len:")
-      print("file len: "..len)
-      print("expected: "..mod[2])
-      if len ~= mod[2] then
-        table.insert(result, mod[1])
-      end
+      mod.status = "ok"
     end
+    io.close(file)
   end
-  return result
+end
+
+local function update_status_all()
+  for name, mod in pairs(M.mods) do
+    update_status(mod)
+  end
+end
+
+local function set_mods_list(mod_list)
+  M.mods = {}
+  for _, mod in pairs(mod_list) do
+    local mod_name = mod[1]
+    local mod_table = {
+      name = mod_name,
+      size = mod[2],
+      status = "unknown"
+    }
+    M.mods[mod_name] = mod_table
+  end
 end
 
 local function open_file(name)
@@ -78,5 +93,7 @@ M.check_mods = check_mods
 M.mount_mod = mount_mod
 M.mount_mods = mount_mods
 M.deactivate_all_mods = deactivate_all_mods
+M.update_status_all = update_status_all
+M.update_status = update_status
 
 return M

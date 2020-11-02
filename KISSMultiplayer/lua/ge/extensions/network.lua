@@ -1,6 +1,8 @@
 local M = {}
 M.downloading = false
-M.download_info = {}
+M.download_status = {}
+
+local current_download = nil
 
 local socket = require("socket")
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
@@ -68,12 +70,16 @@ end
 local function handle_file_transfer(data)
   kissui.show_download = true
   local file_len = data:sub(1, 4)
-  M.download_info.file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, file_len))[0]
-  M.download_info.file_name = data:sub(5, #data)
-  M.download_info.chunks = math.floor(M.download_info.file_len / 4096)
-  M.download_info.last_chunk = M.download_info.file_len - M.download_info.chunks * 4096
-  M.download_info.current_chunk = 0
-  M.download_info.file = kissmods.open_file(M.download_info.file_name)
+  local file_name = name = data:sub(5, #data)
+  
+  current_download = {
+    file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, file_len))[0],
+    file_name = file_name),
+    chunks = math.floor(current_download.file_len / 4096),
+    last_chunk = current_download.file_len - current_download.chunks * 4096,
+    current_chunk = 0,
+    file = kissmods.open_file(current_download.file_name)
+  }
   M.downloading = true
 end
 
@@ -194,25 +200,17 @@ local function connect(addr, player_name)
     name = player_name
   }
 
-  local mod_list = {}
-  local missing_mods = kissmods.check_mods(server_info.mods)
-  for k, v in pairs(server_info.mods) do
-    local mod_missing = false
-    for _, missing in pairs(missing_mods) do
-      if v[1] == missing then
-        mod_missing = true
-      end
-    end
-    if not mod_missing then
-      table.insert(mod_list, v[1])
-    end
-  end
+  kissmods.set_mods_list(server_info.mods)
+  kissmods.update_status_all()
 
-  local mods_left = 0
-  for _, _ in pairs(missing_mods) do
-    mods_left = mods_left + 1
+  local missing_mods = {}
+  for _, mod in pairs(kissmods.mods) do
+    if mod.status ~= "ok" then
+      table.insert(missing_mods, mod.name)
+      M.download_status[mod.name] = {name = mod.name, progress = 0}
+    end
   end
-  M.connection.mods_left = mods_left
+  M.connection.mods_left = #missing_mods
  
   kissmods.deactivate_all_mods()
   kissmods.mount_mods(mod_list)
@@ -246,27 +244,33 @@ end
 local function continue_download()
   send_ping()
   kissui.show_download = true
+  
   local packets = 0
-  while M.download_info.current_chunk < M.download_info.chunks do
-    kissui.download_progress = M.download_info.current_chunk / M.download_info.chunks
+  while current_download.current_chunk < current_download.chunks do
+    M.download_status[current_download.file_name].progress = current_download.current_chunk / current_download.chunks
     M.connection.tcp:settimeout(2.0)
     local data, _, _ = M.connection.tcp:receive(4096)
-    M.download_info.file:write(data or "")
-    M.download_info.current_chunk =  M.download_info.current_chunk + 1
+    current_download.file:write(data or "")
+    current_download.current_chunk =  current_download.current_chunk + 1
     packets = packets + 1
     if packets > 10 then
       return
     end
   end
-  local data, _, _ = M.connection.tcp:receive(M.download_info.last_chunk)
-  M.download_info.file:write(data)
-  kissui.show_download = false
+  local data, _, _ = M.connection.tcp:receive(current_download.last_chunk)
+  current_download.file:write(data)
+  
   M.downloading = false
-  M.download_info.file:close()
-  kissmods.mount_mod(M.download_info.file_name)
+  current_download.file:close()
+  kissmods.update_status(kissmods.mods[current_download.file_name)
+  kissmods.mount_mod(current_download.file_name)
+  current_download = nil
+  
   M.connection.tcp:settimeout(0.0)
   M.connection.mods_left = M.connection.mods_left - 1
   if M.connection.mods_left < 1 then
+    M.download_status = nil
+    kissui.show_download = false
     on_finished_download()
   end
 end
