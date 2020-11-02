@@ -283,7 +283,7 @@ impl Server {
                 }
             }
         }
-        Ok(())
+        Err(anyhow::Error::msg("Disconnected"))
     }
 
     async fn drive_receive(
@@ -337,7 +337,7 @@ impl Server {
             }
             Self::handle_incoming_data(id, data_type, data, &mut client_events_tx).await?;
         }
-        Ok(())
+        Err(anyhow::Error::msg("Disconnected"))
     }
 
     async fn tick(&mut self) {
