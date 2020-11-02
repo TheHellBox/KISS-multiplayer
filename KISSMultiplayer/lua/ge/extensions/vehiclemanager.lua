@@ -3,6 +3,7 @@ local M = {}
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 
 local timer = 0
+local meta_timer = 0
 local vehicle_buffer = {}
 local colors_buffer = {}
 local plates_buffer = {}
@@ -69,17 +70,33 @@ local function onUpdate(dt)
   if not network.connection.connected then return end
 
   -- Track color and plate changes
-  timer = timer + dt
-  if timer >= 1 then
+  meta_timer = meta_timer + dt
+  if meta_timer >= 1 then
     send_vehicle_meta_updates()
-    timer = timer - 1
+    meta_timer = meta_timer - 1
+  end
+  
+  local tick_time = (1/network.connection.tickrate)
+  if timer <  tick_time then
+    timer = timer + dt
+  else
+    timer = timer - tick_time
+    for i, v in pairs(vehiclemanager.ownership) do
+      local vehicle = be:getObjectByID(i)
+      if vehicle then
+        kisstransform.send_transform_updates(vehicle)
+        vehicle:queueLuaCommand("kiss_input.send()")
+        vehicle:queueLuaCommand("kiss_electrics.send()")
+        vehicle:queueLuaCommand("kiss_gearbox.send()")
+      end
+    end
   end
   
   for id, updates in pairs(M.vehicle_updates_buffer) do
     local vehicle = be:getObjectByID(id)
     if vehicle then
-      if updates.electronics then
-        vehicle:queueLuaCommand("kiss_electrics.apply(\'"..jsonEncode(updates.electrics).."\')")
+      if updates.input then
+        vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(updates.input).."\')")
       end
       if updates.gearbox then
         vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(updates.gearbox).."\')")

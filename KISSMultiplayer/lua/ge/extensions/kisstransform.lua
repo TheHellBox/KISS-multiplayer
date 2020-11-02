@@ -160,20 +160,6 @@ local function update(dt)
     end
   end
 
-  if timer < (1/network.connection.tickrate) then
-    timer = timer + dt
-  else
-    timer = 0
-    for i, v in pairs(vehiclemanager.ownership) do
-      local vehicle = be:getObjectByID(i)
-      if vehicle then
-        send_transform_updates(vehicle)
-        vehicle:queueLuaCommand("kiss_electrics.send()")
-        vehicle:queueLuaCommand("kiss_gearbox.send()")
-      end
-    end
-  end
-
   -- Don't apply velocity while paused. If we do, velocity gets stored up and released when the game resumes.
   local apply_velocity = not bullettime.getPause()
   for id, transform in pairs(M.received_transforms) do
@@ -222,6 +208,7 @@ local function push_transform(id, t)
   M.local_transforms[id] = jsonDecode(t)
 end
 
+M.send_transform_updates = send_transform_updates
 M.send_vehicle_transform = send_vehicle_transform
 M.update_vehicle_transform = update_vehicle_transform
 M.push_transform = push_transform
