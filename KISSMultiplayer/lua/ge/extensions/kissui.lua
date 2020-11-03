@@ -441,6 +441,8 @@ local function draw_add_favorite_window()
 end
 
 local function draw_menu()
+  if M.show_download then return end
+
   if not gui.isWindowVisible("KissMP") then return end
   gui.setupWindow("KissMP")
   if imgui.Begin("KissMP", gui.getWindowVisibleBoolPtr("KissMP")) then
