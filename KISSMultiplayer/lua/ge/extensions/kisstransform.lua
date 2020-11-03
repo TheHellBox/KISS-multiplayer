@@ -5,10 +5,15 @@ local timer = 0
 local velocity_buffer = {}
 local angular_velocity_buffer = {}
 
+local lerp_buffer = {}
+
+local acceleration_buffer = {}
+local angular_acceleration_buffer = {}
+
 M.received_transforms = {}
 M.local_transforms = {}
 
-M.threshold = 4
+M.threshold = 3
 M.rot_threshold = 2.5
 M.velocity_error_limit = 10
 
@@ -23,6 +28,14 @@ local function get_current_time()
   date.sec = 0
   date.min = 0
   return (network.socket.gettime() - os.time(date)) + network.connection.time_offset
+end
+
+local function isnan(x)
+  return x ~= x
+end
+
+local function isinf(x)
+  return not (x > -math.huge and x < math.huge)
 end
 
 local function send_transform_updates(obj)
@@ -66,7 +79,16 @@ local function apply_transform(dt, id, transform, apply_velocity)
   if not vehicle then return end
   if not M.local_transforms[id] then return end
 
-  transform.time_past = (transform.time_past or 0) + dt
+  if not lerp_buffer[id] then
+    lerp_buffer[id] = {
+      velocity = vec3(transform.velocity),
+      angular_velocity = vec3(transform.angular_velocity),
+      acceleration = transform.acceleration,
+      angular_acceleration = transform.angular_acceleration,
+    }
+  end
+
+  transform.time_past = clamp(transform.time_past + dt, 0, 0.5)
 
   local local_ang_vel = vec3(
     M.local_transforms[id].vel_yaw,
@@ -74,15 +96,15 @@ local function apply_transform(dt, id, transform, apply_velocity)
     M.local_transforms[id].vel_roll
   )
 
-  local acceleration = vec3(vehicle:getVelocity()) - (velocity_buffer[id] or vec3(vehicle:getVelocity()))
-  velocity_buffer[id] = vec3(vehicle:getVelocity())
-  local angular_acceleration = local_ang_vel - (angular_velocity_buffer[id] or local_ang_vel)
-  angular_velocity_buffer[id] = local_ang_vel
+  local received_velocity = lerp(lerp_buffer[id].velocity, vec3(transform.velocity), dt / transform.time_past * 2)
+  local received_angular_velocity = lerp(lerp_buffer[id].angular_velocity, vec3(transform.angular_velocity), dt / transform.time_past * 2)
+  local received_acceleration = lerp(lerp_buffer[id].acceleration, transform.acceleration, dt / transform.time_past)
+  local received_angular_acceleration = lerp(lerp_buffer[id].angular_acceleration, transform.angular_acceleration, dt / transform.time_past)
 
-  local predicted_velocity = vec3(transform.velocity) + transform.acceleration * transform.time_past
+  local predicted_velocity = received_acceleration + received_acceleration * transform.time_past
   local predicted_position = vec3(transform.position) + predicted_velocity * transform.time_past
 
-  local predicted_angular_velocity = vec3(transform.angular_velocity) + transform.angular_acceleration * transform.time_past
+  local predicted_angular_velocity = received_angular_velocity + received_angular_acceleration * transform.time_past
   local rotation_delta = predicted_angular_velocity * transform.time_past
   local predicted_rotation = quat(transform.rotation) * quatFromEuler(rotation_delta.x, rotation_delta.y, rotation_delta.z)
 
@@ -118,10 +140,10 @@ local function apply_transform(dt, id, transform, apply_velocity)
   -- Return now if it's requested not to be applied
   if not apply_velocity then return end
 
-  if position_error:length() > 5 then
-    position_error:normalize()
-    position_error = position_error * 5
-  end
+  local acceleration = vec3(vehicle:getVelocity()) - (velocity_buffer[id] or vec3(vehicle:getVelocity()))
+  velocity_buffer[id] = vec3(vehicle:getVelocity())
+  local angular_acceleration = local_ang_vel - (angular_velocity_buffer[id] or local_ang_vel)
+  angular_velocity_buffer[id] = local_ang_vel
 
   local velocity_error = vec3(transform.velocity) - vec3(vehicle:getVelocity())
   local error_length = velocity_error:length()
@@ -135,11 +157,14 @@ local function apply_transform(dt, id, transform, apply_velocity)
   local required_acceleration = (velocity_error + position_error * 5) * math.min(dt * 5, 1)
   local required_angular_acceleration = (angular_velocity_error + rotation_error_euler * 5) * math.min(dt * 7, 1)
 
-  required_acceleration = required_acceleration * (1 - clamp((1 / (required_acceleration:squaredLength() + 64 * dt)), 0, 1))
-  required_angular_acceleration = required_angular_acceleration * (1 - clamp((1 / (required_angular_acceleration:squaredLength() + 128 * dt)), 0, 1))
+  local dot_acc = required_acceleration:dot((acceleration_buffer[id] or acceleration) - acceleration) / (required_acceleration:squaredLength() + 9 * dt)
+  local dot_ang_acc = required_angular_acceleration:dot((angular_acceleration_buffer[id] or angular_acceleration) - angular_acceleration) / (required_angular_acceleration:squaredLength() + 9 * dt)
 
-  if required_acceleration:length() > 100 then return end
-  if required_angular_acceleration:length() > 100 then return end
+  required_acceleration = required_acceleration * (1 - clamp(dot_acc, 0, 1))
+  required_angular_acceleration = required_angular_acceleration * (1 - clamp(dot_ang_acc, 0, 1))
+ 
+  if required_acceleration:length() > 5 or isnan(required_acceleration.x) or isinf(required_acceleration.x) then return end
+  if required_angular_acceleration:length() > 5 or isnan(required_angular_acceleration.x) or isinf(required_angular_acceleration.x) then return end
  
   vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
                             ..required_acceleration.x..","
@@ -148,6 +173,9 @@ local function apply_transform(dt, id, transform, apply_velocity)
                             ..required_angular_acceleration.y..","
                             ..required_angular_acceleration.z..","
                             ..required_angular_acceleration.x..")")
+
+  acceleration_buffer[id] = required_acceleration
+  angular_acceleration_buffer[id] = required_angular_acceleration
 end 
 
 local function update(dt)
@@ -191,9 +219,9 @@ local function update_vehicle_transform(data)
     transform.time_past = clamp(get_current_time() - transform.sent_at, 0, 0.1) * 0.7 + 0.001
 
     if M.received_transforms[id] then
-      local old_velocity = vec3(M.received_transforms[id].velocity)
-      transform.acceleration = (vec3(transform.velocity) - old_velocity) / transform.time_past
-      print(transform.acceleration)
+      local old_transform =  M.received_transforms[id]
+      local old_velocity = vec3(old_transform.velocity)
+      transform.acceleration = (vec3(transform.velocity) - old_velocity) / (transform.sent_at - old_transform.sent_at)
       local old_angular_velocity = vec3(M.received_transforms[id].angular_velocity)
       transform.angular_acceleration = (vec3(transform.angular_velocity) - old_angular_velocity) / transform.time_past
     else

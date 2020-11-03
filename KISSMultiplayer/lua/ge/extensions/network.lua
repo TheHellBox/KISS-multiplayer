@@ -39,7 +39,6 @@ local MESSAGETYPE_PLAYERINFO = 12
 local MESSAGETYPE_META_UPDATE = 14
 local MESSAGETYPE_ELECTRICS_UNDEFINED = 15
 local MESSAGETYPE_PLAYER_DISCONNECTED = 16
-
 local PONG = 254
 
 local message_handlers = {}
@@ -171,6 +170,11 @@ local function sanitize_addr(addr)
 end
 
 local function connect(addr, player_name)
+  if M.connection.tcp then
+    M.connection.tcp:close()
+  end
+  M.players = {}
+
   print("Connecting...")
   addr = sanitize_addr(addr)
   kissui.add_message("Connecting to "..addr.."...")
