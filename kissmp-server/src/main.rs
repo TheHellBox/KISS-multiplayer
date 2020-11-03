@@ -167,7 +167,7 @@ impl Server {
         for (_, client) in &mut self.connections {
             for client_info in &client_infos {
                 let _ = client
-                    .unreliable
+                    .ordered
                     .send(Outgoing::PlayerInfoUpdate(client_info.clone()))
                     .await;
             }

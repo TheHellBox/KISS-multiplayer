@@ -59,6 +59,10 @@ impl Server {
                     client
                         .send_chat_message(format!("Player {} has left the server", player_name))
                         .await;
+                    let _ = client
+                        .ordered
+                        .send(Outgoing::PlayerDisconnected(client_id))
+                        .await;
                 }
                 self.lua.context(|lua_ctx| {
                     let _ = crate::lua::run_hook::<u32, ()>(

@@ -4,7 +4,14 @@ local nodes = {}
 
 local function kissInit()
   for _, node in pairs(v.data.nodes) do
-    table.insert(nodes, node)
+    local mass = obj:getNodeMass(node.cid)
+    table.insert(
+      nodes,
+      {
+        node.cid,
+        vec3(mass, mass, mass):toFloat3()
+      }
+    )
   end
 end
 
@@ -20,14 +27,15 @@ local function update_transform_info()
 end
 
 local function apply_full_velocity(x, y, z, pitch, roll, yaw)
-  local velocity = vec3(x, y, z)
+  local velocity = vec3(x, y, z):toFloat3()
   local force = obj:getPhysicsFPS()
-  local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation()))
+  local force = vec3(force, force, force):toFloat3()
+  local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation())):toFloat3()
   for k=1, #nodes do
     local node = nodes[k]
-    local node_position = vec3(obj:getNodePosition(node.cid))
-    local force = (velocity + node_position:cross(rot)) * obj:getNodeMass(node.cid) * force
-    obj:applyForceVector(node.cid, force:toFloat3())
+    local node_position = obj:getNodePosition(node[1])
+    local force = (velocity + node_position:cross(rot)) * node[2] * force
+    obj:applyForceVector(node[1], force)
   end
 end
 

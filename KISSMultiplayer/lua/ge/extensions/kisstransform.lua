@@ -188,7 +188,7 @@ local function update_vehicle_transform(data)
   local vehicle = be:getObjectByID(id)
 
   if vehicle then
-    transform.time_past = clamp(get_current_time() - transform.sent_at, 0, 0.5) * 0.7
+    transform.time_past = clamp(get_current_time() - transform.sent_at, 0, 0.1) * 0.7 + 0.001
 
     if M.received_transforms[id] then
       local old_velocity = vec3(M.received_transforms[id].velocity)

@@ -14,6 +14,7 @@ pub enum Outgoing {
     PlayerInfoUpdate(ClientInfo),
     VehicleMetaUpdate(VehicleMeta),
     ElectricsUndefinedUpdate(ElectricsUndefined),
+    PlayerDisconnected(u32)
 }
 
 impl Server {
@@ -40,6 +41,7 @@ impl Server {
             VehicleMetaUpdate(meta) => meta.to_bytes(),
             TransferFile(_) => vec![], // Covered in other place, unused here
             ElectricsUndefinedUpdate(values) => values.to_bytes(),
+            PlayerDisconnected(id) => id.to_le_bytes().to_vec()
         }
     }
 }
@@ -59,5 +61,6 @@ pub fn get_data_type(data: &Outgoing) -> u8 {
         PlayerInfoUpdate(_) => 12,
         VehicleMetaUpdate(_) => 14,
         ElectricsUndefinedUpdate(_) => 15,
+        PlayerDisconnected(_) => 16
     }
 }

@@ -38,6 +38,8 @@ local MESSAGETYPE_LUA = 11
 local MESSAGETYPE_PLAYERINFO = 12
 local MESSAGETYPE_META_UPDATE = 14
 local MESSAGETYPE_ELECTRICS_UNDEFINED = 15
+local MESSAGETYPE_PLAYER_DISCONNECTED = 16
+
 local PONG = 254
 
 local message_handlers = {}
@@ -78,7 +80,7 @@ end
 
 local function handle_file_transfer(data)
   kissui.show_download = true
-  local file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data:sub(1, 4)))[0] 
+  local file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data:sub(1, 4)))[0]
   local file_name = data:sub(5, #data)
   local chunks = math.floor(file_len / 4096)
   
@@ -114,11 +116,16 @@ local function handle_pong(data)
   local server_time = ffi.cast("double*", ffi.new("char[?]", 9, data))[0]
   local local_time = socket.gettime()
   local ping = local_time - ping_send_time
-  if ping > 1.5 then return end
+  if ping > 1 then return end
   local ping = ping_calculator.get(ping)
   local time_diff = server_time - local_time + (ping / 2)
   M.connection.time_offset = time_diff
   M.connection.ping = ping * 1000
+end
+
+local function handle_player_disconnected(data)
+  local id = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data))[0]
+  M.players[id] = nil
 end
 
 local function onExtensionLoaded()
@@ -136,6 +143,7 @@ local function onExtensionLoaded()
   message_handlers[MESSAGETYPE_META_UPDATE] = vehiclemanager.update_vehicle_meta
   message_handlers[MESSAGETYPE_ELECTRICS_UNDEFINED] = vehiclemanager.electrics_diff_update
   message_handlers[PONG] = handle_pong
+  message_handlers[MESSAGETYPE_PLAYER_DISCONNECTED] = handle_player_disconnected
 end
 
 local function send_data(data_type, reliable, data)
