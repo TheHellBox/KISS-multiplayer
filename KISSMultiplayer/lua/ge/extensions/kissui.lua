@@ -470,7 +470,7 @@ local function send_current_chat_message()
   local message_trimmed = message:gsub("^%s*(.-)%s*$", "%1")
   if message_trimmed:len() == 0 then return end
   
-  network.send_data(8, true, message)
+  network.send_data(8, true, message_trimmed)
   message_buffer = imgui.ArrayChar(128)
 end
 
