@@ -34,6 +34,8 @@ local search_buffer = imgui.ArrayChar(64)
 local time_since_filters_change = 0
 local filter_queued = false
 
+local should_draw_unread_count = false
+local unread_message_count = 0
 local prev_chat_scroll_max = 0
 local message_buffer = imgui.ArrayChar(128)
 
@@ -491,9 +493,17 @@ local function draw_chat()
   if not gui.isWindowVisible("Chat") then return end
   imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 100))
 
-  if imgui.Begin("Chat", gui.getWindowVisibleBoolPtr("Chat")) then
+  local window_title = "Chat"
+  if unread_message_count > 0 and should_draw_unread_count then
+    window_title = window_title .. " (" .. tostring(unread_message_count) .. ")"
+    print(window_title)
+  end
+  window_title = window_title .. "###chat"
+  
+  if imgui.Begin(window_title, gui.getWindowVisibleBoolPtr("Chat")) then
     local content_width = imgui.GetWindowContentRegionWidth()
-
+    
+    -- Draw messages
     imgui.BeginChild1("Scrolling", imgui.ImVec2(content_width - 150, -30), true)
 
     for _, message in pairs(M.chat) do
@@ -502,16 +512,20 @@ local function draw_chat()
       imgui.PopTextWrapPos()
     end
     
+    -- Scroll to bottom and clear unreads
     local scroll_to_bottom = imgui.GetScrollY() >= prev_chat_scroll_max
     if scroll_to_bottom then
       imgui.SetScrollY(imgui.GetScrollMaxY())
+      unread_message_count = 0
     end
     prev_chat_scroll_max = imgui.GetScrollMaxY()
     imgui.EndChild()
-   
+    
+    -- Draw player list
     imgui.SameLine()
     draw_player_list()
    
+   -- Draw chat textbox
     local content_width = imgui.GetWindowContentRegionWidth()
     local button_width = 75
     local textbox_width = content_width - (button_width * 1.075)
@@ -532,12 +546,12 @@ local function draw_chat()
   end
   imgui.End()
   imgui.PopStyleVar(1)
+  should_draw_unread_count = true
 end
 
 local function bytes_to_mb(bytes)
   return (bytes / 1024) / 1024
 end
-
 
 local function draw_download()
   if not M.show_download then return end
@@ -650,6 +664,8 @@ local function onUpdate(dt)
 end
 
 local function add_message(message)
+  unread_message_count = unread_message_count + 1
+  should_draw_unread_count = false
   table.insert(M.chat, message)
 end
 
