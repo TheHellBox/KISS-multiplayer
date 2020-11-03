@@ -34,6 +34,8 @@ local search_buffer = imgui.ArrayChar(64)
 local time_since_filters_change = 0
 local filter_queued = false
 
+local should_draw_unread_count = false
+local unread_message_count = 0
 local prev_chat_scroll_max = 0
 local message_buffer = imgui.ArrayChar(128)
 
@@ -106,6 +108,30 @@ local function update_favorites()
 end
 
 -- Server list update and search
+-- spairs from https://stackoverflow.com/a/15706820
+local function spairs(t, order)
+    -- collect the keys
+    local keys = {}
+    for k in pairs(t) do keys[#keys+1] = k end
+
+    -- if order function given, sort by it by passing the table and keys a, b,
+    -- otherwise just sort the keys 
+    if order then
+        table.sort(keys, function(a,b) return order(t, a, b) end)
+    else
+        table.sort(keys)
+    end
+
+    -- return the iterator function
+    local i = 0
+    return function()
+        i = i + 1
+        if keys[i] then
+            return keys[i], t[keys[i]]
+        end
+    end
+end
+
 local function filter_server_list(list, term, filter_notfull, filter_online)
   local return_servers = {}
    
@@ -226,7 +252,7 @@ local function draw_favorites_tab()
   local favorites_count = 0
   
   imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
-  for addr, server in pairs(filtered_favorite_servers) do
+  for addr, server in spairs(filtered_favorite_servers, function(t,a,b) return t[b].name:lower() > t[a].name:lower() end) do
     local server_from_list = M.server_list[addr]
     local server_found_in_list = server_from_list ~= nil
     favorites_count = favorites_count + 1
@@ -295,7 +321,7 @@ local function draw_servers_tab()
   local server_count = 0
   
   imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
-  for addr, server in pairs(filtered_servers) do
+  for addr, server in spairs(filtered_servers, function(t,a,b) return t[b].name:lower() > t[a].name:lower() end) do
     server_count = server_count + 1
 
     local header = server.name.." ["..server.player_count.."/"..server.max_players.."]"
@@ -415,6 +441,8 @@ local function draw_add_favorite_window()
 end
 
 local function draw_menu()
+  if M.show_download then return end
+
   if not gui.isWindowVisible("KissMP") then return end
   gui.setupWindow("KissMP")
   if imgui.Begin("KissMP", gui.getWindowVisibleBoolPtr("KissMP")) then
@@ -446,7 +474,7 @@ local function send_current_chat_message()
   local message_trimmed = message:gsub("^%s*(.-)%s*$", "%1")
   if message_trimmed:len() == 0 then return end
   
-  network.send_data(8, true, message)
+  network.send_data(8, true, message_trimmed)
   message_buffer = imgui.ArrayChar(128)
 end
 
@@ -467,9 +495,17 @@ local function draw_chat()
   if not gui.isWindowVisible("Chat") then return end
   imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 100))
 
-  if imgui.Begin("Chat", gui.getWindowVisibleBoolPtr("Chat")) then
+  local window_title = "Chat"
+  if unread_message_count > 0 and should_draw_unread_count then
+    window_title = window_title .. " (" .. tostring(unread_message_count) .. ")"
+    print(window_title)
+  end
+  window_title = window_title .. "###chat"
+  
+  if imgui.Begin(window_title, gui.getWindowVisibleBoolPtr("Chat")) then
     local content_width = imgui.GetWindowContentRegionWidth()
-
+    
+    -- Draw messages
     imgui.BeginChild1("Scrolling", imgui.ImVec2(content_width - 150, -30), true)
 
     for _, message in pairs(M.chat) do
@@ -478,16 +514,20 @@ local function draw_chat()
       imgui.PopTextWrapPos()
     end
     
+    -- Scroll to bottom and clear unreads
     local scroll_to_bottom = imgui.GetScrollY() >= prev_chat_scroll_max
     if scroll_to_bottom then
       imgui.SetScrollY(imgui.GetScrollMaxY())
+      unread_message_count = 0
     end
     prev_chat_scroll_max = imgui.GetScrollMaxY()
     imgui.EndChild()
-   
+    
+    -- Draw player list
     imgui.SameLine()
     draw_player_list()
    
+   -- Draw chat textbox
     local content_width = imgui.GetWindowContentRegionWidth()
     local button_width = 75
     local textbox_width = content_width - (button_width * 1.075)
@@ -508,12 +548,12 @@ local function draw_chat()
   end
   imgui.End()
   imgui.PopStyleVar(1)
+  should_draw_unread_count = true
 end
 
 local function bytes_to_mb(bytes)
   return (bytes / 1024) / 1024
 end
-
 
 local function draw_download()
   if not M.show_download then return end
@@ -626,6 +666,8 @@ local function onUpdate(dt)
 end
 
 local function add_message(message)
+  unread_message_count = unread_message_count + 1
+  should_draw_unread_count = false
   table.insert(M.chat, message)
 end
 
