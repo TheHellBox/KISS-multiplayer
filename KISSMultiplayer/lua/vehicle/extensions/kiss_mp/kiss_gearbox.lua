@@ -3,6 +3,7 @@ M.arcade = true
 
 local gearbox = nil
 local gearbox_is_dct = false
+local gearbox_is_manual = false
 
 local function gearboxBehaviorChanged(behavior)
   M.arcade = behavior == "arcade"
@@ -43,7 +44,7 @@ local function apply(data)
   
   local data = jsonDecode(data)
   set_gear_indices(data[5])
-  if data[4] ~= "none" then
+  if not gearbox_is_manual and data[4] ~= "none" then
     gearbox:setMode(data[4])
   end
 end
@@ -69,6 +70,7 @@ local function kissInit()
   end
   
   gearbox_is_dct = gearbox.type == "dctGearbox"
+  gearbox_is_manual = gearbox.type == "manualGearbox" 
 end
 
 local function kissUpdateOwnership(owned)
