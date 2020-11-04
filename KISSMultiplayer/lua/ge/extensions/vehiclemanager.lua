@@ -92,6 +92,15 @@ local function onUpdate(dt)
     end
   end
   
+  for k, v in pairs(M.id_map) do
+    if not M.ownership[v] then
+      local vehicle = be:getObjectByID(v)
+      if vehicle then
+        vehicle:queueLuaCommand("kiss_vehicle.update_eligible_nodes()")
+      end
+    end
+  end
+  
   for id, updates in pairs(M.vehicle_updates_buffer) do
     local vehicle = be:getObjectByID(id)
     if vehicle then
