@@ -2,6 +2,10 @@ local M = {}
 local parts_config = v.config
 local nodes = {}
 
+local last_node = 1
+local nodes_per_frame = 64
+local node_pos_thresh = (32 * 32)
+
 local function kissInit()
   for _, node in pairs(v.data.nodes) do
     local mass = obj:getNodeMass(node.cid)
@@ -9,10 +13,25 @@ local function kissInit()
       nodes,
       {
         node.cid,
-        vec3(mass, mass, mass):toFloat3()
+        vec3(mass, mass, mass):toFloat3(),
+        true
       }
     )
   end
+end
+
+local function sqr_len(vec)
+  return vec.x * vec.x + vec.y * vec.y + vec.z * vec.z
+end
+
+local function update_eligible_nodes()
+  for k=last_node, math.min(#nodes , last_node + nodes_per_frame) do
+    local node = nodes[k]
+    local node_position = obj:getNodePosition(node[1])
+    node[3] = sqr_len(node_position) < node_pos_thresh
+    last_node = k
+  end
+  if last_node == #nodes then last_node = 1 end
 end
 
 local function update_transform_info()
@@ -33,14 +52,17 @@ local function apply_full_velocity(x, y, z, pitch, roll, yaw)
   local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation())):toFloat3()
   for k=1, #nodes do
     local node = nodes[k]
-    local node_position = obj:getNodePosition(node[1])
-    local force = (velocity + node_position:cross(rot)) * node[2] * force
-    obj:applyForceVector(node[1], force)
+    if node[3] then
+      local node_position = obj:getNodePosition(node[1])
+      local force = (velocity + node_position:cross(rot)) * node[2] * force
+      obj:applyForceVector(node[1], force)
+    end
   end
 end
 
 M.update_transform_info = update_transform_info
 M.apply_full_velocity = apply_full_velocity
+M.update_eligible_nodes = update_eligible_nodes
 M.kissInit = kissInit
 
 return M
