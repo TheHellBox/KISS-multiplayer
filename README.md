@@ -26,7 +26,7 @@ KissMP is a new modification that adds multiplayer to BeamNG.drive.
 for mod to work
 - You can drop the bridge .exe file to any place you want.
 
-Usage:
+## Usage:
 - Launch the bridge. If everything is correct, it'll show you the text "Bridge is running!" in a console window
 - Launch the game. After the launch, you should be able to see server list and chat windows. Select a server in the server list
 and hit connect button
