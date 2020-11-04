@@ -10,8 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  build_bridge:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -19,4 +18,15 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
+      working-directory: ./kissmp-bridge
+      run: cargo build --verbose --release
+  build_server:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      working-directory: ./kissmp-server
       run: cargo build --verbose --release
