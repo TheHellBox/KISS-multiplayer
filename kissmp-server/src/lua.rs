@@ -13,6 +13,7 @@ pub enum LuaCommand {
     RemoveVehicle(u32),
     ResetVehicle(u32),
     SendLua(u32, String),
+    SendVehicleLua(u32, String),
     Kick(u32, String),
 }
 
@@ -95,6 +96,12 @@ impl rlua::UserData for Vehicle {
                 Ok(())
             },
         );
+        methods.add_method("sendLua", |lua_ctx, this, lua: String| {
+            let globals = lua_ctx.globals();
+            let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
+            sender.0.send(LuaCommand::SendVehicleLua(this.data.server_id, lua)).unwrap();
+            Ok(())
+        });
     }
 }
 
@@ -189,6 +196,16 @@ impl Server {
     pub async fn lua_tick(&mut self) -> rlua::Result<()> {
         let _ = self.update_lua_connections();
         let _ = self.update_lua_vehicles();
+
+        self.lua.context(|lua_ctx| {
+            let globals = lua_ctx.globals();
+            globals.set("SERVER_TICKRATE", self.tickrate)?;
+            globals.set("SERVER_NAME", self.name.clone())?;
+            globals.set("MAX_PLAYERS", self.max_players)?;
+            globals.set("MAX_VEHICLES_PER_CLIENT", self.max_vehicles_per_client)?;
+            Ok(())
+        })?;
+
         for command in self.lua_commands.try_iter().collect::<Vec<LuaCommand>>() {
             use LuaCommand::*;
             match command {
@@ -210,6 +227,14 @@ impl Server {
                 ResetVehicle(id) => self.reset_vehicle(id, None).await,
                 SendLua(id, lua) => {
                     self.connections.get_mut(&id).unwrap().send_lua(lua).await;
+                }
+                SendVehicleLua(id, lua) => {
+                    for (_, client) in &mut self.connections {
+                        let _ = client
+                            .ordered
+                            .send(crate::Outgoing::VehicleLuaCommand(id, lua.clone()))
+                            .await;
+                    }
                 }
                 Kick(id, reason) => self
                     .connections

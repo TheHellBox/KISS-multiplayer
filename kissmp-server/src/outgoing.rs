@@ -14,7 +14,8 @@ pub enum Outgoing {
     PlayerInfoUpdate(ClientInfo),
     VehicleMetaUpdate(VehicleMeta),
     ElectricsUndefinedUpdate(ElectricsUndefined),
-    PlayerDisconnected(u32)
+    PlayerDisconnected(u32),
+    VehicleLuaCommand(u32, String)
 }
 
 impl Server {
@@ -41,7 +42,12 @@ impl Server {
             VehicleMetaUpdate(meta) => meta.to_bytes(),
             TransferFile(_) => vec![], // Covered in other place, unused here
             ElectricsUndefinedUpdate(values) => values.to_bytes(),
-            PlayerDisconnected(id) => id.to_le_bytes().to_vec()
+            PlayerDisconnected(id) => id.to_le_bytes().to_vec(),
+            VehicleLuaCommand(id, command) => {
+                let mut msg = id.to_le_bytes().to_vec();
+                msg.append(&mut command.into_bytes());
+                msg
+            }
         }
     }
 }
@@ -61,6 +67,7 @@ pub fn get_data_type(data: &Outgoing) -> u8 {
         PlayerInfoUpdate(_) => 12,
         VehicleMetaUpdate(_) => 14,
         ElectricsUndefinedUpdate(_) => 15,
-        PlayerDisconnected(_) => 16
+        PlayerDisconnected(_) => 16,
+        VehicleLuaCommand(_, _) => 17
     }
 }

@@ -246,16 +246,16 @@ end
 
 local function remove_vehicle(data)
   local id = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0]
-  id = M.id_map[id] or -1
-  local vehicle = be:getObjectByID(id)
+  local local_id = M.id_map[id] or -1
+  local vehicle = be:getObjectByID(local_id)
   if vehicle then
     commands.setFreeCamera()
     vehicle:delete()
     if commands.isFreeCamera(player) then commands.setGameCamera() end
     M.id_map[id] = nil
-    M.ownership[id] = nil
-    M.vehicle_updates_buffer[id] = nil
-    kisstransform.received_transforms[id] = nil
+    M.ownership[local_id] = nil
+    M.vehicle_updates_buffer[local_id] = nil
+    kisstransform.received_transforms[local_id] = nil
     update_ownership_limits()
   end
 end
@@ -264,8 +264,19 @@ local function reset_vehicle(data)
   local id = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0]
   id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(id)
+  local position = vehicle:getPosition()
+  local rotation = kisstransform.local_transforms[id].rotation
   if vehicle then
     vehicle:reset()
+    vehicle:setPositionRotation(
+      position.x,
+      position.y,
+      position.z,
+      rotation.x,
+      rotation.y,
+      rotation.z,
+      rotation.w
+    )
   end
 end
 
@@ -327,6 +338,11 @@ local function onVehicleResetted(id)
   network.send_data(6, true, packed)
 end
 
+local function onVehicleSwitched(_id, new_id)
+  local packed = ffi.string(ffi.new("uint32_t[?]", 1, {new_id}), 4)
+  network.send_data(18, true, packed)
+end
+
 local function onFreeroamLoaded(mission)
   if not network.connection.connected then return end
   if mission ~= network.connection.server_info.map then
@@ -354,6 +370,7 @@ M.update_vehicle_meta = update_vehicle_meta
 M.onVehicleDestroyed = onVehicleDestroyed
 M.onVehicleResetted = onVehicleResetted
 M.onVehicleSpawned = onVehicleSpawned
+M.onVehicleSwitched = onVehicleSwitched
 M.onFreeroamLoaded = onFreeroamLoaded
 M.electrics_diff_update = electrics_diff_update
 

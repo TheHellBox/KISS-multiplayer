@@ -55,7 +55,6 @@ local function save_config()
 end
 
 local function load_config()
-  print("load")
   local file = io.open("./kissmp_config.json", "r")
   if not file then
     if Steam and Steam.isWorking and Steam.accountLoggedIn then
@@ -69,7 +68,6 @@ local function load_config()
   player_name = imgui.ArrayChar(32, config.name)
   addr = imgui.ArrayChar(128, config.addr)
   io.close(file)
-  print("end")
 end
 
 local function save_favorites()
@@ -498,7 +496,6 @@ local function draw_chat()
   local window_title = "Chat"
   if unread_message_count > 0 and should_draw_unread_count then
     window_title = window_title .. " (" .. tostring(unread_message_count) .. ")"
-    print(window_title)
   end
   window_title = window_title .. "###chat"
   

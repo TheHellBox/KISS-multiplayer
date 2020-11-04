@@ -17,12 +17,6 @@ M.threshold = 3
 M.rot_threshold = 2.5
 M.velocity_error_limit = 10
 
---[[local function lerp(a,b,t)
-  local t = math.min(t, 1)
-  return a * (1-t) + b * t
-  --return a + (b - a) * t
-  end--]]
-
 local function get_current_time()
   local date = os.date("*t", os.time())
   date.sec = 0
@@ -96,10 +90,10 @@ local function apply_transform(dt, id, transform, apply_velocity)
     M.local_transforms[id].vel_roll
   )
 
-  local received_velocity = lerp(lerp_buffer[id].velocity, vec3(transform.velocity), dt / transform.time_past * 2)
-  local received_angular_velocity = lerp(lerp_buffer[id].angular_velocity, vec3(transform.angular_velocity), dt / transform.time_past * 2)
-  local received_acceleration = lerp(lerp_buffer[id].acceleration, transform.acceleration, dt / transform.time_past)
-  local received_angular_acceleration = lerp(lerp_buffer[id].angular_acceleration, transform.angular_acceleration, dt / transform.time_past)
+  local received_velocity = lerp(lerp_buffer[id].velocity, vec3(transform.velocity), dt * 2)
+  local received_angular_velocity = lerp(lerp_buffer[id].angular_velocity, vec3(transform.angular_velocity), dt * 2)
+  local received_acceleration = lerp(lerp_buffer[id].acceleration, transform.acceleration, dt)
+  local received_angular_acceleration = lerp(lerp_buffer[id].angular_acceleration, transform.angular_acceleration, dt)
 
   local predicted_velocity = received_acceleration + received_acceleration * transform.time_past
   local predicted_position = vec3(transform.position) + predicted_velocity * transform.time_past
@@ -112,17 +106,6 @@ local function apply_transform(dt, id, transform, apply_velocity)
   local rotation_error = predicted_rotation / quat(M.local_transforms[id].rotation)
   local rotation_error_euler = rotation_error:toEulerYXZ()
 
-  if position_error:length() > M.threshold then
-    vehicle:setPosition(
-      Point3F(
-        predicted_position.x,
-        predicted_position.y,
-        predicted_position.z
-      )
-    )
-    return
-  end
-
   if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 5) then
     vehicle:setPosRot(
       predicted_position.x,
@@ -132,6 +115,17 @@ local function apply_transform(dt, id, transform, apply_velocity)
       predicted_rotation.y,
       predicted_rotation.z,
       predicted_rotation.w
+    )
+    return
+  end
+
+  if position_error:length() > M.threshold then
+    vehicle:setPosition(
+      Point3F(
+        predicted_position.x,
+        predicted_position.y,
+        predicted_position.z
+      )
     )
     return
   end

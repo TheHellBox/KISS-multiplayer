@@ -13,7 +13,7 @@ use outgoing::Outgoing;
 use vehicle::*;
 
 use anyhow::Error;
-use futures::{select, StreamExt};
+use futures::{select, StreamExt, TryStreamExt};
 use quinn::{Certificate, CertificateChain, PrivateKey};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -323,7 +323,7 @@ impl Server {
                 stream.read_exact(&mut buf).await?;
                 Ok::<_, Error>((data_type, buf))
             })
-            .buffer_unordered(128);
+            .buffered(128).fuse();
 
         let mut datagrams = datagrams
             .map(|data| async {
@@ -331,14 +331,25 @@ impl Server {
                 let data_type = data.remove(0);
                 Ok::<_, Error>((data_type, data))
             })
-            .buffer_unordered(128);
+            .buffered(128).fuse();
+
         loop {
             let (data_type, data) = select! {
-                data = cmds.select_next_some() => {
-                    data?
+                data = cmds.try_next() => {
+                    if let Some(data) = data? {
+                        data
+                    }
+                    else{
+                       return Err(anyhow::Error::msg("Disconnected"))
+                    }
                 }
-                data = datagrams.select_next_some() => {
-                    data?
+                data = datagrams.try_next() => {
+                    if let Some(data) = data? {
+                        data
+                    }
+                    else{
+                        return Err(anyhow::Error::msg("Disconnected"))
+                    }
                 }
                 complete => break
             };

@@ -39,6 +39,7 @@ local MESSAGETYPE_PLAYERINFO = 12
 local MESSAGETYPE_META_UPDATE = 14
 local MESSAGETYPE_ELECTRICS_UNDEFINED = 15
 local MESSAGETYPE_PLAYER_DISCONNECTED = 16
+local MESSAGETYPE_VEHICLE_LUA = 17
 local PONG = 254
 
 local message_handlers = {}
@@ -111,6 +112,16 @@ local function handle_lua(data)
   Lua:queueLuaCommand(data)
 end
 
+local function handle_vehicle_lua(data)
+  local id = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data:sub(1, 4)))[0]
+  local lua = data:sub(5, #data)
+  local id = vehiclemanager.id_map[id]
+  local vehicle = be:getObjectByID(id)
+  if vehicle then
+    vehicle:queueLuaCommand(id)
+  end
+end
+
 local function handle_pong(data)
   local server_time = ffi.cast("double*", ffi.new("char[?]", 9, data))[0]
   local local_time = socket.gettime()
@@ -143,6 +154,7 @@ local function onExtensionLoaded()
   message_handlers[MESSAGETYPE_ELECTRICS_UNDEFINED] = vehiclemanager.electrics_diff_update
   message_handlers[PONG] = handle_pong
   message_handlers[MESSAGETYPE_PLAYER_DISCONNECTED] = handle_player_disconnected
+  message_handlers[MESSAGETYPE_VEHICLE_LUA] = handle_vehicle_lua
 end
 
 local function send_data(data_type, reliable, data)

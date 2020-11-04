@@ -15,7 +15,8 @@ pub enum IncomingEvent {
     RequestMods(Vec<String>),
     VehicleMetaUpdate(VehicleMeta),
     ElectricsUndefinedUpdate(ElectricsUndefined),
-    PingUpdate(u32)
+    PingUpdate(u32),
+    VehicleChanged(u32)
 }
 
 impl Server {
@@ -29,23 +30,21 @@ impl Server {
             0 => {
                 let (transform_id, transform) = Transform::from_bytes(&data);
                 let transform = IncomingEvent::TransformUpdate(transform_id, transform);
-                client_events_tx.send((id, transform)).await.unwrap();
+                client_events_tx.send((id, transform)).await?;
             }
             1 => {
                 let data_str = String::from_utf8(data.to_vec()).unwrap();
                 let vehicle_data: VehicleData = serde_json::from_str(&data_str).unwrap();
                 client_events_tx
                     .send((id, IncomingEvent::VehicleData(vehicle_data)))
-                    .await
-                    .unwrap();
+                    .await?;
             }
             2 => {
                 let electrics = Electrics::from_bytes(&data);
                 if let Ok(electrics) = electrics {
                     client_events_tx
                         .send((id, IncomingEvent::ElectricsUpdate(electrics)))
-                        .await
-                        .unwrap();
+                        .await?;
                 }
             }
             3 => {
@@ -53,8 +52,7 @@ impl Server {
                 if let Ok(gearbox_state) = gearbox_state {
                     client_events_tx
                         .send((id, IncomingEvent::GearboxUpdate(gearbox_state)))
-                        .await
-                        .unwrap();
+                        .await?;
                 }
             }
             4 => {}
@@ -62,42 +60,37 @@ impl Server {
                 let vehicle_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
                     .send((id, IncomingEvent::RemoveVehicle(vehicle_id)))
-                    .await
-                    .unwrap();
+                    .await?;
             }
             6 => {
                 let vehicle_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
                     .send((id, IncomingEvent::ResetVehicle(vehicle_id)))
-                    .await
-                    .unwrap();
+                    .await?;
             }
             7 => {
-                let data_str = String::from_utf8(data.to_vec()).unwrap();
+                let data_str = String::from_utf8(data.to_vec())?;
                 let info = serde_json::from_str(&data_str);
                 if let Ok(info) = info {
                     client_events_tx
                         .send((id, IncomingEvent::UpdateClientInfo(info)))
-                        .await
-                        .unwrap();
+                        .await?;
                 }
             }
             8 => {
-                let mut chat_message = String::from_utf8(data.to_vec()).unwrap();
+                let mut chat_message = String::from_utf8(data.to_vec())?;
                 chat_message.truncate(256);
                 client_events_tx
                     .send((id, IncomingEvent::Chat(chat_message)))
-                    .await
-                    .unwrap();
+                    .await?;
             }
             9 => {
-                let data_str = String::from_utf8(data.to_vec()).unwrap();
+                let data_str = String::from_utf8(data.to_vec())?;
                 let files = serde_json::from_str(&data_str);
                 if let Ok(files) = files {
                     client_events_tx
                         .send((id, IncomingEvent::RequestMods(files)))
-                        .await
-                        .unwrap();
+                        .await?;
                 }
             }
             14 => {
@@ -105,8 +98,7 @@ impl Server {
                 if let Ok(meta) = meta {
                     client_events_tx
                         .send((id, IncomingEvent::VehicleMetaUpdate(meta)))
-                        .await
-                        .unwrap();
+                        .await?;
                 }
             }
             15 => {
@@ -118,16 +110,23 @@ impl Server {
                             id,
                             IncomingEvent::ElectricsUndefinedUpdate(electrics_undefined),
                         ))
-                        .await
-                        .unwrap();
+                        .await?;
                 }
+            },
+            18 => {
+                let new_vehicle = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+                client_events_tx
+                    .send((
+                        id,
+                        IncomingEvent::VehicleChanged(new_vehicle),
+                    ))
+                    .await?;
             }
             254 => {
                 let ping = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
                     .send((id, IncomingEvent::PingUpdate(ping)))
-                    .await
-                    .unwrap();
+                    .await?;
             }
             _ => println!("Warning: Client sent unknown data type"),
         }
