@@ -20,6 +20,13 @@ jobs:
     - name: Build
       working-directory: ./kissmp-bridge
       run: cargo build --verbose --release
+    - name: Store Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: build_results
+        path: |
+          ./kissmp-bridge/target/release/kissmp-bridge
+          ./kissmp-bridge/target/release/kissmp-bridge.exe
   build_server:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -37,5 +44,3 @@ jobs:
         path: |
           ./kissmp-server/target/release/kissmp-server
           ./kissmp-server/target/release/kissmp-server.exe
-          ./kissmp-bridge/target/release/kissmp-bridge
-          ./kissmp-bridge/target/release/kissmp-bridge.exe
