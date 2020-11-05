@@ -70,9 +70,12 @@ async fn main() {
                 request.respond(response).unwrap();
                 continue;
             }
-            let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
-            let response = tiny_http::Response::from_string(response);
-            request.respond(response).unwrap();
+            if let Ok(response) = reqwest::get(&url).await {
+                if let Ok(text) = response.text().await {
+                    let response = tiny_http::Response::from_string(text);
+                    request.respond(response).unwrap();
+                }
+            }
         }
     });
     let addr = &"0.0.0.0:7894".parse::<SocketAddr>().unwrap();

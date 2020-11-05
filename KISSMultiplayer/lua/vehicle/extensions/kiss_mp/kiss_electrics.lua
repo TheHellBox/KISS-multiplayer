@@ -158,7 +158,11 @@ local function kissInit()
       ignored_keys[device.electricsClutchRatio2Name] = true
     end
   end
-  
+
+  for i = 0, 10 do
+    ignored_keys["led"..tostring(i)] = true
+  end
+ 
   -- Ignore lightbar electrics, and jato fuel electrics
   if v.data.controller and type(v.data.controller) == 'table' then 
     for _, controller in pairs(v.data.controller) do

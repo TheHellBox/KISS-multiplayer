@@ -94,6 +94,10 @@ local function apply_transform(dt, id, transform, apply_velocity)
   local received_angular_velocity = lerp(lerp_buffer[id].angular_velocity, vec3(transform.angular_velocity), dt * 2)
   local received_acceleration = lerp(lerp_buffer[id].acceleration, transform.acceleration, dt)
   local received_angular_acceleration = lerp(lerp_buffer[id].angular_acceleration, transform.angular_acceleration, dt)
+  lerp_buffer[id].velocity = received_velocity
+  lerp_buffer[id].angular_velocity = received_angular_velocity
+  lerp_buffer[id].acceleration = received_acceleration
+  lerp_buffer[id].angular_acceleration = received_angular_acceleration
 
   local predicted_velocity = received_acceleration + received_acceleration * transform.time_past
   local predicted_position = vec3(transform.position) + predicted_velocity * transform.time_past
@@ -116,6 +120,12 @@ local function apply_transform(dt, id, transform, apply_velocity)
       predicted_rotation.z,
       predicted_rotation.w
     )
+    lerp_buffer[id] = {
+      velocity = vec3(transform.velocity),
+      angular_velocity = vec3(transform.angular_velocity),
+      acceleration = transform.acceleration,
+      angular_acceleration = transform.angular_acceleration,
+    }
     return
   end
 
@@ -220,6 +230,7 @@ local function update_vehicle_transform(data)
       transform.angular_acceleration = (vec3(transform.angular_velocity) - old_angular_velocity) / transform.time_past
     else
       transform.acceleration = vec3(0, 0, 0)
+      transform.angular_acceleration = vec3(0, 0, 0)
     end
 
     M.received_transforms[id] = transform
