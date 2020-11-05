@@ -160,17 +160,19 @@ local function kissInit()
   end
   
   -- Ignore lightbar electrics, and jato fuel electrics
-  for _, controller in pairs(v.data.controller) do
-    if controller.name == "lightbar" and controller.modes then
-        local modes = tableFromHeaderTable(controller.modes)
-        for _, vm in pairs(modes) do
-          local configEntries = tableFromHeaderTable(deepcopy(vm.config))
-          for _, j in pairs(configEntries) do
-            ignored_keys[j.electric] = true
-          end 
-        end
-    elseif controller.name == "jato" then
-      ignored_keys["jatofuel"] = true
+  if v.data.controller and type(v.data.controller) == 'table' then 
+    for _, controller in pairs(v.data.controller) do
+      if controller.name == "lightbar" and controller.modes then
+          local modes = tableFromHeaderTable(controller.modes)
+          for _, vm in pairs(modes) do
+            local configEntries = tableFromHeaderTable(deepcopy(vm.config))
+            for _, j in pairs(configEntries) do
+              ignored_keys[j.electric] = true
+            end 
+          end
+      elseif controller.name == "jato" then
+        ignored_keys["jatofuel"] = true
+      end
     end
   end
   
