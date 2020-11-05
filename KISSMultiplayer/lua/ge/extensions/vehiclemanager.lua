@@ -363,8 +363,7 @@ end
 local function onFreeroamLoaded(mission)
   if not network.connection.connected then return end
   if mission ~= network.connection.server_info.map then
-    M.loading_map = true
-    freeroam_freeroam.startFreeroam(network.connection.server_info.map)
+    network.disconnect()
   end
  
   M.loading_map = false

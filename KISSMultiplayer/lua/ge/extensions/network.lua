@@ -74,6 +74,7 @@ local function disconnect(data)
   M.connection.tcp:close()
   M.players = {}
   kissrichpresence.update()
+  spawn.preventPlayerSpawning = false
 end
 
 local function handle_disconnected(data)
@@ -258,7 +259,7 @@ local function connect(addr, player_name)
   -- Request mods
   send_data(9, true, jsonEncode(missing_mods))
   send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
-
+ 
   spawn.preventPlayerSpawning = true
   if server_info.map ~= "any" and #missing_mods == 0 then
     freeroam_freeroam.startFreeroam(server_info.map)
