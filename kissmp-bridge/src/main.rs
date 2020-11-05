@@ -2,6 +2,7 @@ use futures::{StreamExt, TryStreamExt};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use percent_encoding::{percent_decode_str};
 
 #[cfg(feature = "discord-rpc-client")]
 #[derive(Debug, Clone)]
@@ -56,7 +57,8 @@ async fn main() {
             }
             #[cfg(feature = "discord-rpc-client")]
             if url.starts_with("rich_presence") {
-                let data = url.replace("rich_presence/", "").replace("%20", " ");
+                let server_name_encoded = url.replace("rich_presence/", "");
+                let data = percent_decode_str(&server_name_encoded).decode_utf8_lossy().into_owned();
                 let server_name = {
                     if data != "none" {
                         Some(data)
