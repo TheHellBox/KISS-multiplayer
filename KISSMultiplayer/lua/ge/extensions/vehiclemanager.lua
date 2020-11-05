@@ -176,6 +176,15 @@ local function spawn_vehicle(data)
   print("Trying to spawn vehicle")
   if data.owner == network.get_client_id() then
     print("Vehicle belongs to local client, setting ownership")
+    local remove = {}
+    for k, v in pairs(M.id_map) do
+      if v == data.in_game_id then
+        table.insert(remove, k)
+      end
+    end
+    for _, v in pairs(remove) do
+      M.id_map[v] = nil
+    end
     M.id_map[data.server_id] = data.in_game_id
     M.ownership[data.in_game_id] = data.server_id
     update_ownership_limits()
