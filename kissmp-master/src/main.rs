@@ -31,7 +31,7 @@ fn main() {
         if request.method() == &tiny_http::Method::Post {
             let addr = request.remote_addr().clone();
             let mut content = String::new();
-            request.as_reader().read_to_string(&mut content).unwrap();
+            let _ = request.as_reader().read_to_string(&mut content);
             if let Ok(server_info) = serde_json::from_str(&content) {
                 let mut server_info: ServerInfo = server_info;
                 server_info.description.truncate(256);
@@ -40,15 +40,15 @@ fn main() {
                 server_info.update_time = Some(std::time::Instant::now());
                 server_list.0.insert(addr, server_info);
                 let response = Response::from_string("ok");
-                request.respond(response).unwrap();
+                let _ = request.respond(response);
             } else {
                 println!("Failed to parse server info");
                 let response = Response::from_string("err");
-                request.respond(response).unwrap();
+                let _ = request.respond(response);
             }
         } else {
             let response = Response::from_string(serde_json::to_string(&server_list).unwrap());
-            request.respond(response).unwrap();
+            let _ = request.respond(response);
         }
     }
 }
