@@ -17,8 +17,11 @@ M.downloads_info = {}
 local gui_module = require("ge/extensions/editor/api/gui")
 local gui = {setupEditorGuiTheme = nop}
 local imgui = ui_imgui
+
 local addr = imgui.ArrayChar(128)
 local player_name = imgui.ArrayChar(32, "Unknown")
+local show_nametags = imgui.BoolPtr(true)
+local window_opacity = imgui.FloatPtr(0.8)
 
 local add_favorite_addr = imgui.ArrayChar(128)
 local add_favorite_name = imgui.ArrayChar(64, "KissMP Server")
@@ -47,7 +50,9 @@ local filtered_favorite_servers = {}
 local function save_config()
   local result = {
     name = ffi.string(player_name),
-    addr = ffi.string(addr)
+    addr = ffi.string(addr),
+    show_nametags = show_nametags[0],
+    window_opacity = window_opacity[0]
   }
   local file = io.open("./kissmp_config.json", "w")
   file:write(jsonEncode(result))
@@ -65,8 +70,20 @@ local function load_config()
   local content = file:read("*a")
   local config = jsonDecode(content or "")
   if not config then return end
-  player_name = imgui.ArrayChar(32, config.name)
-  addr = imgui.ArrayChar(128, config.addr)
+  
+  if config.name ~= nil then
+    player_name = imgui.ArrayChar(32, config.name)
+  end
+  if config.addr ~= nil then
+    addr = imgui.ArrayChar(128, config.addr)
+  end
+  if config.show_nametags ~= nil then
+    show_nametags[0] = config.show_nametags
+  end
+  if config.window_opacity ~= nil then
+    window_opacity[0] = config.window_opacity
+  end
+  
   io.close(file)
 end
 
@@ -377,6 +394,19 @@ local function draw_direct_connect_tab()
   end
 end
 
+-- Settings tab
+local function draw_settings_tab() 
+  if imgui.Checkbox("Show Name Tags", show_nametags) then
+    save_config()
+  end
+  
+  imgui.Text("Window Opacity")
+  imgui.SameLine()
+  if imgui.SliderFloat("###window_opacity", window_opacity, 0, 1) then
+    save_config()
+  end
+end
+
 -- The rest
 local function open_ui()
   load_config()
@@ -401,6 +431,7 @@ local function draw_add_favorite_window()
   local display_size = imgui.GetIO().DisplaySize
   imgui.SetNextWindowPos(imgui.ImVec2(display_size.x / 2, display_size.y / 2), imgui.Cond_Always, imgui.ImVec2(0.5, 0.5))
   
+  imgui.SetNextWindowBgAlpha(window_opacity[0])
   if imgui.Begin("Add Favorite", gui.getWindowVisibleBoolPtr("Add Favorite"), bor(imgui.WindowFlags_NoScrollbar ,imgui.WindowFlags_NoResize, imgui.WindowFlags_AlwaysAutoResize)) then        
     imgui.Text("Name:")
     imgui.SameLine()
@@ -443,6 +474,7 @@ local function draw_menu()
 
   if not gui.isWindowVisible("KissMP") then return end
   gui.setupWindow("KissMP")
+  imgui.SetNextWindowBgAlpha(window_opacity[0])
   if imgui.Begin("KissMP", gui.getWindowVisibleBoolPtr("KissMP")) then
     imgui.Text("Player name:")
     imgui.InputText("##name", player_name)
@@ -465,6 +497,10 @@ local function draw_menu()
       end
       if imgui.BeginTabItem("Favorites") then
         draw_favorites_tab()
+        imgui.EndTabItem()
+      end
+      if imgui.BeginTabItem("Settings") then
+        draw_settings_tab()
         imgui.EndTabItem()
       end
       imgui.EndTabBar()
@@ -505,6 +541,7 @@ local function draw_chat()
   end
   window_title = window_title .. "###chat"
   
+  imgui.SetNextWindowBgAlpha(window_opacity[0])
   if imgui.Begin(window_title, gui.getWindowVisibleBoolPtr("Chat")) then
     local content_width = imgui.GetWindowContentRegionWidth()
     
@@ -562,6 +599,7 @@ local function draw_download()
   if not M.show_download then return end
   
   if not gui.isWindowVisible("Downloads") then return end
+  imgui.SetNextWindowBgAlpha(window_opacity[0])
   if imgui.Begin("Downloading Required Mods", gui.getWindowVisibleBoolPtr("Downloads")) then
     imgui.BeginChild1("DownloadsScrolling", imgui.ImVec2(0, -30), true)
     
@@ -644,7 +682,10 @@ local function onUpdate(dt)
   draw_chat()
   draw_download()
   draw_add_favorite_window()
-  draw_names()
+  
+  if show_nametags[0] then
+    draw_names()
+  end
   
   -- Search update
   local search_text = ffi.string(search_buffer)
