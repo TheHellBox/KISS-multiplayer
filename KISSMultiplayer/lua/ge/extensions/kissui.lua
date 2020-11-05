@@ -446,8 +446,14 @@ local function draw_menu()
   if imgui.Begin("KissMP", gui.getWindowVisibleBoolPtr("KissMP")) then
     imgui.Text("Player name:")
     imgui.InputText("##name", player_name)
+    if network.connection.connected then
+      if imgui.Button("Disconnect") then
+        network.disconnect()
+      end
+    end
+   
     imgui.Dummy(imgui.ImVec2(0, 5))
-    
+
     if imgui.BeginTabBar("server_tabs##") then
       if imgui.BeginTabItem("Server List") then
         draw_servers_tab()

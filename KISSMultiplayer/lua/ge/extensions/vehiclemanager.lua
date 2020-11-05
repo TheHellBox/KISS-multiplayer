@@ -281,10 +281,10 @@ local function reset_vehicle(data)
       position.x,
       position.y,
       position.z,
-      rotation.x,
-      rotation.y,
-      rotation.z,
-      rotation.w
+      rotation[1],
+      rotation[2],
+      rotation[3],
+      rotation[4]
     )
   end
 end

@@ -57,12 +57,18 @@ impl Server {
             }
             4 => {}
             5 => {
+                if data.len() < 4 {
+                    return Ok(())
+                }
                 let vehicle_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
                     .send((id, IncomingEvent::RemoveVehicle(vehicle_id)))
                     .await?;
             }
             6 => {
+                if data.len() < 4 {
+                    return Ok(())
+                }
                 let vehicle_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
                     .send((id, IncomingEvent::ResetVehicle(vehicle_id)))
@@ -103,7 +109,6 @@ impl Server {
             }
             15 => {
                 let electrics_undefined = ElectricsUndefined::from_bytes(&data);
-                println!("{:?}", electrics_undefined);
                 if let Ok(electrics_undefined) = electrics_undefined {
                     client_events_tx
                         .send((
@@ -114,6 +119,9 @@ impl Server {
                 }
             },
             18 => {
+                if data.len() < 4 {
+                    return Ok(())
+                }
                 let new_vehicle = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
                     .send((
@@ -123,6 +131,9 @@ impl Server {
                     .await?;
             }
             254 => {
+                if data.len() < 4 {
+                    return Ok(())
+                }
                 let ping = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
                     .send((id, IncomingEvent::PingUpdate(ping)))

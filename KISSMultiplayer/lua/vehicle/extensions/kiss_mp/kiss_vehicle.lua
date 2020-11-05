@@ -24,6 +24,9 @@ local function sqr_len(vec)
   return vec.x * vec.x + vec.y * vec.y + vec.z * vec.z
 end
 
+  -- NOTE:
+  -- This is a temperary solution. It's not great. We made it to release the mod.
+  -- A better solution will be used in future versions
 local function update_eligible_nodes()
   for k=last_node, math.min(#nodes , last_node + nodes_per_frame) do
     local node = nodes[k]
