@@ -71,7 +71,9 @@ local function disconnect(data)
   end
   kissui.add_message(text)
   M.connection.connected = false
+  M.connection.tcp:close()
   M.players = {}
+  kissrichpresence.update()
 end
 
 local function handle_disconnected(data)
@@ -261,6 +263,7 @@ local function connect(addr, player_name)
     freeroam_freeroam.startFreeroam(server_info.map)
     vehiclemanager.loading_map = true
   end
+  kissrichpresence.update()
 end
 
 local function send_messagepack(data_type, reliable, data)
