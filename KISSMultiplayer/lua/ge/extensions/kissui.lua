@@ -18,6 +18,8 @@ local gui_module = require("ge/extensions/editor/api/gui")
 local gui = {setupEditorGuiTheme = nop}
 local imgui = ui_imgui
 
+local ui_showing = false
+
 local addr = imgui.ArrayChar(128)
 local player_name = imgui.ArrayChar(32, "Unknown")
 local show_nametags = imgui.BoolPtr(true)
@@ -408,6 +410,29 @@ local function draw_settings_tab()
 end
 
 -- The rest
+local function show_ui()
+  gui.showWindow("KissMP")
+  gui.showWindow("Chat")
+  gui.showWindow("Downloads")
+  ui_showing = true
+end
+
+local function hide_ui()
+  gui.hideWindow("KissMP")
+  gui.hideWindow("Chat")
+  gui.hideWindow("Downloads")
+  gui.hideWindow("Add Favorite")
+  ui_showing = false
+end
+
+local function toggle_ui()
+  if not ui_showing then
+    show_ui()
+  else
+    hide_ui()
+  end
+end
+
 local function open_ui()
   load_config()
   load_favorites()
@@ -416,13 +441,11 @@ local function open_ui()
   update_favorites()
   gui_module.initialize(gui)
   gui.registerWindow("KissMP", imgui.ImVec2(256, 256))
-  gui.showWindow("KissMP")
   gui.registerWindow("Chat", imgui.ImVec2(256, 256))
-  gui.showWindow("Chat")
   gui.registerWindow("Downloads", imgui.ImVec2(512, 512))
-  gui.showWindow("Downloads")
   gui.registerWindow("Add Favorite", imgui.ImVec2(256, 128))
   gui.hideWindow("Add Favorite")
+  show_ui()
 end
 
 local function draw_add_favorite_window()
@@ -475,7 +498,7 @@ local function draw_menu()
   if not gui.isWindowVisible("KissMP") then return end
   gui.setupWindow("KissMP")
   imgui.SetNextWindowBgAlpha(window_opacity[0])
-  if imgui.Begin("KissMP", gui.getWindowVisibleBoolPtr("KissMP")) then
+  if imgui.Begin("KissMP") then
     imgui.Text("Player name:")
     imgui.InputText("##name", player_name)
     if network.connection.connected then
@@ -542,7 +565,7 @@ local function draw_chat()
   window_title = window_title .. "###chat"
   
   imgui.SetNextWindowBgAlpha(window_opacity[0])
-  if imgui.Begin(window_title, gui.getWindowVisibleBoolPtr("Chat")) then
+  if imgui.Begin(window_title) then
     local content_width = imgui.GetWindowContentRegionWidth()
     
     -- Draw messages
@@ -600,7 +623,7 @@ local function draw_download()
   
   if not gui.isWindowVisible("Downloads") then return end
   imgui.SetNextWindowBgAlpha(window_opacity[0])
-  if imgui.Begin("Downloading Required Mods", gui.getWindowVisibleBoolPtr("Downloads")) then
+  if imgui.Begin("Downloading Required Mods") then
     imgui.BeginChild1("DownloadsScrolling", imgui.ImVec2(0, -30), true)
     
     -- Draw a list of all the downloads, and finish by drawing a total/max size
@@ -719,5 +742,8 @@ M.onExtensionLoaded = open_ui
 M.onUpdate = onUpdate
 M.add_message = add_message
 M.draw_download = draw_download
+M.show_ui = show_ui
+M.hide_ui = hide_ui
+M.toggle_ui = toggle_ui
 
 return M
