@@ -176,15 +176,6 @@ local function spawn_vehicle(data)
   print("Trying to spawn vehicle")
   if data.owner == network.get_client_id() then
     print("Vehicle belongs to local client, setting ownership")
-    local remove = {}
-    for k, v in pairs(M.id_map) do
-      if v == data.in_game_id then
-        table.insert(remove, k)
-      end
-    end
-    for _, v in pairs(remove) do
-      M.id_map[v] = nil
-    end
     M.id_map[data.server_id] = data.in_game_id
     M.ownership[data.in_game_id] = data.server_id
     update_ownership_limits()
@@ -346,19 +337,27 @@ end
 
 local function onVehicleDestroyed(id)
   if not network.connection.connected then return end
-  local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
-  network.send_data(5, true, packed)
+  if M.ownership[id] then
+    M.id_map[M.ownership[id]] = nil
+    M.ownership[id] = nil
+    local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
+    network.send_data(5, true, packed)
+  end
 end
 
 local function onVehicleResetted(id)
   if not network.connection.connected then return end
-  local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
-  network.send_data(6, true, packed)
+  if M.ownership[id] then
+    local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
+    network.send_data(6, true, packed)
+  end
 end
 
 local function onVehicleSwitched(_id, new_id)
-  local packed = ffi.string(ffi.new("uint32_t[?]", 1, {new_id}), 4)
-  network.send_data(18, true, packed)
+  if M.ownership[new_id] then
+    local packed = ffi.string(ffi.new("uint32_t[?]", 1, {new_id}), 4)
+    network.send_data(18, true, packed)
+  end
 end
 
 local function onFreeroamLoaded(mission)

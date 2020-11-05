@@ -47,7 +47,10 @@ impl crate::Server {
         }
 
         self.vehicles.remove(&id);
-        for (_cid, client) in &mut self.connections {
+        for (cid, client) in &mut self.connections {
+            if Some(*cid) == client_id {
+                continue;
+            }
             let _ = client
                 .ordered
                 .send(crate::Outgoing::RemoveVehicle(id))
