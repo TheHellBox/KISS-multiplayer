@@ -5,7 +5,7 @@ local bor = bit.bor
 
 M.dependencies = {"ui_imgui"}
 M.chat = {
-  "KissMP chat"
+  {text = "KissMP chat", has_color = false}
 }
 M.server_list = {}
 M.master_addr = "http://51.210.135.45:3692/"
@@ -13,6 +13,10 @@ M.bridge_launched = false
 
 M.show_download = false
 M.downloads_info = {}
+
+-- Color constants
+M.COLOR_YELLOW = {r = 1, g = 1, b = 0}
+M.COLOR_RED = {r = 1, g = 0, b = 0}
 
 local gui_module = require("ge/extensions/editor/api/gui")
 local gui = {setupEditorGuiTheme = nop}
@@ -546,7 +550,7 @@ local function draw_player_list()
   imgui.Text("Player list:")
   imgui.BeginChild1("PlayerList", imgui.ImVec2(0, -30), true)
   if network.connection.connected then
-    for _, player in pairs(network.players) do
+    for _, player in spairs(network.players, function(t,a,b) return t[b].name:lower() > t[a].name:lower() end) do
       imgui.Text(player.name.."("..player.ping.." ms)")
     end
   end
@@ -573,7 +577,11 @@ local function draw_chat()
 
     for _, message in pairs(M.chat) do
       imgui.PushTextWrapPos(0)
-      imgui.TextColored(imgui.ImVec4(1, 1, 1, 1), message)
+      if message.has_color then
+        imgui.TextColored(imgui.ImVec4(message.color.r or 1, message.color.g or 1, message.color.b or 1, message.color.a or 1), message.text)
+      else
+        imgui.Text(message.text)
+      end
       imgui.PopTextWrapPos()
     end
     
@@ -732,10 +740,19 @@ local function onUpdate(dt)
   time_since_filters_change = time_since_filters_change + dt
 end
 
-local function add_message(message)
+local function add_message(message, color)
   unread_message_count = unread_message_count + 1
   should_draw_unread_count = false
-  table.insert(M.chat, message)
+  
+  local has_color = color ~= nil and type(color) == 'table'
+  local message_table = {
+    text = message,
+    has_color = has_color
+  }
+  if has_color then
+    message_table.color = color 
+  end
+  table.insert(M.chat, message_table)
 end
 
 M.onExtensionLoaded = open_ui

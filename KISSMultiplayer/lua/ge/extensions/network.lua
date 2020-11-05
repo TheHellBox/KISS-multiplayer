@@ -205,11 +205,11 @@ local function connect(addr, player_name)
   local connection_confirmed = M.connection.tcp:receive(1)
   if connection_confirmed then
     if connection_confirmed ~= string.char(1) then
-      kissui.add_message("Connection failed.")
+      kissui.add_message("Connection failed.", kissui.COLOR_RED)
       return
     end
   else
-    kissui.add_message("Failed to confirm connection. Check if bridge is running.")
+    kissui.add_message("Failed to confirm connection. Check if bridge is running.", kissui.COLOR_RED)
     return
   end
 
@@ -319,7 +319,7 @@ local function continue_download()
         current_download.file:close()
         current_download = nil
         kissui.show_download = false
-        kissui.add_message("Download failed, disconnecting.")
+        kissui.add_message("Download failed, disconnecting.", kissui.COLOR_RED)
         disconnect()
         return
       end
