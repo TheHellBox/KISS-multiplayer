@@ -190,7 +190,7 @@ impl Server {
         let client = self.reqwest_client.clone();
         tokio::spawn(async move {
             let _ = client
-                .post("http://185.87.49.206:3692")
+                .post("http://51.210.135.45:3692")
                 .body(server_info)
                 .send()
                 .await;

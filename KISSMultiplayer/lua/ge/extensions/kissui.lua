@@ -8,7 +8,7 @@ M.chat = {
   "KissMP chat"
 }
 M.server_list = {}
-M.master_addr = "http://185.87.49.206:3692/"
+M.master_addr = "http://51.210.135.45:3692/"
 M.bridge_launched = false
 
 M.show_download = false

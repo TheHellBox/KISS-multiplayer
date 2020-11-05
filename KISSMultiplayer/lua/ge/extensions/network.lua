@@ -184,8 +184,8 @@ local function sanitize_addr(addr)
 end
 
 local function connect(addr, player_name)
-  if M.connection.tcp then
-    M.connection.tcp:close()
+  if M.connection.connected then
+    disconnect()
   end
   M.players = {}
 
