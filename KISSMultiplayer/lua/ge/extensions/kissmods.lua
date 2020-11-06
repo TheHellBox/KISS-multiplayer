@@ -12,6 +12,7 @@ local function deactivate_mod(name)
   if FS:isMounted(filename) then
     FS:unmount(filename)
   end
+  core_vehicles.clearCache()
 end
 
 local function deactivate_all_mods()
@@ -21,14 +22,16 @@ local function deactivate_all_mods()
     end
   end
   for k, mod_path in pairs(FS:findFiles("/kissmp_mods/", "*.zip", 1000)) do
-    FS:unmount(string.lower(mod_path))
+    FS:unmount(mod_path)
   end
+  core_vehicles.clearCache()
 end
 
 local function mount_mod(name)
   --local mode = mode or "added"
   --extensions.core_modmanager.workOffChangedMod("/kissmp_mods/"..name, mode)
   FS:mount("/kissmp_mods/"..name)
+  core_vehicles.clearCache()
 end
 
 local function mount_mods(list)
@@ -38,6 +41,7 @@ local function mount_mods(list)
     mount_mod(mod)
     --activate_mod(mod)
   end
+  core_vehicles.clearCache()
 end
 
 local function update_status(mod)

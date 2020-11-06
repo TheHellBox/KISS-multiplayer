@@ -35,14 +35,12 @@ fn main() {
             if let Ok(server_info) = serde_json::from_str(&content) {
                 let mut server_info: ServerInfo = server_info;
                 server_info.description.truncate(256);
-                let addr = SocketAddr::new(addr.ip(), server_info.port);
-                println!("Server update received: {:?} from {}", server_info, addr);
+                let addr = SocketAddr::new(addr.ip(), server_info.port); 
                 server_info.update_time = Some(std::time::Instant::now());
                 server_list.0.insert(addr, server_info);
                 let response = Response::from_string("ok");
                 let _ = request.respond(response);
             } else {
-                println!("Failed to parse server info");
                 let response = Response::from_string("err");
                 let _ = request.respond(response);
             }
