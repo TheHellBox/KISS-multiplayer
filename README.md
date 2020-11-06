@@ -3,8 +3,6 @@
 
 [KISS](https://en.wikipedia.org/wiki/KISS_principle) Multiplayer mod for BeamNG.drive
 
-KissMP is a new modification that adds multiplayer to BeamNG.drive.
-
 ## Main features:
 - Cross platform, open source & free server written on Rust
 - QUIC based networking(With help of quinn and tokio for async)
