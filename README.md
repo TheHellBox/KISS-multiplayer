@@ -1,7 +1,7 @@
 # KissMP
 ![alt text](https://i.imgur.com/kxocgKD.png)
 
-[KISS](https://en.wikipedia.org/wiki/KISS_principle) Multiplayer mod for BeamNG.drive
+[KISS](https://en.wikipedia.org/wiki/KISS_principle) Multiplayer mod for BeamNG.drive ([Discord Channel](https://discord.gg/ANPsDkeVVF))
 
 ## Main features:
 - Cross platform, open source & free server written on Rust
@@ -9,7 +9,7 @@
 - Server list with search and ability to save favorites
 - Automatic synchronization of your mods with the server
 - High overall performace of modification, which allows for more players to play at the same server
-- Low network traffic usage
+- Low traffic usage
 - Lag compensation
 - In-game text chat(Voice chat is planned!)
 - Lua API for creating server-side addons
