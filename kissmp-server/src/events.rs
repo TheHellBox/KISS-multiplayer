@@ -89,7 +89,7 @@ impl Server {
                     self.connections[&client_id].client_info.name,
                     initial_message.clone()
                 );
-
+                println!("{}", message);
                 self.lua.context(|lua_ctx| {
                     if let Some(Some(result)) = crate::lua::run_hook::<(u32, String), Option<String>>(
                         lua_ctx,
@@ -99,11 +99,10 @@ impl Server {
                         message = result;
                     }
                 });
-
-                println!("{}", message);
-
-                for (_, client) in &mut self.connections {
-                    client.send_chat_message(message.clone()).await;
+                if message.len() > 0 {
+                    for (_, client) in &mut self.connections {
+                        client.send_chat_message(message.clone()).await;
+                    }
                 }
             }
             TransformUpdate(vehicle_id, transform) => {
