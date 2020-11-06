@@ -342,7 +342,7 @@ local function draw_servers_tab()
   local server_count = 0
   
   imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
-  for addr, server in spairs(filtered_servers, function(t,a,b) return t[b].name:lower() > t[a].name:lower() end) do
+  for addr, server in spairs(filtered_servers, function(t,a,b) return t[a].player_count > t[b].player_count end) do
     server_count = server_count + 1
 
     local header = server.name.." ["..server.player_count.."/"..server.max_players.."]"
