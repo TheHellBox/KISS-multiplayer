@@ -1,6 +1,9 @@
 local M = {}
 local prev_electrics = {}
 local prev_signal_electrics = {}
+local last_engine_state = true
+local engine_timer = 0
+
 local ignored_keys = {
   throttle = true,
   throttle_input = true,
@@ -72,6 +75,24 @@ local function ignore_key(key)
   ignored_keys[key] = true
 end
 
+local function update_engine_state()
+  if not electrics.values.engineRunning then return end
+  local engine_running = electrics.values.engineRunning > 0.5
+  
+  -- Trigger starter to swap the engine state
+  if engine_running ~= last_engine_state then
+    controller.mainController.setStarter(true)
+  end
+end
+
+local function updateGFX(dt)
+  engine_timer = engine_timer + dt
+  if engine_timer > 5 then
+    update_engine_state()
+    engine_timer = engine_timer - 5
+  end
+end
+
 local function send()
   local diff_count = 0
   local data = {
@@ -125,7 +146,9 @@ local function apply_diff(data)
     elseif k == "lightbar" then
       electrics.set_lightbar_signal(v)
     elseif k == "engineRunning" then
-      controller.mainController.setStarter(v > 0.5)
+      last_engine_state = v > 0.5
+      update_engine_state()
+      engine_timer = 0
     elseif k == "horn" then
       electrics.horn(v > 0.5)
     elseif k == "hasABS" then
@@ -184,7 +207,6 @@ local function kissInit()
   for k,v in pairs(electrics.values) do
     if type(k) == 'string' and k:sub(1,5) == "disp_" then
       ignored_keys[k] = true
-      print("Ignoring display electric " .. k)
     end
   end
   
@@ -200,5 +222,7 @@ M.apply_diff = apply_diff
 M.ignore_key = ignore_key
 
 M.kissInit = kissInit
+
+M.updateGFX = updateGFX
 
 return M
