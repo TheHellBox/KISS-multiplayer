@@ -43,6 +43,7 @@ local search_buffer = imgui.ArrayChar(64)
 local time_since_filters_change = 0
 local filter_queued = false
 
+local set_column_offset = false
 local should_draw_unread_count = false
 local unread_message_count = 0
 local prev_chat_scroll_max = 0
@@ -550,7 +551,7 @@ end
 local function draw_player_list()
   imgui.BeginGroup();
   imgui.Text("Player list:")
-  imgui.BeginChild1("PlayerList", imgui.ImVec2(0, -30), true)
+  imgui.BeginChild1("PlayerList", imgui.ImVec2(0, 0), true)
   if network.connection.connected then
     for _, player in spairs(network.players, function(t,a,b) return t[b].name:lower() > t[a].name:lower() end) do
       imgui.Text(player.name.."("..player.ping.." ms)")
@@ -573,16 +574,26 @@ local function draw_chat()
   imgui.SetNextWindowBgAlpha(window_opacity[0])
   if imgui.Begin(window_title) then
     local content_width = imgui.GetWindowContentRegionWidth()
+    imgui.BeginChild1("ChatWindowUpperContent", imgui.ImVec2(0, -30), true)
+    local upper_content_width = imgui.GetWindowContentRegionWidth()
+    imgui.Columns(2, "###chat_columns")
+    
+    if not set_column_offset then
+      -- Imgui doesn't have a "first time" method for this, so we track it ourselves..
+      imgui.SetColumnOffset(1, upper_content_width - 175)
+      set_column_offset = true
+
+    end
     
     -- Draw messages
-    imgui.BeginChild1("Scrolling", imgui.ImVec2(content_width - 150, -30), true)
+    imgui.BeginChild1("Scrolling", imgui.ImVec2(0, 0), false)
 
     for _, message in pairs(M.chat) do
       imgui.PushTextWrapPos(0)
       if message.has_color then
-        imgui.TextColored(imgui.ImVec4(message.color.r or 1, message.color.g or 1, message.color.b or 1, message.color.a or 1), message.text)
+        imgui.TextColored(imgui.ImVec4(message.color.r or 1, message.color.g or 1, message.color.b or 1, message.color.a or 1), "%s", message.text)
       else
-        imgui.Text(message.text)
+        imgui.Text("%s", message.text)
       end
       imgui.PopTextWrapPos()
     end
@@ -597,10 +608,13 @@ local function draw_chat()
     imgui.EndChild()
     
     -- Draw player list
-    imgui.SameLine()
+    imgui.NextColumn()
     draw_player_list()
    
-   -- Draw chat textbox
+    -- End UpperContent
+    imgui.EndChild()
+   
+    -- Draw chat textbox
     local content_width = imgui.GetWindowContentRegionWidth()
     local button_width = 75
     local textbox_width = content_width - (button_width * 1.075)
