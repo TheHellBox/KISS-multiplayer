@@ -279,9 +279,6 @@ impl Server {
         loop {
             select! {
                 command = ordered.select_next_some() => {
-                    println!("send {:?}", command);
-                    println!("Open stream");
-                    println!("Start task");
                     let connection = connection.clone();
                     tokio::spawn(async move {
                         let mut stream = connection.open_uni().await;
@@ -289,7 +286,6 @@ impl Server {
                             // Kinda ugly and hacky tbh
                             match command {
                                 Outgoing::TransferFile(file) => {
-                                    println!("Start file transfer");
                                     let _ = file_transfer::transfer_file(stream, std::path::Path::new(&file)).await;
                                     println!("End file transfer");
                                 }
@@ -299,18 +295,14 @@ impl Server {
                                 }
                             }
                         }
-                        println!("End task");
                     });
                 }
                 command = unreliable.select_next_some() => {
-                    println!("Send unreliable {:?}", command);
                     let mut data = vec![outgoing::get_data_type(&command)];
                     data.append(&mut Self::handle_outgoing_data(command));
                     connection.send_datagram(data.into())?;
-                    println!("Unreliable sent completed");
                 }
                 complete => {
-                    println!("break");
                     break;
                 }
             }
@@ -327,16 +319,13 @@ impl Server {
     ) -> anyhow::Result<()> {
         let mut cmds = streams
             .map(|stream| async {
-                println!("Start reading");
                 let mut stream = stream?;
                 let mut data_type = [0; 1];
                 stream.read_exact(&mut data_type).await?;
-                println!("read data type {}", data_type[0]);
                 let data_type = data_type[0];
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
                 let len = u32::from_le_bytes(buf) as usize;
-                println!("read len {}", len);
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
                 Ok::<_, Error>((data_type, buf))
@@ -345,10 +334,8 @@ impl Server {
 
         let mut datagrams = datagrams
             .map(|data| async {
-                println!("Unreliable message");
                 let mut data: Vec<u8> = data?.to_vec();
                 let data_type = data.remove(0);
-                println!("unreliable data type: {}", data_type);
                 Ok::<_, Error>((data_type, data))
             })
             .buffered(512).fuse();
@@ -356,7 +343,6 @@ impl Server {
         loop {
             let (data_type, data) = select! {
                 data = cmds.try_next() => {
-                    println!("select data");
                     if let Some(data) = data? {
                         data
                     }
@@ -375,27 +361,21 @@ impl Server {
                 }
                 complete => break
             };
-            println!("received {}", data_type);
             // React to ping with pong. Quite hacky
             if data_type == 254 {
-                println!("pong");
                 let start = std::time::SystemTime::now();
                 let since_the_epoch = start
                     .duration_since(std::time::UNIX_EPOCH).unwrap();
                 let mut header = vec![254];
                 header.append(&mut since_the_epoch.as_secs_f64().to_le_bytes().to_vec());
                 let _ = connection.send_datagram(header.into());
-                println!("pong sent");
             }
-            println!("handle incoming");
             Self::handle_incoming_data(id, data_type, data, &mut client_events_tx).await?;
-            println!("handle incoming finished");
         }
         Err(anyhow::Error::msg("Disconnected"))
     }
 
     async fn tick(&mut self) {
-        println!("tick");
         for (_, client) in &mut self.connections {
             for (vehicle_id, vehicle) in &self.vehicles {
                 if let Some(transform) = &vehicle.transform {
