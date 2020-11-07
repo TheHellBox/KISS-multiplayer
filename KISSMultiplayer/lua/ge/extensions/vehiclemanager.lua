@@ -372,6 +372,8 @@ local function onFreeroamLoaded(mission)
   if mission ~= network.connection.server_info.map then
     network.disconnect()
   end
+  M.id_map = {}
+  M.ownership = {}
   M.loading_map = false
   first_vehicle = true
   for _, data in pairs(vehicle_buffer) do

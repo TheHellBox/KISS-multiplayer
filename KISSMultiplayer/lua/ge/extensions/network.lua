@@ -74,7 +74,8 @@ local function disconnect(data)
   M.connection.tcp:close()
   M.players = {}
   kissrichpresence.update()
-  spawn.preventPlayerSpawning = false
+  vehiclemanager.id_map = {}
+  vehiclemanager.ownership = {}
 end
 
 local function handle_disconnected(data)
