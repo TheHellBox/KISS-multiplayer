@@ -17,6 +17,7 @@ quinn = "0.6.1"
 anyhow = "1.0.32"
 rlua = "0.17.0"
 notify = "4.0.15"
+tracing = "0.1.21"
 tokio-util = {version = "0.3.1", features = ["codec"]}
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.10.8", default-features = false, features=["rustls-tls"] }

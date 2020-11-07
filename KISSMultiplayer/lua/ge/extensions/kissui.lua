@@ -755,7 +755,7 @@ local function onUpdate(dt)
   
   time_since_filters_change = time_since_filters_change + dt
 
-  if os.time() > next_bridge_status_update then
+  --[[if os.time() > next_bridge_status_update then
     next_bridge_status_update = os.time() + 2
     local b, _, _  = http.request("http://127.0.0.1:3693/check")
     if b and b == "ok" then
@@ -763,7 +763,7 @@ local function onUpdate(dt)
     else
       hide_ui()
     end
-  end
+    end--]]
 end
 
 local function add_message(message, color)
