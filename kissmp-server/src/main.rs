@@ -323,7 +323,7 @@ impl Server {
                 stream.read_exact(&mut buf).await?;
                 Ok::<_, Error>((data_type, buf))
             })
-            .buffered(128).fuse();
+            .buffered(512).fuse();
 
         let mut datagrams = datagrams
             .map(|data| async {
@@ -331,7 +331,7 @@ impl Server {
                 let data_type = data.remove(0);
                 Ok::<_, Error>((data_type, data))
             })
-            .buffered(128).fuse();
+            .buffered(512).fuse();
 
         loop {
             let (data_type, data) = select! {

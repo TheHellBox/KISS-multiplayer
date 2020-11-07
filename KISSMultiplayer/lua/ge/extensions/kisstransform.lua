@@ -90,8 +90,8 @@ local function apply_transform(dt, id, transform, apply_velocity)
     M.local_transforms[id].vel_roll
   )
 
-  local received_velocity = lerp(lerp_buffer[id].velocity, vec3(transform.velocity), dt * 2)
-  local received_angular_velocity = lerp(lerp_buffer[id].angular_velocity, vec3(transform.angular_velocity), dt * 2)
+  local received_velocity = lerp(lerp_buffer[id].velocity, vec3(transform.velocity), dt * 4)
+  local received_angular_velocity = lerp(lerp_buffer[id].angular_velocity, vec3(transform.angular_velocity), dt * 4)
   local received_acceleration = lerp(lerp_buffer[id].acceleration, transform.acceleration, dt)
   local received_angular_acceleration = lerp(lerp_buffer[id].angular_acceleration, transform.angular_acceleration, dt)
   lerp_buffer[id].velocity = received_velocity
@@ -179,7 +179,7 @@ local function apply_transform(dt, id, transform, apply_velocity)
                               ..required_angular_acceleration.z..","
                               ..required_angular_acceleration.x..")")
   end
-
+ 
   acceleration_buffer[id] = required_acceleration
   angular_acceleration_buffer[id] = required_angular_acceleration
 end 
