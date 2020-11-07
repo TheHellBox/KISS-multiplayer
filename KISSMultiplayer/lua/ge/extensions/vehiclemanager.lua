@@ -365,7 +365,7 @@ local function onFreeroamLoaded(mission)
   if mission ~= network.connection.server_info.map then
     network.disconnect()
   end
- 
+  print("Spawn from buffer")
   M.loading_map = false
   for _, data in pairs(vehicle_buffer) do
     spawn_vehicle(data)

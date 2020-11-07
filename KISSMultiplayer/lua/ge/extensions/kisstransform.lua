@@ -110,7 +110,7 @@ local function apply_transform(dt, id, transform, apply_velocity)
   local rotation_error = predicted_rotation / quat(M.local_transforms[id].rotation)
   local rotation_error_euler = rotation_error:toEulerYXZ()
 
-  if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 5) then
+  if (rotation_error_euler:length() > M.rot_threshold) or (position_error:length() > 10) then
     vehicle:setPosRot(
       predicted_position.x,
       predicted_position.y,
@@ -167,16 +167,18 @@ local function apply_transform(dt, id, transform, apply_velocity)
   required_acceleration = required_acceleration * (1 - clamp(dot_acc, 0, 1))
   required_angular_acceleration = required_angular_acceleration * (1 - clamp(dot_ang_acc, 0, 1))
  
-  if required_acceleration:length() > 5 or isnan(required_acceleration.x) or isinf(required_acceleration.x) then return end
+  if required_acceleration:length() > 15 or isnan(required_acceleration.x) or isinf(required_acceleration.x) then return end
   if required_angular_acceleration:length() > 5 or isnan(required_angular_acceleration.x) or isinf(required_angular_acceleration.x) then return end
- 
-  vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
-                            ..required_acceleration.x..","
-                            ..required_acceleration.y..","
-                            ..required_acceleration.z..","
-                            ..required_angular_acceleration.y..","
-                            ..required_angular_acceleration.z..","
-                            ..required_angular_acceleration.x..")")
+
+  if (required_acceleration:length() > 0.1) or (required_angular_acceleration:length() > 0.05) then
+    vehicle:queueLuaCommand("kiss_vehicle.apply_full_velocity("
+                              ..required_acceleration.x..","
+                              ..required_acceleration.y..","
+                              ..required_acceleration.z..","
+                              ..required_angular_acceleration.y..","
+                              ..required_angular_acceleration.z..","
+                              ..required_angular_acceleration.x..")")
+  end
 
   acceleration_buffer[id] = required_acceleration
   angular_acceleration_buffer[id] = required_angular_acceleration

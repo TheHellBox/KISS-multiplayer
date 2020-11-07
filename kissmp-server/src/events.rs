@@ -79,6 +79,7 @@ impl Server {
                     if info.name == String::from("") {
                         info.name = String::from("Unknown");
                     }
+                    info.name.truncate(32);
                     connection.client_info.name = info.name;
                     connection.client_info.current_vehicle = info.current_vehicle;
                 }

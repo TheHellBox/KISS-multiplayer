@@ -256,11 +256,11 @@ impl Server {
         })
         .to_string()
         .into_bytes();
-        send(&mut stream, 3, &server_info).await?;
-        stream.finish().await?;
 
         // Sender
         tokio::spawn(async move {
+            let _ = send(&mut stream, 3, &server_info).await;
+            let _ = stream.finish().await;
             let _ = Self::drive_send(connection, ordered_rx, unreliable_rx).await;
         });
         Ok(())
