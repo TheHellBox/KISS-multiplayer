@@ -281,19 +281,22 @@ impl Server {
                 command = ordered.select_next_some() => {
                     println!("send {:?}", command);
                     println!("Open stream");
-                    let mut stream = connection.open_uni().await?;
                     println!("Start task");
+                    let connection = connection.clone();
                     tokio::spawn(async move {
-                        // Kinda ugly and hacky tbh
-                        match command {
-                            Outgoing::TransferFile(file) => {
-                                println!("Start file transfer");
-                                let _ = file_transfer::transfer_file(&mut stream, std::path::Path::new(&file)).await;
-                                println!("End file transfer");
-                            }
-                            _ => {
-                                let data_type = outgoing::get_data_type(&command);
-                                let _ = send(&mut stream, data_type, &Self::handle_outgoing_data(command)).await;
+                        let mut stream = connection.open_uni().await;
+                        if let Ok(stream) = &mut stream {
+                            // Kinda ugly and hacky tbh
+                            match command {
+                                Outgoing::TransferFile(file) => {
+                                    println!("Start file transfer");
+                                    let _ = file_transfer::transfer_file(stream, std::path::Path::new(&file)).await;
+                                    println!("End file transfer");
+                                }
+                                _ => {
+                                    let data_type = outgoing::get_data_type(&command);
+                                    let _ = send(stream, data_type, &Self::handle_outgoing_data(command)).await;
+                                }
                             }
                         }
                         println!("End task");
