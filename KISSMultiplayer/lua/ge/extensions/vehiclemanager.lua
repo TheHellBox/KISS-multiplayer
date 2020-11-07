@@ -7,6 +7,7 @@ local meta_timer = 0
 local vehicle_buffer = {}
 local colors_buffer = {}
 local plates_buffer = {}
+local first_vehicle = true
 
 M.loading_map = false
 M.id_map = {}
@@ -329,6 +330,12 @@ end
 local function onVehicleSpawned(id)
   if not network.connection.connected then return end
   local vehicle = be:getObjectByID(id)
+  local position = vehicle:getPosition()
+  if first_vehicle then
+    vehicle:setPosition(Point3F(position.x + math.random(-5, 5), position.y + math.random(-5, 5), position.z))
+    vehicle:queueLuaCommand("recovery.saveHome()")
+    first_vehicle = false
+  end
   vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.hook('kissInit')")
@@ -365,8 +372,8 @@ local function onFreeroamLoaded(mission)
   if mission ~= network.connection.server_info.map then
     network.disconnect()
   end
-  print("Spawn from buffer")
   M.loading_map = false
+  first_vehicle = true
   for _, data in pairs(vehicle_buffer) do
     spawn_vehicle(data)
   end

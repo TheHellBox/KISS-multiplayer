@@ -259,8 +259,7 @@ local function connect(addr, player_name)
   -- Request mods
   send_data(9, true, jsonEncode(missing_mods))
   send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
- 
-  spawn.preventPlayerSpawning = true
+
   if server_info.map ~= "any" and #missing_mods == 0 then
     freeroam_freeroam.startFreeroam(server_info.map)
     vehiclemanager.loading_map = true
@@ -275,7 +274,6 @@ end
 
 local function on_finished_download()
   if M.connection.server_info.map ~= "any" then
-    spawn.preventPlayerSpawning = true
     vehiclemanager.loading_map = true
     freeroam_freeroam.startFreeroam(M.connection.server_info.map)
   end
