@@ -369,7 +369,7 @@ end
 
 local function onFreeroamLoaded(mission)
   if not network.connection.connected then return end
-  if mission ~= network.connection.server_info.map then
+  if mission:lower() ~= network.connection.server_info.map:lower() then
     network.disconnect()
   end
   M.id_map = {}
