@@ -24,6 +24,9 @@ local function deactivate_all_mods()
   for k, mod_path in pairs(FS:findFiles("/kissmp_mods/", "*.zip", 1000)) do
     FS:unmount(mod_path)
   end
+  for k, mod_path in pairs(FS:directoryList("/mods/unpacked/", "*", 1)) do
+    FS:unmount(mod_path.."/")
+  end
   core_vehicles.clearCache()
 end
 
