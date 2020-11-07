@@ -244,7 +244,6 @@ impl Server {
             }
         });
 
-        let mut stream = connection.open_uni().await?;
         let server_info = serde_json::json!({
             "name": self.name.clone(),
             "player_count": self.connections.len(),
@@ -259,8 +258,11 @@ impl Server {
 
         // Sender
         tokio::spawn(async move {
-            let _ = send(&mut stream, 3, &server_info).await;
-            let _ = stream.finish().await;
+            let mut stream = connection.open_uni().await;
+            if let Ok(stream) = &mut stream {
+                let _ = send(stream, 3, &server_info).await;
+                let _ = stream.finish().await;
+            }
             let _ = Self::drive_send(connection, ordered_rx, unreliable_rx).await;
         });
         Ok(())
