@@ -52,6 +52,8 @@ local favorite_servers = {}
 
 local filtered_servers = {}
 local filtered_favorite_servers = {}
+local next_bridge_status_update = 0
+
 
 local function save_config()
   local result = {
@@ -738,6 +740,16 @@ local function onUpdate(dt)
   end
   
   time_since_filters_change = time_since_filters_change + dt
+
+  if os.time() > next_bridge_status_update then
+    next_bridge_status_update = os.time() + 2
+    local b, _, _  = http.request("http://127.0.0.1:3693/check")
+    if b and b == "ok" then
+      show_ui()
+    else
+      hide_ui()
+    end
+  end
 end
 
 local function add_message(message, color)
@@ -752,6 +764,7 @@ local function add_message(message, color)
   if has_color then
     message_table.color = color 
   end
+
   table.insert(M.chat, message_table)
 end
 
