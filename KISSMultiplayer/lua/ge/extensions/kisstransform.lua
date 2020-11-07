@@ -99,7 +99,7 @@ local function apply_transform(dt, id, transform, apply_velocity)
   lerp_buffer[id].acceleration = received_acceleration
   lerp_buffer[id].angular_acceleration = received_angular_acceleration
 
-  local predicted_velocity = received_acceleration + received_acceleration * transform.time_past
+  local predicted_velocity = received_velocity + received_acceleration * transform.time_past
   local predicted_position = vec3(transform.position) + predicted_velocity * transform.time_past
 
   local predicted_angular_velocity = received_angular_velocity + received_angular_acceleration * transform.time_past
