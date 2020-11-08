@@ -85,6 +85,8 @@ impl Server {
                 }
             }
             Chat(initial_message) => {
+                let mut initial_message = initial_message.clone();
+                initial_message.truncate(128);
                 let mut message = format!(
                     "{}: {}",
                     self.connections[&client_id].client_info.name,
@@ -92,12 +94,16 @@ impl Server {
                 );
                 println!("{}", message);
                 self.lua.context(|lua_ctx| {
-                    if let Some(Some(result)) = crate::lua::run_hook::<(u32, String), Option<String>>(
+                    let results = crate::lua::run_hook::<(u32, String), Option<String>>(
                         lua_ctx,
                         String::from("OnChat"),
                         (client_id, initial_message.clone()),
-                    ) {
-                        message = result;
+                    );
+                    for result in results {
+                        if let Some(result) = result {
+                            message = result;
+                            break;
+                        }
                     }
                 });
                 if message.len() > 0 {

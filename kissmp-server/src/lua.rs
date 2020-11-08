@@ -354,16 +354,16 @@ pub fn run_hook<
     lua_ctx: rlua::Context<'lua>,
     name: String,
     args: A,
-) -> Option<R> {
+) -> Vec<R> {
     let globals = lua_ctx.globals();
     let hooks_table: rlua::Table = globals.get("hooks").unwrap();
     let hooks = hooks_table.get(name);
-    let mut result = None;
+    let mut result = vec![];
     if let Ok::<rlua::Table, _>(hooks) = hooks {
         for pair in hooks.pairs() {
             let (_, function): (String, rlua::Function) = pair.unwrap();
             match function.call::<A, R>(args.clone()) {
-                Ok(r) => result = Some(r),
+                Ok(r) => result.push(r),
                 Err(r) => println!("{}", r),
             }
         }

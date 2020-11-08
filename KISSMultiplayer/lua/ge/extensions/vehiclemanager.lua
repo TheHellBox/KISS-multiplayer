@@ -275,18 +275,20 @@ local function reset_vehicle(data)
   id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(id)
   local position = vehicle:getPosition()
-  local rotation = kisstransform.local_transforms[id].rotation
   if vehicle then
     vehicle:reset()
-    vehicle:setPositionRotation(
-      position.x,
-      position.y,
-      position.z,
-      rotation[1],
-      rotation[2],
-      rotation[3],
-      rotation[4]
-    )
+    if kisstransform.local_transforms[id] then
+      local rotation = kisstransform.local_transforms[id].rotation
+      vehicle:setPositionRotation(
+        position.x,
+        position.y,
+        position.z,
+        rotation[1],
+        rotation[2],
+        rotation[3],
+        rotation[4]
+      )
+    end
   end
 end
 

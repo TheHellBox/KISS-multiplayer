@@ -3,6 +3,7 @@ local prev_electrics = {}
 local prev_signal_electrics = {}
 local last_engine_state = true
 local engine_timer = 0
+local ownership = false
 
 local ignored_keys = {
   throttle = true,
@@ -76,6 +77,7 @@ local function ignore_key(key)
 end
 
 local function update_engine_state()
+  if ownership then return end
   if not electrics.values.engineRunning then return end
   local engine_running = electrics.values.engineRunning > 0.5
   
@@ -216,12 +218,17 @@ local function kissInit()
   end
 end
 
+local function kissUpdateOwnership(owned)
+  ownership = owner
+end
+
 M.send = send
 M.apply = apply
 M.apply_diff = apply_diff
 M.ignore_key = ignore_key
 
 M.kissInit = kissInit
+M.kissUpdateOwnership = kissUpdateOwnership
 
 M.updateGFX = updateGFX
 
