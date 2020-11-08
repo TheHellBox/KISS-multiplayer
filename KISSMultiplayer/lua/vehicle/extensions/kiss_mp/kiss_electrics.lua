@@ -219,7 +219,7 @@ local function kissInit()
 end
 
 local function kissUpdateOwnership(owned)
-  ownership = owner
+  ownership = owned
 end
 
 M.send = send
