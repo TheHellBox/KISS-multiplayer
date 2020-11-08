@@ -19,7 +19,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use tokio::sync::mpsc;
-use tracing::*;
 
 #[derive(Clone)]
 struct Connection {
@@ -287,7 +286,6 @@ impl Server {
                             match command {
                                 Outgoing::TransferFile(file) => {
                                     let _ = file_transfer::transfer_file(stream, std::path::Path::new(&file)).await;
-                                    println!("End file transfer");
                                 }
                                 _ => {
                                     let data_type = outgoing::get_data_type(&command);
@@ -351,7 +349,6 @@ impl Server {
                     }
                 }
                 data = datagrams.try_next() => {
-                    println!("select datagram");
                     if let Some(data) = data? {
                         data
                     }
