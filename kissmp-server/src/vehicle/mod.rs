@@ -77,7 +77,7 @@ impl crate::Server {
         self.lua.context(|lua_ctx| {
             let _ = crate::lua::run_hook::<(u32, Option<u32>), ()>(
                 lua_ctx,
-                String::from("OnVehicleReseted"),
+                String::from("OnVehicleResetted"),
                 (server_id, client_id),
             );
         });
