@@ -50,11 +50,12 @@ local ping_calculator = {
 }
 
 ping_calculator.get = function(new_sample)
-  if ping_calculator.current_sample < 10 then
+  if ping_calculator.current_sample < 5 then
     ping_calculator.samples[ping_calculator.current_sample] = new_sample
   else
     ping_calculator.current_sample = 0
   end
+  ping_calculator.current_sample = ping_calculator.current_sample + 1
   local sum = 0
   local n = 0
   for _, v in pairs(ping_calculator.samples) do

@@ -82,7 +82,7 @@ local function apply_transform(dt, id, transform, apply_velocity)
     }
   end
 
-  transform.time_past = clamp(transform.time_past + dt, 0, 0.5)
+  transform.time_past = clamp(transform.time_past + dt, 0, 0.3)
 
   local local_ang_vel = vec3(
     M.local_transforms[id].vel_yaw,
