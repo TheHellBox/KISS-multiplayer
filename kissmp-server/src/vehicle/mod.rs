@@ -101,7 +101,7 @@ impl crate::Server {
     }
 
     pub async fn spawn_vehicle(&mut self, client_id: u32, data: VehicleData) {
-        let server_id = rand::random::<u32>();
+        let server_id = rand::random::<u16>();
         let mut data = data.clone();
         data.server_id = server_id;
         data.owner = Some(client_id);
