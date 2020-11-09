@@ -151,7 +151,9 @@ impl Server {
                     }
                 },
                 stdin_input = reader.next() => {
-                    self.on_console_input(stdin_input.unwrap().unwrap()).await;
+                    if let Some(stdin_input) = stdin_input {
+                        self.on_console_input(stdin_input.unwrap_or(String::from(""))).await;
+                    }
                 },
                 e = client_events_rx.select_next_some() => {
                     self.on_client_event(e.0, e.1).await;
