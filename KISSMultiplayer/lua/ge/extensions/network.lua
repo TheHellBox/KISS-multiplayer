@@ -123,7 +123,7 @@ local function handle_vehicle_lua(data)
   local id = vehiclemanager.id_map[id]
   local vehicle = be:getObjectByID(id)
   if vehicle then
-    vehicle:queueLuaCommand(id)
+    vehicle:queueLuaCommand(lua)
   end
 end
 
