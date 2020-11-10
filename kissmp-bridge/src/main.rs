@@ -1,8 +1,8 @@
 use futures::{StreamExt, TryStreamExt};
+use percent_encoding::percent_decode_str;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use percent_encoding::{percent_decode_str};
 
 #[cfg(feature = "discord-rpc-client")]
 #[derive(Debug, Clone)]
@@ -21,6 +21,12 @@ async fn main() {
     tokio::spawn(async move {
         let mut drpc_client = discord_rpc_client::Client::new(771278096627662928);
         drpc_client.start();
+        drpc_client
+            .subscribe(discord_rpc_client::models::Event::ActivityJoin, |j| {
+                j.secret("123456")
+            })
+            .expect("Failed to subscribe to event");
+
         let mut state = DiscordState { server_name: None };
         loop {
             std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -31,15 +37,16 @@ async fn main() {
                 let _ = drpc_client.clear_activity();
                 continue;
             }
-            let _ = drpc_client
-                .set_activity(|activity| {
-                    activity
-                        .details(format!("Playing on {}", state.clone().server_name.unwrap()))
-                        .assets(|assets| assets.large_image("kissmp_logo").small_text("test"))
-                });
+            let _ = drpc_client.set_activity(|activity| {
+                activity
+                    .details(state.clone().server_name.unwrap())
+                    .state("[1/8]")
+                    .assets(|assets| assets.large_image("kissmp_logo"))
+                    .secrets(|secrets| secrets.game("Test").join("127.0.0.1:3698"))
+            });
         }
     });
-   
+
     // Master server proxy
     tokio::spawn(async move {
         let server = tiny_http::Server::http("0.0.0.0:3693").unwrap();
@@ -58,7 +65,9 @@ async fn main() {
             #[cfg(feature = "discord-rpc-client")]
             if url.starts_with("rich_presence") {
                 let server_name_encoded = url.replace("rich_presence/", "");
-                let data = percent_decode_str(&server_name_encoded).decode_utf8_lossy().into_owned();
+                let data = percent_decode_str(&server_name_encoded)
+                    .decode_utf8_lossy()
+                    .into_owned();
                 let server_name = {
                     if data != "none" {
                         Some(data)
@@ -160,7 +169,10 @@ async fn main() {
             println!("Connection with game is closed");
             stream_connection.close(0u32.into(), b"Client has left the game.");
             #[cfg(feature = "discord-rpc-client")]
-            discord_tx.send(DiscordState { server_name: None }).await.unwrap();
+            discord_tx
+                .send(DiscordState { server_name: None })
+                .await
+                .unwrap();
         });
 
         //let mut ordered = connection.uni_streams.next().await.unwrap().unwrap();
@@ -171,7 +183,9 @@ async fn main() {
                 let reason_bytes = reason.into_bytes();
                 // Send message type 10(Disconnected) to the game
                 let _ = writer.write_all(&[10]).await;
-                let _ = writer.write_all(&(reason_bytes.len() as u32).to_le_bytes()).await;
+                let _ = writer
+                    .write_all(&(reason_bytes.len() as u32).to_le_bytes())
+                    .await;
                 let _ = writer.write_all(&reason_bytes).await;
             }
         });

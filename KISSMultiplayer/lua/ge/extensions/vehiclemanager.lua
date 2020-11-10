@@ -67,54 +67,6 @@ local function send_vehicle_meta_updates()
   end
 end
 
-local function onUpdate(dt)
-  if not network.connection.connected then return end
-
-  -- Track color and plate changes
-  meta_timer = meta_timer + dt
-  if meta_timer >= 1 then
-    send_vehicle_meta_updates()
-    meta_timer = meta_timer - 1
-  end
-  
-  local tick_time = (1/network.connection.tickrate)
-  if timer <  tick_time then
-    timer = timer + dt
-  else
-    timer = timer - tick_time
-    for i, v in pairs(vehiclemanager.ownership) do
-      local vehicle = be:getObjectByID(i)
-      if vehicle then
-        kisstransform.send_transform_updates(vehicle)
-        vehicle:queueLuaCommand("kiss_input.send()")
-        vehicle:queueLuaCommand("kiss_electrics.send()")
-        vehicle:queueLuaCommand("kiss_gearbox.send()")
-      end
-    end
-  end
-  
-  for k, v in pairs(M.id_map) do
-    if not M.ownership[v] then
-      local vehicle = be:getObjectByID(v)
-      if vehicle then
-        vehicle:queueLuaCommand("kiss_vehicle.update_eligible_nodes()")
-      end
-    end
-  end
-  
-  for id, updates in pairs(M.vehicle_updates_buffer) do
-    local vehicle = be:getObjectByID(id)
-    if vehicle then
-      if updates.input then
-        vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(updates.input).."\')")
-      end
-      if updates.gearbox then
-        vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(updates.gearbox).."\')")
-      end
-    end
-  end
-end
-
 local function update_ownership_limits()
     local owned_vehicle_count = 0
     for _, _ in pairs(M.ownership) do
@@ -167,13 +119,14 @@ local function send_vehicle_config_inner(id, parts_config)
 end
 
 local function spawn_vehicle(data)
-  -- Buffer the vehicles if map is not loaded yet
+  local data = data
+  if type(data) == "string" then
+    data = jsonDecode(data)
+  end
   if M.loading_map then
     table.insert(vehicle_buffer, data)
     return
   end
-  local data = jsonDecode(data)
- 
   print("Trying to spawn vehicle")
   if data.owner == network.get_client_id() then
     print("Vehicle belongs to local client, setting ownership")
@@ -211,6 +164,68 @@ local function spawn_vehicle(data)
   end
   if current_vehicle then be:enterVehicle(0, current_vehicle) end
   spawned:queueLuaCommand("extensions.hook('kissUpdateOwnership', false)")
+end
+
+local function onUpdate(dt)
+  if not network.connection.connected then return end
+
+  -- Track color and plate changes
+  meta_timer = meta_timer + dt
+  if meta_timer >= 1 then
+    send_vehicle_meta_updates()
+    meta_timer = meta_timer - 1
+  end
+
+  local tick_time = (1/network.connection.tickrate)
+  if timer <  tick_time then
+    timer = timer + dt
+  else
+    timer = timer - tick_time
+    for i, v in pairs(vehiclemanager.ownership) do
+      local vehicle = be:getObjectByID(i)
+      if vehicle then
+        kisstransform.send_transform_updates(vehicle)
+        vehicle:queueLuaCommand("kiss_input.send()")
+        vehicle:queueLuaCommand("kiss_electrics.send()")
+        vehicle:queueLuaCommand("kiss_gearbox.send()")
+      end
+    end
+  end
+
+  for k, v in pairs(M.id_map) do
+    if not M.ownership[v] then
+      local vehicle = be:getObjectByID(v)
+      if vehicle then
+        vehicle:queueLuaCommand("kiss_vehicle.update_eligible_nodes()")
+      end
+    end
+  end
+
+  for id, updates in pairs(M.vehicle_updates_buffer) do
+    local vehicle = be:getObjectByID(id)
+    if vehicle then
+      if updates.input then
+        vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(updates.input).."\')")
+      end
+      if updates.gearbox then
+        vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(updates.gearbox).."\')")
+      end
+    end
+  end
+
+  local current_vehicle = be:getPlayerVehicle(0)
+  if not current_vehicle or M.loading_map then return end
+  local current_position = vec3(current_vehicle:getPosition())
+  local spawned_vehicles = {}
+  for k, vehicle in pairs(vehicle_buffer) do
+    if current_position:distance(vec3(kisstransform.raw_positions[vehicle.server_id] or vehicle.position)) < 200 then
+      spawn_vehicle(vehicle)
+    end
+    table.insert(spawned_vehicles, k)
+  end
+  for _, v in pairs(spawned_vehicles) do
+    table.remove(vehicle_buffer, v)
+  end
 end
 
 local function update_vehicle_input(data)
@@ -274,6 +289,7 @@ local function reset_vehicle(data)
   local id = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0]
   id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(id)
+  if not vehicle then return end
   local position = vehicle:getPosition()
   if vehicle then
     vehicle:reset()
@@ -297,25 +313,24 @@ local function update_vehicle_meta(data)
   local id = M.id_map[data[1] or -1] or -1
   if M.ownership[id] then return end
   local vehicle = be:getObjectByID(id)
-  if vehicle then
-    local plate = data[2]
-    local colors = {
-      data[3][1],
-      data[3][2],
-      data[3][3]
-    }
-    
-    -- Apply plate
-    if plate ~= nil then
-      extensions.core_vehicles.setPlateText(plate, id)
-    end
-    
-    -- Apply colors
-    local vd = extensions.core_vehicle_manager.getVehicleData(id)
-    if not vd or not vd.config or not vd.config.colors then return end
-    vd.config.colors = colors
-    extensions.core_vehicle_manager.liveUpdateVehicleColors(id, vehicle)
+  if not vehicle then return end
+  local plate = data[2]
+  local colors = {
+    data[3][1],
+    data[3][2],
+    data[3][3]
+  }
+
+  -- Apply plate
+  if plate ~= nil then
+    extensions.core_vehicles.setPlateText(plate, id)
   end
+
+  -- Apply colors
+  local vd = extensions.core_vehicle_manager.getVehicleData(id)
+  if not vd or not vd.config or not vd.config.colors then return end
+  vd.config.colors = colors
+  extensions.core_vehicle_manager.liveUpdateVehicleColors(id, vehicle)
 end
 
 local function electrics_diff_update(data)
@@ -378,10 +393,6 @@ local function onFreeroamLoaded(mission)
   M.ownership = {}
   M.loading_map = false
   first_vehicle = true
-  for _, data in pairs(vehicle_buffer) do
-    spawn_vehicle(data)
-  end
-  vehicle_buffer = {}
 end
 
 M.onUpdate = onUpdate

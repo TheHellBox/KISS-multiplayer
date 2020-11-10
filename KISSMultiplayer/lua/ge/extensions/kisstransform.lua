@@ -12,6 +12,7 @@ local angular_acceleration_buffer = {}
 
 M.received_transforms = {}
 M.local_transforms = {}
+M.raw_positions = {}
 
 M.threshold = 3
 M.rot_threshold = 2.5
@@ -90,10 +91,10 @@ local function apply_transform(dt, id, transform, apply_velocity)
     M.local_transforms[id].vel_roll
   )
 
-  local received_velocity = lerp(lerp_buffer[id].velocity, vec3(transform.velocity), dt * 4)
-  local received_angular_velocity = lerp(lerp_buffer[id].angular_velocity, vec3(transform.angular_velocity), dt * 4)
-  local received_acceleration = lerp(lerp_buffer[id].acceleration, transform.acceleration, dt)
-  local received_angular_acceleration = lerp(lerp_buffer[id].angular_acceleration, transform.angular_acceleration, dt)
+  local received_velocity = lerp(lerp_buffer[id].velocity, vec3(transform.velocity), dt / transform.time_past * 2)
+  local received_angular_velocity = lerp(lerp_buffer[id].angular_velocity, vec3(transform.angular_velocity), dt / transform.time_past * 2)
+  local received_acceleration = lerp(lerp_buffer[id].acceleration, transform.acceleration, dt / transform.time_past)
+  local received_angular_acceleration = lerp(lerp_buffer[id].angular_acceleration, transform.angular_acceleration, dt / transform.time_past)
   lerp_buffer[id].velocity = received_velocity
   lerp_buffer[id].angular_velocity = received_angular_velocity
   lerp_buffer[id].acceleration = received_acceleration
@@ -217,10 +218,10 @@ local function update_vehicle_transform(data)
   local id = vehiclemanager.id_map[transform.owner or -1] or -1
   if vehiclemanager.ownership[id] then return end
   if transform.generation <= (vehiclemanager.packet_gen_buffer[id] or -1) then return end
-
   vehiclemanager.packet_gen_buffer[id] = transform.generation
+  M.raw_positions[transform.owner or -1] = transform.position
+ 
   local vehicle = be:getObjectByID(id)
-
   if vehicle then
     transform.time_past = clamp(get_current_time() - transform.sent_at, 0, 0.1) * 0.7 + 0.001
 

@@ -44,21 +44,21 @@ local PONG = 254
 
 local message_handlers = {}
 
-local ping_calculator = {
+local time_offset_smoother = {
   samples = {},
   current_sample = 1,
 }
 
-ping_calculator.get = function(new_sample)
-  if ping_calculator.current_sample < 5 then
-    ping_calculator.samples[ping_calculator.current_sample] = new_sample
+time_offset_smoother.get = function(new_sample)
+  if time_offset_smoother.current_sample < 10 then
+    time_offset_smoother.samples[time_offset_smoother.current_sample] = new_sample
   else
-    ping_calculator.current_sample = 0
+    time_offset_smoother.current_sample = 0
   end
-  ping_calculator.current_sample = ping_calculator.current_sample + 1
+  time_offset_smoother.current_sample = time_offset_smoother.current_sample + 1
   local sum = 0
   local n = 0
-  for _, v in pairs(ping_calculator.samples) do
+  for _, v in pairs(time_offset_smoother.samples) do
     sum = sum + v
     n = n + 1
   end
@@ -132,9 +132,8 @@ local function handle_pong(data)
   local local_time = socket.gettime()
   local ping = local_time - ping_send_time
   if ping > 1 then return end
-  local ping = ping_calculator.get(ping)
   local time_diff = server_time - local_time + (ping / 2)
-  M.connection.time_offset = time_diff
+  M.connection.time_offset = time_offset_smoother.get(time_diff)
   M.connection.ping = ping * 1000
 end
 
