@@ -21,7 +21,7 @@ M.target_transform = {
 }
 
 M.force = 15
-M.ang_force = 70
+M.ang_force = 100
 
 local function predict(dt)
   M.target_transform.velocity = M.received_transform.velocity + M.received_transform.acceleration * M.received_transform.time_past
@@ -33,11 +33,11 @@ local function predict(dt)
 end
 
 local function try_rude()
-  if (M.target_transform.position - vec3(obj:getPosition())):length() > 15 then
+  if (M.target_transform.position - vec3(obj:getPosition())):length() > 10 then
     local p = M.target_transform.position
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPosition(Point3F("..p.x..", "..p.y..", "..p.z.."))")
   end
-  if (M.target_transform.rotation / quat(obj:getRotation())):toEulerYXZ():length() > 1.5 then
+  if (M.target_transform.rotation / quat(obj:getRotation())):toEulerYXZ():length() > 2 then
     local p = M.target_transform.position
     local r = M.target_transform.rotation
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
