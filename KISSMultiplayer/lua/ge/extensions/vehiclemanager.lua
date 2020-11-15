@@ -218,7 +218,7 @@ local function onUpdate(dt)
   local current_position = vec3(current_vehicle:getPosition())
   local spawned_vehicles = {}
   for k, vehicle in pairs(vehicle_buffer) do
-    if current_position:distance(vec3(kisstransform.raw_positions[vehicle.server_id] or vehicle.position)) < 200 then
+    if current_position:distance(vec3(kisstransform.raw_positions[vehicle.server_id] or vehicle.position)) < 9999 then
       spawn_vehicle(vehicle)
     end
     table.insert(spawned_vehicles, k)
@@ -366,6 +366,7 @@ local function onVehicleDestroyed(id)
     M.ownership[id] = nil
     local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
     network.send_data(5, true, packed)
+    update_ownership_limits()
   end
 end
 
