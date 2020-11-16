@@ -3,8 +3,8 @@ local parts_config = v.config
 local nodes = {}
 
 local last_node = 1
-local nodes_per_frame = 64
-local node_pos_thresh = (32 * 32)
+local nodes_per_frame = 32
+local node_pos_thresh = 32
 
 local function kissInit()
   local force = obj:getPhysicsFPS()
@@ -22,10 +22,6 @@ local function kissInit()
   end
 end
 
-local function sqr_len(vec)
-  return vec.x * vec.x + vec.y * vec.y + vec.z * vec.z
-end
-
   -- NOTE:
   -- This is a temperary solution. It's not great. We made it to release the mod.
   -- A better solution will be used in future versions
@@ -33,7 +29,7 @@ local function update_eligible_nodes()
   for k=last_node, math.min(#nodes , last_node + nodes_per_frame) do
     local node = nodes[k]
     local node_position = obj:getNodePosition(node[1])
-    node[3] = sqr_len(node_position) < node_pos_thresh
+    node[3] = node_position:length() < node_pos_thresh
     last_node = k
   end
   if last_node == #nodes then last_node = 1 end
