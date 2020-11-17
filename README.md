@@ -32,7 +32,7 @@ and hit the connect button.
 
 ## Server installation (Windows)
 Just launch kissmp-server.exe file and you're ready to go.
-More detailed guide on server configuration can be found on this wiki page (Insert link).
+More detailed guide on server configuration can be found on this [wiki page](https://github.com/TheHellBox/KISS-multiplayer/wiki/Server-installation).
 
 
 ## Building
