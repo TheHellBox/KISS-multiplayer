@@ -18,7 +18,7 @@ async fn main() {
     let discord_tx_clone = discord_tx.clone();
 
     #[cfg(feature = "discord-rpc-client")]
-    tokio::spawn(async move {
+    std::thread::spawn(move || {
         let mut drpc_client = discord_rpc_client::Client::new(771278096627662928);
         drpc_client.start();
         drpc_client
@@ -95,88 +95,85 @@ async fn main() {
     while let Ok(conn) = listener.accept().await {
         #[cfg(feature = "discord-rpc-client")]
         let mut discord_tx = discord_tx_clone.clone();
-
         let stream = conn.0;
-        let (mut reader, mut writer) = tokio::io::split(stream);
-        // Receive addr from client
-        let mut addr_len = [0; 4];
-        reader.read_exact(&mut addr_len).await.unwrap();
-        let addr_len = u32::from_le_bytes(addr_len) as usize;
-        let mut addr_buffer = vec![0; addr_len];
-        reader.read_exact(&mut addr_buffer).await.unwrap();
-        let addr_str = String::from_utf8(addr_buffer).unwrap();
-
-        let addr = {
-            if let Ok(mut socket_addrs) = addr_str.to_socket_addrs() {
-                socket_addrs.next().unwrap()
-            } else {
-                println!("Failed to parse address!");
-                continue;
-            }
-        };
-
-        let mut endpoint = quinn::Endpoint::builder();
-        let mut client_cfg = quinn::ClientConfig::default();
-
-        let mut transport = quinn::TransportConfig::default();
-        transport
-            .max_idle_timeout(Some(std::time::Duration::from_secs(60)))
-            .unwrap();
-        client_cfg.transport = std::sync::Arc::new(transport);
-
-        let tls_cfg = std::sync::Arc::get_mut(&mut client_cfg.crypto).unwrap();
-        tls_cfg
-            .dangerous()
-            .set_certificate_verifier(std::sync::Arc::new(AcceptAnyCertificate));
-        endpoint.default_client_config(client_cfg);
-        let (endpoint, _) = endpoint
-            .bind(&SocketAddr::new(IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
-            .unwrap();
-        let connection = endpoint.connect(&addr, "kissmp").unwrap().await;
-        if connection.is_err() {
-            // Send connection failed message to the client
-            let _ = writer.write_all(&[0]).await;
-            continue;
-        }
-        // Confirm that connection is established
-        let _ = writer.write_all(&[1]).await;
-
-        let connection = connection.unwrap();
-        // That's some stupid naming
-        let stream_connection = connection.connection.clone();
         tokio::spawn(async move {
-            let mut buffer = [0; 1];
-            while let Ok(_) = reader.read_exact(&mut buffer).await {
-                let reliable = buffer[0] == 1;
-                let mut buffer_a = vec![0; 1];
-                let _ = reader.read_exact(&mut buffer_a).await;
-                let mut len_buf = [0; 4];
-                let _ = reader.read_exact(&mut len_buf).await;
-                let len = i32::from_le_bytes(len_buf) as usize;
-                let mut data = vec![0; len];
-                let _ = reader.read_exact(&mut data).await;
-                if !reliable {
-                    buffer_a.append(&mut data);
-                    let _ = stream_connection.send_datagram(buffer_a.into());
-                    continue;
+            let (mut reader, mut writer) = tokio::io::split(stream);
+            // Receive addr from client
+            let mut addr_len = [0; 4];
+            reader.read_exact(&mut addr_len).await.unwrap();
+            let addr_len = u32::from_le_bytes(addr_len) as usize;
+            let mut addr_buffer = vec![0; addr_len];
+            reader.read_exact(&mut addr_buffer).await.unwrap();
+            let addr_str = String::from_utf8(addr_buffer).unwrap();
+
+            let addr = {
+                if let Ok(mut socket_addrs) = addr_str.to_socket_addrs() {
+                    socket_addrs.next().unwrap()
+                } else {
+                    println!("Failed to parse address!");
+                    return;
                 }
-                buffer_a.append(&mut len_buf.to_vec());
-                buffer_a.append(&mut data);
-                if let Ok(mut stream) = stream_connection.open_uni().await {
-                    let _ = stream.write_all(&buffer_a).await;
-                }
-            }
-            println!("Connection with game is closed");
-            stream_connection.close(0u32.into(), b"Client has left the game.");
-            #[cfg(feature = "discord-rpc-client")]
-            discord_tx
-                .send(DiscordState { server_name: None })
-                .await
+            };
+
+            let mut endpoint = quinn::Endpoint::builder();
+            let mut client_cfg = quinn::ClientConfig::default();
+
+            let mut transport = quinn::TransportConfig::default();
+            transport
+                .max_idle_timeout(Some(std::time::Duration::from_secs(60)))
                 .unwrap();
-        });
+            client_cfg.transport = std::sync::Arc::new(transport);
 
-        //let mut ordered = connection.uni_streams.next().await.unwrap().unwrap();
-        tokio::spawn(async move {
+            let tls_cfg = std::sync::Arc::get_mut(&mut client_cfg.crypto).unwrap();
+            tls_cfg
+                .dangerous()
+                .set_certificate_verifier(std::sync::Arc::new(AcceptAnyCertificate));
+            endpoint.default_client_config(client_cfg);
+            let (endpoint, _) = endpoint
+                .bind(&SocketAddr::new(IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
+                .unwrap();
+            let connection = endpoint.connect(&addr, "kissmp").unwrap().await;
+            if connection.is_err() {
+                // Send connection failed message to the client
+                let _ = writer.write_all(&[0]).await;
+                return;
+            }
+            // Confirm that connection is established
+            let _ = writer.write_all(&[1]).await;
+
+            let connection = connection.unwrap();
+            // That's some stupid naming
+            let stream_connection = connection.connection.clone();
+            tokio::spawn(async move {
+                let mut buffer = [0; 1];
+                while let Ok(_) = reader.read_exact(&mut buffer).await {
+                    let reliable = buffer[0] == 1;
+                    let mut buffer_a = vec![0; 1];
+                    let _ = reader.read_exact(&mut buffer_a).await;
+                    let mut len_buf = [0; 4];
+                    let _ = reader.read_exact(&mut len_buf).await;
+                    let len = i32::from_le_bytes(len_buf) as usize;
+                    let mut data = vec![0; len];
+                    let _ = reader.read_exact(&mut data).await;
+                    if !reliable {
+                        buffer_a.append(&mut data);
+                        let _ = stream_connection.send_datagram(buffer_a.into());
+                        continue;
+                    }
+                    buffer_a.append(&mut len_buf.to_vec());
+                    buffer_a.append(&mut data);
+                    if let Ok(mut stream) = stream_connection.open_uni().await {
+                        let _ = stream.write_all(&buffer_a).await;
+                    }
+                }
+                println!("Connection with game is closed");
+                stream_connection.close(0u32.into(), b"Client has left the game.");
+                #[cfg(feature = "discord-rpc-client")]
+                discord_tx
+                    .send(DiscordState { server_name: None })
+                    .await
+                    .unwrap();
+            });
             if let Err(r) = drive_receive(connection, &mut writer).await {
                 let reason = r.to_string();
                 println!("Disconnected! Reason: {}", reason);

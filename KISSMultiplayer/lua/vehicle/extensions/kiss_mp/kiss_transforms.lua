@@ -69,7 +69,7 @@ local function update(dt)
   if linear_force:length() > 20 then
     linear_force = linear_force:normalized() * 20
   end
- 
+
   local local_ang_vel = vec3(
     obj:getYawAngularVelocity(),
     obj:getPitchAngularVelocity(),
@@ -109,6 +109,5 @@ end
 
 M.set_target_transform = set_target_transform
 M.update = update
-M.kissInit = kissInit
 
 return M
