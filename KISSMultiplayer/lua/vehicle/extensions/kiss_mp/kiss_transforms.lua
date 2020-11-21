@@ -20,7 +20,7 @@ M.target_transform = {
   angular_acceleration = vec3(0, 0, 0),
 }
 
-M.force = 15
+M.force = 7
 M.ang_force = 100
 
 local function predict(dt)
@@ -33,11 +33,11 @@ local function predict(dt)
 end
 
 local function try_rude()
-  if (M.target_transform.position - vec3(obj:getPosition())):length() > 10 then
+  if (M.target_transform.position - vec3(obj:getPosition())):length() > 7 then
     local p = M.target_transform.position
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPosition(Point3F("..p.x..", "..p.y..", "..p.z.."))")
   end
-  if (M.target_transform.rotation / quat(obj:getRotation())):toEulerYXZ():length() > 2 then
+  if (M.target_transform.rotation / quat(obj:getRotation())):toEulerYXZ():length() > 1.5 then
     local p = M.target_transform.position
     local r = M.target_transform.rotation
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
@@ -59,17 +59,17 @@ local function update(dt)
   local force = M.force
   local ang_force = M.ang_force
 
-  local c = -math.sqrt(4 * force) * 0.8
+  local c = 0-- -math.sqrt(4 * force) * 0.3
   local c_ang = -math.sqrt(4 * ang_force)
 
   local velocity_difference = M.target_transform.velocity - vec3(obj:getVelocity())
   local position_delta = M.target_transform.position - vec3(obj:getPosition())
   position_delta = position_delta:normalized() * math.pow(position_delta:length(), 2)
-  local linear_force = (position_delta * force + c * vec3(obj:getVelocity())) * dt
-  if linear_force:length() > 20 then
-    linear_force = linear_force:normalized() * 20
+  local linear_force = (velocity_difference + position_delta * force + c * vec3(obj:getVelocity())) * dt * 5
+  if linear_force:length() > 10 then
+    linear_force = linear_force:normalized() * 10
   end
-
+ 
   local local_ang_vel = vec3(
     obj:getYawAngularVelocity(),
     obj:getPitchAngularVelocity(),
@@ -79,7 +79,10 @@ local function update(dt)
   local angular_velocity_difference = M.target_transform.angular_velocity - local_ang_vel
   local angle_delta = M.target_transform.rotation / quat(obj:getRotation())
   local angular_force = angle_delta:toEulerYXZ()
-  local angular_force = (angular_force * ang_force + c_ang * local_ang_vel) * dt
+  local angular_force = (angular_velocity_difference + angular_force * ang_force + c_ang * local_ang_vel) * dt
+  if angular_force:length() > 25 then
+    return
+  end
 
   obj.debugDrawProxy:drawText(M.target_transform.position:toFloat3(), color(0,0,0,100), "Force ("..linear_force.x..", "..linear_force.y..", "..linear_force.z..")")
 
