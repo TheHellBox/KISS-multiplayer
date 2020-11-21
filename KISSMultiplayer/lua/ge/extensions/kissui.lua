@@ -24,10 +24,10 @@ local imgui = ui_imgui
 
 local ui_showing = false
 
-local addr = imgui.ArrayChar(128)
-local player_name = imgui.ArrayChar(32, "Unknown")
-local show_nametags = imgui.BoolPtr(true)
-local window_opacity = imgui.FloatPtr(0.8)
+M.addr = imgui.ArrayChar(128)
+M.player_name = imgui.ArrayChar(32, "Unknown")
+M.show_nametags = imgui.BoolPtr(true)
+M.window_opacity = imgui.FloatPtr(0.8)
 
 local add_favorite_addr = imgui.ArrayChar(128)
 local add_favorite_name = imgui.ArrayChar(64, "KissMP Server")
@@ -54,47 +54,6 @@ local favorite_servers = {}
 local filtered_servers = {}
 local filtered_favorite_servers = {}
 local next_bridge_status_update = 0
-
-
-local function save_config()
-  local result = {
-    name = ffi.string(player_name),
-    addr = ffi.string(addr),
-    show_nametags = show_nametags[0],
-    window_opacity = window_opacity[0]
-  }
-  local file = io.open("./kissmp_config.json", "w")
-  file:write(jsonEncode(result))
-  io.close(file)
-end
-
-local function load_config()
-  local file = io.open("./kissmp_config.json", "r")
-  if not file then
-    if Steam and Steam.isWorking and Steam.accountLoggedIn then
-      player_name = imgui.ArrayChar(32, Steam.playerName)
-    end
-    return
-  end
-  local content = file:read("*a")
-  local config = jsonDecode(content or "")
-  if not config then return end
-  
-  if config.name ~= nil then
-    player_name = imgui.ArrayChar(32, config.name)
-  end
-  if config.addr ~= nil then
-    addr = imgui.ArrayChar(128, config.addr)
-  end
-  if config.show_nametags ~= nil then
-    show_nametags[0] = config.show_nametags
-  end
-  if config.window_opacity ~= nil then
-    window_opacity[0] = config.window_opacity
-  end
-  
-  io.close(file)
-end
 
 local function save_favorites()
   local file = io.open("./kissmp_favorites.json", "w")
@@ -305,8 +264,8 @@ local function draw_favorites_tab()
       
       imgui.PopTextWrapPos()
       if imgui.Button("Connect###connect_button_" .. tostring(favorites_count)) then
-        save_config()
-        local player_name = ffi.string(player_name)
+        kissconfig.save_config()
+        local player_name = ffi.string(M.player_name)
         network.connect(addr, player_name)
       end
       imgui.SameLine()
@@ -358,8 +317,8 @@ local function draw_servers_tab()
       draw_server_description(server.description)
       imgui.PopTextWrapPos()
       if imgui.Button("Connect###connect_button_" .. tostring(server_count)) then
-        save_config()
-        local player_name = ffi.string(player_name)
+        kissconfig.save_config()
+        local player_name = ffi.string(M.player_name)
         network.connect(addr, player_name)
       end
       
@@ -393,26 +352,26 @@ end
 -- Direct connect tab
 local function draw_direct_connect_tab()
   imgui.Text("Server address:")
-  imgui.InputText("##addr", addr)
+  imgui.InputText("##addr", M.addr)
   imgui.SameLine()
   if imgui.Button("Connect") then
-    local addr = ffi.string(addr)
-    local player_name = ffi.string(player_name)
-    save_config()
+    local addr = ffi.string(M.addr)
+    local player_name = ffi.string(M.player_name)
+    kissconfig.save_config()
     network.connect(addr, player_name)
   end
 end
 
 -- Settings tab
 local function draw_settings_tab() 
-  if imgui.Checkbox("Show Name Tags", show_nametags) then
-    save_config()
+  if imgui.Checkbox("Show Name Tags", M.show_nametags) then
+    kissconfig.save_config()
   end
   
   imgui.Text("Window Opacity")
   imgui.SameLine()
-  if imgui.SliderFloat("###window_opacity", window_opacity, 0, 1) then
-    save_config()
+  if imgui.SliderFloat("###window_opacity", M.window_opacity, 0, 1) then
+    kissconfig.save_config()
   end
 end
 
@@ -441,7 +400,6 @@ local function toggle_ui()
 end
 
 local function open_ui()
-  load_config()
   load_favorites()
   refresh_server_list()
   update_filtered_servers()
@@ -461,7 +419,7 @@ local function draw_add_favorite_window()
   local display_size = imgui.GetIO().DisplaySize
   imgui.SetNextWindowPos(imgui.ImVec2(display_size.x / 2, display_size.y / 2), imgui.Cond_Always, imgui.ImVec2(0.5, 0.5))
   
-  imgui.SetNextWindowBgAlpha(window_opacity[0])
+  imgui.SetNextWindowBgAlpha(M.window_opacity[0])
   if imgui.Begin("Add Favorite", gui.getWindowVisibleBoolPtr("Add Favorite"), bor(imgui.WindowFlags_NoScrollbar ,imgui.WindowFlags_NoResize, imgui.WindowFlags_AlwaysAutoResize)) then        
     imgui.Text("Name:")
     imgui.SameLine()
@@ -504,10 +462,10 @@ local function draw_menu()
 
   if not gui.isWindowVisible("KissMP") then return end
   gui.setupWindow("KissMP")
-  imgui.SetNextWindowBgAlpha(window_opacity[0])
+  imgui.SetNextWindowBgAlpha(M.window_opacity[0])
   if imgui.Begin("KissMP") then
     imgui.Text("Player name:")
-    imgui.InputText("##name", player_name)
+    imgui.InputText("##name", M.player_name)
     if network.connection.connected then
       if imgui.Button("Disconnect") then
         network.disconnect()
@@ -571,7 +529,7 @@ local function draw_chat()
   end
   window_title = window_title .. "###chat"
   
-  imgui.SetNextWindowBgAlpha(window_opacity[0])
+  imgui.SetNextWindowBgAlpha(M.window_opacity[0])
   if imgui.Begin(window_title) then
     local content_width = imgui.GetWindowContentRegionWidth()
     imgui.BeginChild1("ChatWindowUpperContent", imgui.ImVec2(0, -30), true)
@@ -646,7 +604,7 @@ local function draw_download()
   if not M.show_download then return end
   
   if not gui.isWindowVisible("Downloads") then return end
-  imgui.SetNextWindowBgAlpha(window_opacity[0])
+  imgui.SetNextWindowBgAlpha(M.window_opacity[0])
   if imgui.Begin("Downloading Required Mods") then
     imgui.BeginChild1("DownloadsScrolling", imgui.ImVec2(0, -30), true)
     
@@ -733,7 +691,7 @@ local function onUpdate(dt)
   draw_download()
   draw_add_favorite_window()
   
-  if show_nametags[0] then
+  if M.show_nametags[0] then
     draw_names()
   end
   
@@ -785,7 +743,7 @@ local function add_message(message, color)
   table.insert(M.chat, message_table)
 end
 
-M.onExtensionLoaded = open_ui
+M.open_ui = open_ui
 M.onUpdate = onUpdate
 M.add_message = add_message
 M.draw_download = draw_download

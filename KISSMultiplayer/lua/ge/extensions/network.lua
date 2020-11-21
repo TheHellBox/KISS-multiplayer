@@ -10,6 +10,7 @@ local ping_send_time = 0
 
 M.players = {}
 M.socket = socket
+M.base_secret = "None"
 
 M.connection = {
   tcp = nil,
@@ -185,6 +186,11 @@ local function sanitize_addr(addr)
   return sanitized
 end
 
+local function generate_secret(server_identifier)
+  local secret = server_identifier..M.base_secret
+  return hashStringSHA1(secret)
+end
+
 local function connect(addr, player_name)
   if M.connection.connected then
     disconnect()
@@ -236,7 +242,7 @@ local function connect(addr, player_name)
 
   local client_info = {
     name = player_name,
-    secret = "test",
+    secret = generate_secret(server_info.server_identifier),
     client_version = {0, 2}
   }
   send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))

@@ -101,6 +101,7 @@ struct Server {
     lua_watcher: notify::RecommendedWatcher,
     lua_watcher_rx: std::sync::mpsc::Receiver<notify::DebouncedEvent>,
     lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
+    server_identifier: String
 }
 
 impl Server {
@@ -292,7 +293,8 @@ impl Server {
             "map": self.map.clone(),
             "tickrate": self.tickrate,
             "max_vehicles_per_client": self.max_vehicles_per_client,
-            "mods": list_mods().unwrap_or(vec![])
+            "mods": list_mods().unwrap_or(vec![]),
+            "server_identifier": self.server_identifier.clone()
         })
         .to_string()
         .into_bytes();
@@ -490,6 +492,7 @@ async fn main() {
         lua_watcher,
         lua_watcher_rx: watcher_rx,
         lua_commands: receiver,
+        server_identifier: config.server_identifier
     };
     server.run().await;
 }

@@ -11,6 +11,7 @@ pub struct Config {
     pub port: u16,
     pub max_vehicles_per_client: u8,
     pub show_in_server_list: bool,
+    pub server_identifier: String
 }
 
 impl Default for Config {
@@ -24,6 +25,7 @@ impl Default for Config {
             max_vehicles_per_client: 3,
             port: 3698,
             show_in_server_list: false,
+            server_identifier: rand_string()
         }
     }
 }
@@ -45,4 +47,8 @@ pub fn create_default_config() {
     let config = Config::default();
     let config_str = serde_json::to_vec_pretty(&config).unwrap();
     config_file.write_all(&config_str).unwrap();
+}
+
+fn rand_string() -> String {
+    (0..10).map(|_| (0x20u8 + (rand::random::<f32>() * 96.0) as u8) as char).collect()
 }
