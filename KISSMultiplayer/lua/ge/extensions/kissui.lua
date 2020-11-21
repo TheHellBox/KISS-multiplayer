@@ -743,7 +743,7 @@ local function add_message(message, color)
   table.insert(M.chat, message_table)
 end
 
-M.open_ui = open_ui
+M.onExtensionLoaded = open_ui
 M.onUpdate = onUpdate
 M.add_message = add_message
 M.draw_download = draw_download

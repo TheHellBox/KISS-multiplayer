@@ -57,10 +57,8 @@ local function load_config()
   io.close(file)
 end
 
-  -- Don't even ask...
 local function open_ui()
   load_config()
-  kissui.open_ui()
 end
 
 M.save_config = save_config

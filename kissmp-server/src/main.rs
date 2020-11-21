@@ -471,6 +471,8 @@ fn generate_certificate() -> (CertificateChain, PrivateKey) {
 #[tokio::main]
 async fn main() {
     println!("Gas, Gas, Gas!");
+    let _ = list_mods(); // Dirty hack to create /mods/ folder
+
     let config = config::Config::load(std::path::Path::new("./config.json"));
     let (lua, receiver) = lua::setup_lua();
     let (watcher_tx, watcher_rx) = std::sync::mpsc::channel();
@@ -498,8 +500,12 @@ async fn main() {
 }
 
 fn list_mods() -> anyhow::Result<Vec<(String, u32)>> {
+    let path = std::path::Path::new("./mods/");
+    if !path.exists() {
+        std::fs::create_dir(path).unwrap();
+    }
     let mut result = vec![];
-    let paths = std::fs::read_dir("./mods/")?;
+    let paths = std::fs::read_dir(path)?;
     for path in paths {
         let path = path?.path();
         if path.is_dir() {
