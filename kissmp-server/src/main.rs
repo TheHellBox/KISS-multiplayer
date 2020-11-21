@@ -20,6 +20,8 @@ use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use tokio::sync::mpsc;
 
+const SERVER_VERSION: (u32, u32) = (0, 2);
+
 #[derive(Clone)]
 struct Connection {
     pub conn: quinn::Connection,
@@ -49,7 +51,11 @@ pub struct ClientInfo {
     #[serde(skip_deserializing)]
     pub current_vehicle: u32,
     #[serde(skip_deserializing)]
-    pub ping: u32
+    pub ping: u32,
+    #[serde(skip_serializing)]
+    pub secret: String,
+     #[serde(skip_serializing)]
+    pub client_version: (u32, u32)
 }
 
 impl ClientInfo {
@@ -70,7 +76,9 @@ impl Default for ClientInfo {
             name: String::from("Unknown"),
             id: 0,
             current_vehicle: 0,
-            ping: 0
+            ping: 0,
+            secret: String::from("Unknown"),
+            client_version: SERVER_VERSION
         }
     }
 }
@@ -203,7 +211,7 @@ impl Server {
 
     async fn on_connect(
         &mut self,
-        new_connection: quinn::NewConnection,
+        mut new_connection: quinn::NewConnection,
         mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
         let connection = new_connection.connection.clone();
@@ -222,12 +230,43 @@ impl Server {
             client_info: ClientInfo::new(id),
         };
         self.connections.insert(id, client_connection);
-        println!("Client has connected to the server");
+
+        async fn receive_client_data(new_connection: &mut quinn::NewConnection) -> anyhow::Result<ClientInfo> {
+            let mut stream = new_connection.uni_streams.try_next().await?;
+            if let Some(stream) = &mut stream {
+                let mut buf = [0; 4];
+                stream.read_exact(&mut buf[0..1]).await?;
+                stream.read_exact(&mut buf[0..4]).await?;
+                let len = u32::from_le_bytes(buf) as usize;
+                let mut buf: Vec<u8> = vec![0; len];
+                stream.read_exact(&mut buf).await?;
+                let data_str = String::from_utf8(buf.to_vec())?;
+                let info: ClientInfo = serde_json::from_str(&data_str)?;
+                Ok(info)
+            }
+            else{
+                Err(anyhow::Error::msg("Failed to fetch client info"))
+            }
+        }
+       
         let connection_clone = connection.clone();
         // Receiver
         tokio::spawn(async move {
+            let client_data = {
+                if let Ok(client_data) = receive_client_data(&mut new_connection).await {
+                    client_data
+                }
+                else{
+                    connection_clone.close(0u32.into(), b"Failed to fetch client info. Client version mismatch?");
+                    return
+                }
+            };
+            if client_data.client_version != SERVER_VERSION {
+                connection_clone.close(0u32.into(), b"Client version mismatch");
+                return
+            }
             client_events_tx
-                .send((id, IncomingEvent::ClientConnected))
+                .send((id, IncomingEvent::ClientConnected(client_data)))
                 .await
                 .unwrap();
             if let Err(_e) = Self::drive_receive(

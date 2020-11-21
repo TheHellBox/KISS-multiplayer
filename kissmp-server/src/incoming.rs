@@ -2,7 +2,7 @@ use crate::*;
 
 #[derive(Debug)]
 pub enum IncomingEvent {
-    ClientConnected,
+    ClientConnected(ClientInfo),
     ConnectionLost,
     TransformUpdate(u32, Transform),
     VehicleData(VehicleData),
@@ -10,7 +10,6 @@ pub enum IncomingEvent {
     GearboxUpdate(Gearbox),
     RemoveVehicle(u32),
     ResetVehicle(u32),
-    UpdateClientInfo(ClientInfo),
     Chat(String),
     RequestMods(Vec<String>),
     VehicleMetaUpdate(VehicleMeta),
@@ -73,15 +72,6 @@ impl Server {
                 client_events_tx
                     .send((id, IncomingEvent::ResetVehicle(vehicle_id)))
                     .await?;
-            }
-            7 => {
-                let data_str = String::from_utf8(data.to_vec())?;
-                let info = serde_json::from_str(&data_str);
-                if let Ok(info) = info {
-                    client_events_tx
-                        .send((id, IncomingEvent::UpdateClientInfo(info)))
-                        .await?;
-                }
             }
             8 => {
                 let mut chat_message = String::from_utf8(data.to_vec())?;

@@ -234,11 +234,12 @@ local function connect(addr, player_name)
   M.connection.server_info = server_info
   M.connection.tickrate = server_info.tickrate
 
-  kissui.add_message("Connected!");
-
   local client_info = {
-    name = player_name
+    name = player_name,
+    secret = "test",
+    client_version = {0, 2}
   }
+  send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
 
   kissmods.set_mods_list(server_info.mods)
   kissmods.update_status_all()
@@ -259,13 +260,13 @@ local function connect(addr, player_name)
   
   -- Request mods
   send_data(9, true, jsonEncode(missing_mods))
-  send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
 
   if server_info.map ~= "any" and #missing_mods == 0 then
     freeroam_freeroam.startFreeroam(server_info.map)
     vehiclemanager.loading_map = true
   end
   kissrichpresence.update()
+  kissui.add_message("Connected!")
 end
 
 local function send_messagepack(data_type, reliable, data)

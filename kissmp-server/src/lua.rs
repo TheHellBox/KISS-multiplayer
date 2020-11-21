@@ -109,10 +109,14 @@ struct LuaConnection {
     id: u32,
     name: String,
     current_vehicle: u32,
+    ip: String,
+    secret: String
 }
 
 impl rlua::UserData for LuaConnection {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("getIpAddr", |_, this, _: ()| Ok(this.ip.clone()));
+        methods.add_method("getSecret", |_, this, _: ()| Ok(this.secret.clone()));
         methods.add_method("getID", |_, this, _: ()| Ok(this.id));
         methods.add_method("getCurrentVehicle", |_, this, _: ()| Ok(this.current_vehicle));
         methods.add_method("getName", |_, this, _: ()| Ok(this.name.clone()));
@@ -182,7 +186,9 @@ impl Server {
                 LuaConnection {
                     id: *id,
                     current_vehicle: connection.client_info.current_vehicle,
-                    name: connection.client_info.name.clone()
+                    name: connection.client_info.name.clone(),
+                    ip: connection.conn.remote_address().ip().to_string(),
+                    secret: connection.client_info.secret.clone()
                 },
             );
         }
@@ -194,7 +200,6 @@ impl Server {
         Ok(())
     }
     pub async fn lua_tick(&mut self) -> rlua::Result<()> {
-        let _ = self.update_lua_connections();
         let _ = self.update_lua_vehicles();
 
         self.lua.context(|lua_ctx| {
