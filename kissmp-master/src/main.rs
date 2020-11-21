@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use tiny_http::{Response, Server};
 
+const VERSION: (u32, u32) = (0, 2);
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServerInfo {
     name: String,
@@ -11,6 +13,7 @@ pub struct ServerInfo {
     description: String,
     map: String,
     port: u16,
+    version: (u32, u32),
     #[serde(skip)]
     update_time: Option<std::time::Instant>,
 }
@@ -41,6 +44,13 @@ fn main() {
             let _ = request.as_reader().read_to_string(&mut content);
             if let Ok(server_info) = serde_json::from_str(&content) {
                 let mut server_info: ServerInfo = server_info;
+                if server_info.version != VERSION {
+                    let response = Response::from_string("Mismatching version");
+                    let _ = request.respond(response);
+                    continue;
+                }
+                server_info.description.truncate(256);
+                server_info.name.truncate(64);
                 if censor_standart.check(&server_info.name) || censor_sex.check(&server_info.name) {
                     continue;
                 }
@@ -55,8 +65,6 @@ fn main() {
                     addresses.insert(addr.ip(), HashMap::new());
                     addresses.get_mut(&addr.ip()).unwrap().insert(server_info.port, true);
                 }
-                server_info.description.truncate(256);
-                server_info.name.truncate(64);
                 let addr = SocketAddr::new(addr.ip(), server_info.port); 
                 server_info.update_time = Some(std::time::Instant::now());
                 server_list.0.insert(addr, server_info);
