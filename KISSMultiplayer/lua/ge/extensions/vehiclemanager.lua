@@ -14,6 +14,7 @@ M.id_map = {}
 M.ownership = {}
 M.vehicle_updates_buffer = {}
 M.packet_gen_buffer = {}
+M.is_network_session = false
 
 local function enable_spawning(enabled)
   local jsCommand = 'angular.element(document.body).injector().get("VehicleSelectConfig").configs.default.hide = {"spawnNew":' .. tostring(not enabled) .. '}'
@@ -385,7 +386,8 @@ local function onVehicleSwitched(_id, new_id)
   end
 end
 
-local function onFreeroamLoaded(mission)
+local function onMissionLoaded(mission)
+  M.is_network_session = network.connection.connected
   if not network.connection.connected then return end
   if mission:lower() ~= network.connection.server_info.map:lower() then
     network.disconnect()
@@ -410,7 +412,8 @@ M.onVehicleDestroyed = onVehicleDestroyed
 M.onVehicleResetted = onVehicleResetted
 M.onVehicleSpawned = onVehicleSpawned
 M.onVehicleSwitched = onVehicleSwitched
-M.onFreeroamLoaded = onFreeroamLoaded
+M.onMissionLoaded = onMissionLoaded
+M.onFreeroamLoaded = onMissionLoaded
 M.electrics_diff_update = electrics_diff_update
 
 return M

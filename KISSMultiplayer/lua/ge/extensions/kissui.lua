@@ -686,6 +686,9 @@ local function draw_names()
 end
 
 local function onUpdate(dt)
+  if getMissionFilename() ~= '' and not vehiclemanager.is_network_session then
+    return
+  end
   draw_menu()
   draw_chat()
   draw_download()
