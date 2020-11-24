@@ -139,3 +139,37 @@ impl crate::Server {
         });
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct CouplerAttached{
+    obj_a: u32,
+    obj_b: u32,
+    node_a_id: u32,
+    node_b_id: u32
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct CouplerDetached{
+    obj_a: u32,
+    obj_b: u32,
+    node_a_id: u32,
+    node_b_id: u32
+}
+
+impl CouplerAttached {
+    pub fn from_bytes(data: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::decode::from_read_ref(data)
+    }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        rmp_serde::encode::to_vec(self).unwrap()
+    }
+}
+
+impl CouplerDetached {
+    pub fn from_bytes(data: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::decode::from_read_ref(data)
+    }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        rmp_serde::encode::to_vec(self).unwrap()
+    }
+}

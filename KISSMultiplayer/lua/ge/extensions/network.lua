@@ -41,6 +41,8 @@ local MESSAGETYPE_META_UPDATE = 14
 local MESSAGETYPE_ELECTRICS_UNDEFINED = 15
 local MESSAGETYPE_PLAYER_DISCONNECTED = 16
 local MESSAGETYPE_VEHICLE_LUA = 17
+local MESSAGETYPE_COUPLER_ATTACHED = 19
+local MESSAGETYPE_COUPLER_DETACHED = 20
 local PONG = 254
 
 local message_handlers = {}
@@ -160,6 +162,8 @@ local function onExtensionLoaded()
   message_handlers[PONG] = handle_pong
   message_handlers[MESSAGETYPE_PLAYER_DISCONNECTED] = handle_player_disconnected
   message_handlers[MESSAGETYPE_VEHICLE_LUA] = handle_vehicle_lua
+  message_handlers[MESSAGETYPE_COUPLER_ATTACHED] = vehiclemanager.attach_coupler
+  message_handlers[MESSAGETYPE_COUPLER_DETACHED] = vehiclemanager.detach_coupler
 end
 
 local function send_data(data_type, reliable, data)
@@ -276,7 +280,11 @@ local function connect(addr, player_name)
 end
 
 local function send_messagepack(data_type, reliable, data)
-  local data = messagepack.pack(jsonDecode(data))
+  local data = data
+  if type(data) == "string" then
+    data = jsonDecode(data)
+  end
+  data = messagepack.pack(data)
   send_data(data_type, reliable, data)
 end
 

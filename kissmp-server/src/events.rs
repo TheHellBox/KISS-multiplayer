@@ -235,6 +235,22 @@ impl Server {
                 {
                     self.connections.get_mut(&client_id).unwrap().client_info.current_vehicle = server_id;
                 }
+            },
+            CouplerAttached(event) => {
+                for (_, client) in &mut self.connections {
+                    let _ = client
+                        .ordered
+                        .send(Outgoing::CouplerAttached(event.clone()))
+                        .await;
+                }
+            },
+            CouplerDetached(event) => {
+                for (_, client) in &mut self.connections {
+                    let _ = client
+                        .ordered
+                        .send(Outgoing::CouplerDetached(event.clone()))
+                        .await;
+                }
             }
         }
     }

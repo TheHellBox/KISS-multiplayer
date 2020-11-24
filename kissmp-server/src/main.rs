@@ -263,7 +263,14 @@ impl Server {
                 }
             };
             if client_data.client_version != SERVER_VERSION {
-                connection_clone.close(0u32.into(), b"Client version mismatch");
+                connection_clone.close(
+                    0u32.into(),
+                    format!(
+                        "Client version mismatch.\nClient version: {:?}\nServer version: {:?}",
+                        client_data.client_version,
+                        SERVER_VERSION
+                    ).as_bytes()
+                );
                 return
             }
             client_events_tx

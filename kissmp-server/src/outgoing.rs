@@ -15,7 +15,9 @@ pub enum Outgoing {
     VehicleMetaUpdate(VehicleMeta),
     ElectricsUndefinedUpdate(ElectricsUndefined),
     PlayerDisconnected(u32),
-    VehicleLuaCommand(u32, String)
+    VehicleLuaCommand(u32, String),
+    CouplerAttached(CouplerAttached),
+    CouplerDetached(CouplerDetached)
 }
 
 impl Server {
@@ -47,7 +49,9 @@ impl Server {
                 let mut msg = id.to_le_bytes().to_vec();
                 msg.append(&mut command.into_bytes());
                 msg
-            }
+            },
+            CouplerAttached(event) => event.to_bytes(),
+            CouplerDetached(event) => event.to_bytes()
         }
     }
 }
@@ -68,6 +72,8 @@ pub fn get_data_type(data: &Outgoing) -> u8 {
         VehicleMetaUpdate(_) => 14,
         ElectricsUndefinedUpdate(_) => 15,
         PlayerDisconnected(_) => 16,
-        VehicleLuaCommand(_, _) => 17
+        VehicleLuaCommand(_, _) => 17,
+        CouplerAttached(_) => 19,
+        CouplerDetached(_) => 20
     }
 }

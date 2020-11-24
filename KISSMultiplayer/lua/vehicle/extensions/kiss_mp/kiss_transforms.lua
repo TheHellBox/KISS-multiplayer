@@ -50,7 +50,7 @@ local function draw_debug()
 end
 
 local function update(dt)
-  if dt > 0.5 then return end
+  if dt > 0.15 then return end
   M.received_transform.time_past = clamp(M.received_transform.time_past + dt, 0, 0.5)
   predict(dt)
   try_rude()

@@ -11,6 +11,7 @@ local first_vehicle = true
 
 M.loading_map = false
 M.id_map = {}
+M.server_ids = {}
 M.ownership = {}
 M.vehicle_updates_buffer = {}
 M.packet_gen_buffer = {}
@@ -133,6 +134,7 @@ local function spawn_vehicle(data)
     print("Vehicle belongs to local client, setting ownership")
     M.id_map[data.server_id] = data.in_game_id
     M.ownership[data.in_game_id] = data.server_id
+    M.server_ids[data.in_game_id] = data.server_id
     update_ownership_limits()
     be:getObjectByID(data.in_game_id):queueLuaCommand("extensions.hook('kissUpdateOwnership', true)")
     return
@@ -155,14 +157,12 @@ local function spawn_vehicle(data)
     ColorF(cp0[1],cp0[2],cp0[3],cp0[4]),
     ColorF(cp1[1],cp1[2],cp1[3],cp1[4])
   )
+  if not spawned then return end
   if plate ~= nil then
     extensions.core_vehicles.setPlateText(plate, spawned:getID())
   end
-  if data.server_id then
-    M.id_map[data.server_id] = spawned:getID()
-  else
-    print("ERROR: Server ID is invalid")
-  end
+  M.id_map[data.server_id] = spawned:getID()
+  M.server_ids[spawned:getID()] = data.server_id
   if current_vehicle then be:enterVehicle(0, current_vehicle) end
   spawned:queueLuaCommand("extensions.hook('kissUpdateOwnership', false)")
 end
@@ -340,8 +340,58 @@ local function electrics_diff_update(data)
   if id and not M.ownership[id] then
     local vehicle = be:getObjectByID(id)
     if not vehicle then return end
-    local data = jsonEncode(data[2])
+    data = jsonEncode(data[2])
     vehicle:queueLuaCommand("kiss_electrics.apply_diff(\'"..data.."\')")
+  end
+end
+
+local function attach_coupler_inner(data)
+  local data = jsonDecode(data)
+  data.obj_a = M.server_ids[data.obj_a]
+  data.obj_b = M.server_ids[data.obj_b]
+  network.send_messagepack(19, true, data)
+end
+
+local function detach_coupler_inner(data)
+  local data = jsonDecode(data)
+  data.obj_a = M.server_ids[data.obj_a]
+  data.obj_b = M.server_ids[data.obj_b]
+  network.send_messagepack(20, true, data)
+end
+
+local function attach_coupler(data)
+  local data = messagepack.unpack(data)
+  local obj_a = M.id_map[data[1]]
+  local obj_b = M.id_map[data[2]]
+  if obj_a and obj_b then
+    if M.ownership[obj_a] then return end
+    local vehicle = be:getObjectByID(obj_a)
+    local vehicle_b = be:getObjectByID(obj_b)
+    if not vehicle then return end
+    if not vehicle_b then return end
+    if vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
+    local node_a_pos = vec3(vehicle:getPosition()) + vec3(vehicle:getNodePosition(data[3]))
+    local node_b_pos = vec3(vehicle_b:getPosition()) + vec3(vehicle_b:getNodePosition(data[4]))
+    local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
+    vehicle_b:setPosition(Point3F(pos.x, pos.y, pos.z))
+    vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data[4]..")")
+    onCouplerAttached(obj_a, obj_b, data[3], data[4])
+  end
+end
+
+local function detach_coupler(data)
+  local data = messagepack.unpack(data)
+  local obj_a = M.id_map[data[1]]
+  local obj_b = M.id_map[data[2]]
+  if obj_a and obj_b then
+    if M.ownership[obj_a] then return end
+    local vehicle = be:getObjectByID(obj_a)
+    local vehicle_b = be:getObjectByID(obj_b)
+    if not vehicle then return end
+    if not vehicle_b then return end
+    if vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
+    vehicle:queueLuaCommand("kiss_couplers.detach_coupler("..data[3]..")")
+    onCouplerDetached(obj_a, obj_b, data[3], data[4])
   end
 end
 
@@ -415,5 +465,9 @@ M.onVehicleSwitched = onVehicleSwitched
 M.onMissionLoaded = onMissionLoaded
 M.onFreeroamLoaded = onMissionLoaded
 M.electrics_diff_update = electrics_diff_update
+M.attach_coupler = attach_coupler
+M.detach_coupler = detach_coupler
+M.attach_coupler_inner = attach_coupler_inner
+M.detach_coupler_inner = detach_coupler_inner
 
 return M
