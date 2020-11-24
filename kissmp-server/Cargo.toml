@@ -1,3 +1,6 @@
+[build]
+rustflags = ["-C", "link-args=-rdynamic"]
+
 [package]
 name = "kissmp-server"
 version = "0.2.0"
