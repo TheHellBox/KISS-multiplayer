@@ -57,12 +57,15 @@ local function load_config()
   io.close(file)
 end
 
-local function open_ui()
+local function init()
   load_config()
+  if not FS:fileExists("/mods/KISSMultiplayer.zip") then
+    kissui.incorrect_install = true
+  end
 end
 
 M.save_config = save_config
 M.load_config = load_config
-M.onExtensionLoaded = open_ui
+M.onExtensionLoaded = init
 
 return M

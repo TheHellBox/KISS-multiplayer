@@ -409,6 +409,7 @@ local function open_ui()
   gui.registerWindow("Chat", imgui.ImVec2(256, 256))
   gui.registerWindow("Downloads", imgui.ImVec2(512, 512))
   gui.registerWindow("Add Favorite", imgui.ImVec2(256, 128))
+  gui.registerWindow("Incorrect install detected", imgui.ImVec2(256, 128))
   gui.hideWindow("Add Favorite")
   show_ui()
 end
@@ -682,6 +683,12 @@ local function draw_names()
   end
 end
 
+local function draw_incorrect_install()
+  if imgui.Begin("Incorrect install detected") then
+    imgui.Text("Incorrect KissMP install. Please, check if mod path is correct")
+  end
+end
+
 local function onUpdate(dt)
   if getMissionFilename() ~= '' and not vehiclemanager.is_network_session then
     return
@@ -690,7 +697,9 @@ local function onUpdate(dt)
   draw_chat()
   draw_download()
   draw_add_favorite_window()
-  
+  if M.incorrect_install then
+     draw_incorrect_install()
+  end
   if M.show_nametags[0] then
     draw_names()
   end

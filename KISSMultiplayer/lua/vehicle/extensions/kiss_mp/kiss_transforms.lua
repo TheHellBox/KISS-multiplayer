@@ -54,7 +54,7 @@ local function update(dt)
   M.received_transform.time_past = clamp(M.received_transform.time_past + dt, 0, 0.5)
   predict(dt)
   try_rude()
-  draw_debug()
+  --draw_debug()
 
   local force = M.force
   local ang_force = M.ang_force
