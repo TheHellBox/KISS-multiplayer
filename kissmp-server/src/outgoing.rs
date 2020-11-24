@@ -17,7 +17,7 @@ pub enum Outgoing {
     PlayerDisconnected(u32),
     VehicleLuaCommand(u32, String),
     CouplerAttached(CouplerAttached),
-    CouplerDetached(CouplerDetached)
+    CouplerDetached(CouplerDetached),
 }
 
 impl Server {
@@ -49,9 +49,9 @@ impl Server {
                 let mut msg = id.to_le_bytes().to_vec();
                 msg.append(&mut command.into_bytes());
                 msg
-            },
+            }
             CouplerAttached(event) => event.to_bytes(),
-            CouplerDetached(event) => event.to_bytes()
+            CouplerDetached(event) => event.to_bytes(),
         }
     }
 }
@@ -74,6 +74,6 @@ pub fn get_data_type(data: &Outgoing) -> u8 {
         PlayerDisconnected(_) => 16,
         VehicleLuaCommand(_, _) => 17,
         CouplerAttached(_) => 19,
-        CouplerDetached(_) => 20
+        CouplerDetached(_) => 20,
     }
 }

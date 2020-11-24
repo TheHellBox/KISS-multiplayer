@@ -30,7 +30,10 @@ impl Server {
                 }
                 for (_, client) in &mut self.connections {
                     client
-                        .send_chat_message(format!("Player {} has joined the server", client_info.name.clone()))
+                        .send_chat_message(format!(
+                            "Player {} has joined the server",
+                            client_info.name.clone()
+                        ))
                         .await;
                 }
                 let _ = self.update_lua_connections();
@@ -227,15 +230,21 @@ impl Server {
                 }
             }
             PingUpdate(ping) => {
-                self.connections.get_mut(&client_id).unwrap().client_info.ping = ping;
+                self.connections
+                    .get_mut(&client_id)
+                    .unwrap()
+                    .client_info
+                    .ping = ping;
             }
             VehicleChanged(id) => {
-                if let Some(server_id) =
-                    self.get_server_id_from_game_id(client_id, id)
-                {
-                    self.connections.get_mut(&client_id).unwrap().client_info.current_vehicle = server_id;
+                if let Some(server_id) = self.get_server_id_from_game_id(client_id, id) {
+                    self.connections
+                        .get_mut(&client_id)
+                        .unwrap()
+                        .client_info
+                        .current_vehicle = server_id;
                 }
-            },
+            }
             CouplerAttached(event) => {
                 for (_, client) in &mut self.connections {
                     let _ = client
@@ -243,7 +252,7 @@ impl Server {
                         .send(Outgoing::CouplerAttached(event.clone()))
                         .await;
                 }
-            },
+            }
             CouplerDetached(event) => {
                 for (_, client) in &mut self.connections {
                     let _ = client

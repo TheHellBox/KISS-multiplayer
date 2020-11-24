@@ -19,27 +19,27 @@ pub enum LuaCommand {
 
 impl rlua::UserData for Transform {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("getPosition", |_, this, _: ()|
+        methods.add_method("getPosition", |_, this, _: ()| {
             Ok(vec![this.position[0], this.position[1], this.position[2]])
-        );
-        methods.add_method("getRotation", |_, this, _: ()|
+        });
+        methods.add_method("getRotation", |_, this, _: ()| {
             Ok(vec![
                 this.rotation[0],
                 this.rotation[1],
                 this.rotation[2],
                 this.rotation[3],
             ])
-        );
+        });
         methods.add_method("getVelocity", |_, this, _: ()| {
             Ok(vec![this.velocity[0], this.velocity[1], this.velocity[2]])
         });
-        methods.add_method("getAngularVelocity", |_, this, _: ()|
+        methods.add_method("getAngularVelocity", |_, this, _: ()| {
             Ok(vec![
                 this.angular_velocity[0],
                 this.angular_velocity[1],
                 this.angular_velocity[2],
             ])
-        );
+        });
     }
 }
 impl rlua::UserData for VehicleData {
@@ -99,7 +99,10 @@ impl rlua::UserData for Vehicle {
         methods.add_method("sendLua", |lua_ctx, this, lua: String| {
             let globals = lua_ctx.globals();
             let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
-            sender.0.send(LuaCommand::SendVehicleLua(this.data.server_id, lua)).unwrap();
+            sender
+                .0
+                .send(LuaCommand::SendVehicleLua(this.data.server_id, lua))
+                .unwrap();
             Ok(())
         });
     }
@@ -110,7 +113,7 @@ struct LuaConnection {
     name: String,
     current_vehicle: u32,
     ip: String,
-    secret: String
+    secret: String,
 }
 
 impl rlua::UserData for LuaConnection {
@@ -118,7 +121,9 @@ impl rlua::UserData for LuaConnection {
         methods.add_method("getIpAddr", |_, this, _: ()| Ok(this.ip.clone()));
         methods.add_method("getSecret", |_, this, _: ()| Ok(this.secret.clone()));
         methods.add_method("getID", |_, this, _: ()| Ok(this.id));
-        methods.add_method("getCurrentVehicle", |_, this, _: ()| Ok(this.current_vehicle));
+        methods.add_method("getCurrentVehicle", |_, this, _: ()| {
+            Ok(this.current_vehicle)
+        });
         methods.add_method("getName", |_, this, _: ()| Ok(this.name.clone()));
         methods.add_method("sendChatMessage", |lua_ctx, this, message: String| {
             let globals = lua_ctx.globals();
@@ -188,7 +193,7 @@ impl Server {
                     current_vehicle: connection.client_info.current_vehicle,
                     name: connection.client_info.name.clone(),
                     ip: connection.conn.remote_address().ip().to_string(),
-                    secret: connection.client_info.secret.clone()
+                    secret: connection.client_info.secret.clone(),
                 },
             );
         }

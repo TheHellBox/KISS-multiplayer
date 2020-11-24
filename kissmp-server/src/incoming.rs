@@ -17,7 +17,7 @@ pub enum IncomingEvent {
     PingUpdate(u32),
     VehicleChanged(u32),
     CouplerAttached(CouplerAttached),
-    CouplerDetached(CouplerDetached)
+    CouplerDetached(CouplerDetached),
 }
 
 impl Server {
@@ -59,7 +59,7 @@ impl Server {
             4 => {}
             5 => {
                 if data.len() < 4 {
-                    return Ok(())
+                    return Ok(());
                 }
                 let vehicle_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
@@ -68,7 +68,7 @@ impl Server {
             }
             6 => {
                 if data.len() < 4 {
-                    return Ok(())
+                    return Ok(());
                 }
                 let vehicle_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
@@ -109,45 +109,36 @@ impl Server {
                         ))
                         .await?;
                 }
-            },
+            }
             18 => {
                 if data.len() < 4 {
-                    return Ok(())
+                    return Ok(());
                 }
                 let new_vehicle = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx
-                    .send((
-                        id,
-                        IncomingEvent::VehicleChanged(new_vehicle),
-                    ))
+                    .send((id, IncomingEvent::VehicleChanged(new_vehicle)))
                     .await?;
-            },
+            }
             19 => {
                 let event = CouplerAttached::from_bytes(&data);
                 println!("event {:?}", event);
                 if let Ok(event) = event {
                     client_events_tx
-                        .send((
-                            id,
-                            IncomingEvent::CouplerAttached(event),
-                        ))
+                        .send((id, IncomingEvent::CouplerAttached(event)))
                         .await?;
                 }
-            },
+            }
             20 => {
                 let event = CouplerDetached::from_bytes(&data);
                 if let Ok(event) = event {
                     client_events_tx
-                        .send((
-                            id,
-                            IncomingEvent::CouplerDetached(event),
-                        ))
+                        .send((id, IncomingEvent::CouplerDetached(event)))
                         .await?;
                 }
             }
             254 => {
                 if data.len() < 4 {
-                    return Ok(())
+                    return Ok(());
                 }
                 let ping = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 client_events_tx

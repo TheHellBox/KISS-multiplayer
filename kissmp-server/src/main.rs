@@ -32,14 +32,10 @@ struct Connection {
 
 impl Connection {
     pub async fn send_chat_message(&mut self, message: String) {
-        let _ = self.ordered
-            .send(Outgoing::Chat(message.clone()))
-            .await;
+        let _ = self.ordered.send(Outgoing::Chat(message.clone())).await;
     }
     pub async fn send_lua(&mut self, lua: String) {
-        let _ = self.ordered
-            .send(Outgoing::SendLua(lua.clone()))
-            .await;
+        let _ = self.ordered.send(Outgoing::SendLua(lua.clone())).await;
     }
 }
 
@@ -54,8 +50,8 @@ pub struct ClientInfo {
     pub ping: u32,
     #[serde(skip_serializing)]
     pub secret: String,
-     #[serde(skip_serializing)]
-    pub client_version: (u32, u32)
+    #[serde(skip_serializing)]
+    pub client_version: (u32, u32),
 }
 
 impl ClientInfo {
@@ -78,7 +74,7 @@ impl Default for ClientInfo {
             current_vehicle: 0,
             ping: 0,
             secret: String::from("Unknown"),
-            client_version: SERVER_VERSION
+            client_version: SERVER_VERSION,
         }
     }
 }
@@ -101,7 +97,7 @@ struct Server {
     lua_watcher: notify::RecommendedWatcher,
     lua_watcher_rx: std::sync::mpsc::Receiver<notify::DebouncedEvent>,
     lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
-    server_identifier: String
+    server_identifier: String,
 }
 
 impl Server {
@@ -196,8 +192,8 @@ impl Server {
             "map": self.map.clone(),
             "port": self.port
         })
-            .to_string();
-       
+        .to_string();
+
         let client = self.reqwest_client.clone();
         tokio::spawn(async move {
             let _ = client
@@ -206,7 +202,7 @@ impl Server {
                 .send()
                 .await;
         });
-       
+
         Ok(())
     }
 
@@ -232,7 +228,9 @@ impl Server {
         };
         self.connections.insert(id, client_connection);
 
-        async fn receive_client_data(new_connection: &mut quinn::NewConnection) -> anyhow::Result<ClientInfo> {
+        async fn receive_client_data(
+            new_connection: &mut quinn::NewConnection,
+        ) -> anyhow::Result<ClientInfo> {
             let mut stream = new_connection.uni_streams.try_next().await?;
             if let Some(stream) = &mut stream {
                 let mut buf = [0; 4];
@@ -244,22 +242,23 @@ impl Server {
                 let data_str = String::from_utf8(buf.to_vec())?;
                 let info: ClientInfo = serde_json::from_str(&data_str)?;
                 Ok(info)
-            }
-            else{
+            } else {
                 Err(anyhow::Error::msg("Failed to fetch client info"))
             }
         }
-       
+
         let connection_clone = connection.clone();
         // Receiver
         tokio::spawn(async move {
             let client_data = {
                 if let Ok(client_data) = receive_client_data(&mut new_connection).await {
                     client_data
-                }
-                else{
-                    connection_clone.close(0u32.into(), b"Failed to fetch client info. Client version mismatch?");
-                    return
+                } else {
+                    connection_clone.close(
+                        0u32.into(),
+                        b"Failed to fetch client info. Client version mismatch?",
+                    );
+                    return;
                 }
             };
             if client_data.client_version != SERVER_VERSION {
@@ -267,11 +266,11 @@ impl Server {
                     0u32.into(),
                     format!(
                         "Client version mismatch.\nClient version: {:?}\nServer version: {:?}",
-                        client_data.client_version,
-                        SERVER_VERSION
-                    ).as_bytes()
+                        client_data.client_version, SERVER_VERSION
+                    )
+                    .as_bytes(),
                 );
-                return
+                return;
             }
             client_events_tx
                 .send((id, IncomingEvent::ClientConnected(client_data)))
@@ -378,7 +377,8 @@ impl Server {
                 stream.read_exact(&mut buf).await?;
                 Ok::<_, Error>((data_type, buf))
             })
-            .buffered(512).fuse();
+            .buffered(512)
+            .fuse();
 
         let mut datagrams = datagrams
             .map(|data| async {
@@ -386,7 +386,8 @@ impl Server {
                 let data_type = data.remove(0);
                 Ok::<_, Error>((data_type, data))
             })
-            .buffered(512).fuse();
+            .buffered(512)
+            .fuse();
 
         loop {
             let (data_type, data) = select! {
@@ -411,8 +412,7 @@ impl Server {
             // React to ping with pong. Quite hacky
             if data_type == 254 {
                 let start = std::time::SystemTime::now();
-                let since_the_epoch = start
-                    .duration_since(std::time::UNIX_EPOCH).unwrap();
+                let since_the_epoch = start.duration_since(std::time::UNIX_EPOCH).unwrap();
                 let mut header = vec![254];
                 header.append(&mut since_the_epoch.as_secs_f64().to_le_bytes().to_vec());
                 let _ = connection.send_datagram(header.into());
@@ -501,7 +501,7 @@ async fn main() {
         lua_watcher,
         lua_watcher_rx: watcher_rx,
         lua_commands: receiver,
-        server_identifier: config.server_identifier
+        server_identifier: config.server_identifier,
     };
     server.run().await;
 }

@@ -141,19 +141,19 @@ impl crate::Server {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct CouplerAttached{
+pub struct CouplerAttached {
     obj_a: u32,
     obj_b: u32,
     node_a_id: u32,
-    node_b_id: u32
+    node_b_id: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct CouplerDetached{
+pub struct CouplerDetached {
     obj_a: u32,
     obj_b: u32,
     node_a_id: u32,
-    node_b_id: u32
+    node_b_id: u32,
 }
 
 impl CouplerAttached {
