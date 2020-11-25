@@ -352,8 +352,123 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
         globals
             .set("send_message_broadcast", send_message_broadcast)
             .unwrap();
+
+        let decode_json = lua_ctx
+            .create_function(move |lua_ctx, json: String| {
+                let decoded = serde_json::from_str::<serde_json::Value>(&json);
+                if let Ok(decoded) = decoded{
+                    let result = json_to_lua(lua_ctx, decoded);
+                    Ok(result)
+                }
+                else{
+                    Ok(rlua::Value::Nil)
+                }
+            })
+            .unwrap();
+        globals
+            .set("decode_json", decode_json)
+            .unwrap();
+
+        let encode_json = lua_ctx
+            .create_function(move |_lua_ctx, table: rlua::Value| {
+                Ok(lua_to_json(table).to_string())
+            })
+            .unwrap();
+        globals
+            .set("encode_json", encode_json)
+            .unwrap();
+
+        let encode_json_pretty = lua_ctx
+            .create_function(move |_lua_ctx, table: rlua::Value| {
+                Ok(serde_json::to_string_pretty(&lua_to_json(table)).unwrap())
+            })
+            .unwrap();
+        globals
+            .set("encode_json_pretty", encode_json_pretty)
+            .unwrap();
     });
     (lua, rx)
+}
+
+pub fn json_to_lua<'lua>(lua_context: rlua::prelude::LuaContext<'lua>, value: serde_json::Value) -> rlua::Value<'lua> {
+    use serde_json::Value::*;
+    use rlua::ToLua;
+    match value{
+        Null => rlua::Value::Nil,
+        Bool(x) => rlua::Value::Boolean(x),
+        Number(x) => rlua::Value::Number(x.as_f64().unwrap_or(x.as_u64().unwrap_or(0) as f64)),
+        String(x) => x.to_lua(lua_context).unwrap(),
+        Array(x) => {
+            let table = lua_context.create_table().unwrap();
+            let mut i = 1;
+            for v in x{
+                table.set(i, json_to_lua(lua_context, v)).unwrap();
+                i += 1;
+            }
+            rlua::Value::Table(table)
+        }
+        Object(x) => {
+            let table = lua_context.create_table().unwrap();
+            for (k, v) in x{
+                table.set(k, json_to_lua(lua_context, v)).unwrap();
+            }
+            rlua::Value::Table(table)
+        }
+    }
+}
+
+pub fn lua_to_json<'lua>(value: rlua::Value) -> serde_json::Value {
+    use rlua::Value::*;
+    match value{
+        Nil => serde_json::Value::Null,
+        Boolean(x) => serde_json::Value::Bool(x),
+        Integer(x) => serde_json::Value::Number(serde_json::Number::from_f64(x as f64).unwrap()),
+        Number(x) => serde_json::Value::Number(serde_json::Number::from_f64(x).unwrap()),
+        String(x) => serde_json::Value::String(x.to_str().unwrap().to_string()),
+        Table(x) => {
+            let mut is_object = false;
+            let mut prev = 0;
+            for x in x.clone().pairs() {
+                let (k, _): (rlua::Value, rlua::Value) = x.unwrap();
+                match k {
+                    Number(x) => {
+                        if x as i64 > (prev + 1) {
+                            is_object = true;
+                        }
+                        prev = x as i64;
+                    },
+                    Integer(x) => {
+                        if x > (prev + 1) {
+                            is_object = true;
+                        }
+                        prev = x;
+                    },
+                    _ => {
+                        is_object = true;
+                    }
+                }
+            }
+            if is_object {
+                let mut map = serde_json::map::Map::new();
+                for x in x.pairs() {
+                    let (k, v) = x.unwrap();
+                    map.insert(k, lua_to_json(v));
+                }
+                serde_json::Value::Object(map)
+            }
+            else{
+                let mut array = vec![];
+                for x in x.pairs() {
+                    let (_k, v): (rlua::Value, rlua::Value) = x.unwrap();
+                    array.push(lua_to_json(v));
+                }
+                serde_json::Value::Array(array)
+            }
+        }
+        _ => {
+            serde_json::Value::Null
+        }
+    }
 }
 
 pub fn run_hook<

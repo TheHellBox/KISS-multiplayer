@@ -3,7 +3,7 @@ local imgui = ui_imgui
 
 local function generate_base_secret()
   local result = ""
-  for i=0,10 do
+  for i=0,64 do
     local char = string.char(32 + math.random() * 96)
     result = result..char
   end
