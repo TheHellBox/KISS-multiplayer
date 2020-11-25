@@ -23,13 +23,21 @@ use tokio::sync::mpsc;
 const SERVER_VERSION: (u32, u32) = (0, 2);
 
 #[derive(Clone)]
-struct Connection {
+pub struct Connection {
     pub conn: quinn::Connection,
     pub ordered: mpsc::Sender<Outgoing>,
     pub unreliable: mpsc::Sender<Outgoing>,
     pub client_info: ClientInfo,
 }
 
+
+impl std::fmt::Debug for Connection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Connection")
+         .field("client_info", &self.client_info)
+         .finish()
+    }
+}
 impl Connection {
     pub async fn send_chat_message(&mut self, message: String) {
         let _ = self.ordered.send(Outgoing::Chat(message.clone())).await;
@@ -220,13 +228,6 @@ impl Server {
         let id = rand::random::<u32>();
         let (ordered_tx, ordered_rx) = mpsc::channel(256);
         let (unreliable_tx, unreliable_rx) = mpsc::channel(512);
-        let client_connection = Connection {
-            conn: connection.clone(),
-            ordered: ordered_tx,
-            unreliable: unreliable_tx,
-            client_info: ClientInfo::new(id),
-        };
-        self.connections.insert(id, client_connection);
 
         async fn receive_client_data(
             new_connection: &mut quinn::NewConnection,
@@ -272,8 +273,14 @@ impl Server {
                 );
                 return;
             }
+            let client_connection = Connection {
+                conn: connection_clone.clone(),
+                ordered: ordered_tx,
+                unreliable: unreliable_tx,
+                client_info: client_data,
+            };
             client_events_tx
-                .send((id, IncomingEvent::ClientConnected(client_data)))
+                .send((id, IncomingEvent::ClientConnected(client_connection)))
                 .await
                 .unwrap();
             if let Err(_e) = Self::drive_receive(

@@ -4,12 +4,9 @@ impl Server {
     pub async fn on_client_event(&mut self, client_id: u32, event: IncomingEvent) {
         use IncomingEvent::*;
         match event {
-            ClientConnected(client_info) => {
-                {
-                    let connection = self.connections.get_mut(&client_id).unwrap();
-                    connection.client_info.name = client_info.name.clone();
-                    connection.client_info.secret = client_info.secret;
-                }
+            ClientConnected(connection) => {
+                let player_name = connection.client_info.name.clone();
+                self.connections.insert(client_id, connection);
                 // Kinda ugly, but idk how to deal with lifetimes otherwise
                 let mut client_info_list = vec![];
                 for (_, connection) in self.connections.clone() {
@@ -32,7 +29,7 @@ impl Server {
                     client
                         .send_chat_message(format!(
                             "Player {} has joined the server",
-                            client_info.name.clone()
+                            player_name
                         ))
                         .await;
                 }

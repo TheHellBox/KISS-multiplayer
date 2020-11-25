@@ -2,7 +2,7 @@ use crate::*;
 
 #[derive(Debug)]
 pub enum IncomingEvent {
-    ClientConnected(ClientInfo),
+    ClientConnected(Connection),
     ConnectionLost,
     TransformUpdate(u32, Transform),
     VehicleData(VehicleData),
