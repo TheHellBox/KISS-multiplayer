@@ -12,18 +12,10 @@ M.rot_threshold = 2.5
 M.velocity_error_limit = 10
 
 local function get_current_time()
-  local date = os.date("*t", os.time())
+  local date = os.date("*t", os.time() + network.connection.time_offset)
   date.sec = 0
   date.min = 0
-  return (network.socket.gettime() - os.time(date)) + network.connection.time_offset
-end
-
-local function isnan(x)
-  return x ~= x
-end
-
-local function isinf(x)
-  return not (x > -math.huge and x < math.huge)
+  return (network.socket.gettime() - os.time(date))
 end
 
 local function send_transform_updates(obj)

@@ -80,7 +80,7 @@ local function update(dt)
   local angular_force = angle_delta:toEulerYXZ()
   local angular_force = (angular_velocity_difference + angular_force * ang_force + c_ang * local_ang_vel) * dt
   if angular_force:length() > 25 then
-
+    return
   end
 
   kiss_vehicle.apply_full_velocity(
@@ -95,7 +95,7 @@ end
 
 local function set_target_transform(raw)
   local transform = jsonDecode(raw)
-  local time_dif = clamp((transform.sent_at - M.received_transform.sent_at), 0, 0.1)
+  local time_dif = clamp((transform.sent_at - M.received_transform.sent_at), 0.01, 0.1)
 
   M.received_transform.acceleration = (vec3(transform.velocity) - M.received_transform.velocity) / time_dif
   M.received_transform.angular_acceleration = (vec3(transform.angular_velocity) - M.received_transform.angular_velocity) / time_dif
