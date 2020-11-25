@@ -80,10 +80,8 @@ local function update(dt)
   local angular_force = angle_delta:toEulerYXZ()
   local angular_force = (angular_velocity_difference + angular_force * ang_force + c_ang * local_ang_vel) * dt
   if angular_force:length() > 25 then
-    return
-  end
 
-  obj.debugDrawProxy:drawText(M.target_transform.position:toFloat3(), color(0,0,0,100), "Force ("..linear_force.x..", "..linear_force.y..", "..linear_force.z..")")
+  end
 
   kiss_vehicle.apply_full_velocity(
     linear_force.x,

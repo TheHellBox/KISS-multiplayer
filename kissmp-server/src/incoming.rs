@@ -121,7 +121,6 @@ impl Server {
             }
             19 => {
                 let event = CouplerAttached::from_bytes(&data);
-                println!("event {:?}", event);
                 if let Ok(event) = event {
                     client_events_tx
                         .send((id, IncomingEvent::CouplerAttached(event)))
