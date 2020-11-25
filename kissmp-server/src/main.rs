@@ -198,7 +198,8 @@ impl Server {
             "max_players": self.max_players,
             "description": self.description.clone(),
             "map": self.map.clone(),
-            "port": self.port
+            "port": self.port,
+            "version": SERVER_VERSION
         })
         .to_string();
 
@@ -251,7 +252,7 @@ impl Server {
         let connection_clone = connection.clone();
         // Receiver
         tokio::spawn(async move {
-            let client_data = {
+            let mut client_data = {
                 if let Ok(client_data) = receive_client_data(&mut new_connection).await {
                     client_data
                 } else {
@@ -273,6 +274,7 @@ impl Server {
                 );
                 return;
             }
+            client_data.id = id;
             let client_connection = Connection {
                 conn: connection_clone.clone(),
                 ordered: ordered_tx,
