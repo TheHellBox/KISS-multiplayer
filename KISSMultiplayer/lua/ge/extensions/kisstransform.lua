@@ -15,7 +15,7 @@ local function get_current_time()
   local date = os.date("*t", os.time() + network.connection.time_offset)
   date.sec = 0
   date.min = 0
-  return (network.socket.gettime() - os.time(date))
+  return (network.socket.gettime() + network.connection.time_offset  - os.time(date))
 end
 
 local function send_transform_updates(obj)
