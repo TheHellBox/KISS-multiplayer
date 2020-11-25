@@ -213,20 +213,6 @@ local function onUpdate(dt)
       end
     end
   end
-
-  local current_vehicle = be:getPlayerVehicle(0)
-  if not current_vehicle or M.loading_map then return end
-  local current_position = vec3(current_vehicle:getPosition())
-  local spawned_vehicles = {}
-  for k, vehicle in pairs(vehicle_buffer) do
-    if current_position:distance(vec3(kisstransform.raw_positions[vehicle.server_id] or vehicle.position)) < 9999 then
-      spawn_vehicle(vehicle)
-    end
-    table.insert(spawned_vehicles, k)
-  end
-  for _, v in pairs(spawned_vehicles) do
-    table.remove(vehicle_buffer, v)
-  end
 end
 
 local function update_vehicle_input(data)
@@ -446,6 +432,10 @@ local function onMissionLoaded(mission)
   M.ownership = {}
   M.loading_map = false
   first_vehicle = true
+  for k, vehicle in pairs(vehicle_buffer) do
+    spawn_vehicle(vehicle)
+  end
+  vehicle_buffer = {}
 end
 
 M.onUpdate = onUpdate
