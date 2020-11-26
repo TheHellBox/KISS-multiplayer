@@ -70,6 +70,7 @@ impl Server {
                         .send(Outgoing::PlayerDisconnected(client_id))
                         .await;
                 }
+                let _ = self.update_lua_connections();
                 self.lua.context(|lua_ctx| {
                     let _ = crate::lua::run_hook::<u32, ()>(
                         lua_ctx,

@@ -59,7 +59,7 @@ end
 
 local function init()
   load_config()
-  if not FS:fileExists("/mods/KISSMultiplayer.zip") then
+  if #FS:findFiles("/mods/", "KISSMultiplayer.zip", 1000) == 0 then
     kissui.incorrect_install = true
   end
 end

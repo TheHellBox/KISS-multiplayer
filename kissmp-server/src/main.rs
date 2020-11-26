@@ -144,7 +144,7 @@ impl Server {
             tokio_util::codec::FramedRead::new(stdin, tokio_util::codec::LinesCodec::new());
         let mut reader = reader.fuse();
         self.load_lua_addons();
-
+        self.update_lua_connections();
         println!("Server is running!");
 
         loop {
