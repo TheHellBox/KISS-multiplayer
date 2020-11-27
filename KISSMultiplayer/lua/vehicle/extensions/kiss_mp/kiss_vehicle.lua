@@ -46,7 +46,18 @@ local function update_transform_info()
   obj:queueGameEngineLua("kisstransform.push_transform("..obj:getID()..", \'"..jsonEncode(transform).."\')")
 end
 
-local function apply_full_velocity(x, y, z, pitch, roll, yaw)
+local function apply_linear_velocity(x, y, z)
+  local velocity = vec3(x, y, z):toFloat3()
+  for k=1, #nodes do
+    local node = nodes[k]
+    if node[3] then
+      local force = velocity * node[2]
+      obj:applyForceVector(node[1], force)
+    end
+  end
+end
+
+local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw)
   local velocity = vec3(x, y, z):toFloat3()
   local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation())):toFloat3()
   for k=1, #nodes do
@@ -60,8 +71,8 @@ local function apply_full_velocity(x, y, z, pitch, roll, yaw)
 end
 
 M.update_transform_info = update_transform_info
-M.apply_full_velocity = apply_full_velocity
+M.apply_linear_velocity_ang_torque = apply_linear_velocity_ang_torque
 M.update_eligible_nodes = update_eligible_nodes
+M.apply_linear_velocity = apply_linear_velocity
 M.kissInit = kissInit
-
 return M

@@ -18,3 +18,6 @@ registerCoreModule("network")
 
 load("kissconfig")
 registerCoreModule("kissconfig")
+
+--load("kissutils")
+--registerCoreModule("kissutils")

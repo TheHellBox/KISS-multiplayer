@@ -80,6 +80,7 @@ local function disconnect(data)
   kissrichpresence.update()
   vehiclemanager.id_map = {}
   vehiclemanager.ownership = {}
+  --kissutils.hooks.clear()
 end
 
 local function handle_disconnected(data)

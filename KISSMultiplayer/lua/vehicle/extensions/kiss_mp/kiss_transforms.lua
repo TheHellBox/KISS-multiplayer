@@ -54,7 +54,6 @@ local function update(dt)
   M.received_transform.time_past = clamp(M.received_transform.time_past + dt, 0, 0.5)
   predict(dt)
   try_rude()
-  --draw_debug()
 
   local force = M.force
   local ang_force = M.ang_force
@@ -79,18 +78,26 @@ local function update(dt)
   local angle_delta = M.target_transform.rotation / quat(obj:getRotation())
   local angular_force = angle_delta:toEulerYXZ()
   local angular_force = (angular_velocity_difference + angular_force * ang_force + c_ang * local_ang_vel) * dt
-  if angular_force:length() > 25 then
+  if angular_force:length() > 15 then
     return
   end
 
-  kiss_vehicle.apply_full_velocity(
-    linear_force.x,
-    linear_force.y,
-    linear_force.z,
-    angular_force.y,
-    angular_force.z,
-    angular_force.x
-  )
+  if angular_force:length() > 0.1 then
+    kiss_vehicle.apply_linear_velocity_ang_torque(
+      linear_force.x,
+      linear_force.y,
+      linear_force.z,
+      angular_force.y,
+      angular_force.z,
+      angular_force.x
+    )
+  elseif linear_force:length() > 0.1 then
+    kiss_vehicle.apply_linear_velocity(
+      linear_force.x,
+      linear_force.y,
+      linear_force.z
+    )
+  end
 end
 
 local function set_target_transform(raw)
