@@ -27,10 +27,7 @@ impl Server {
                 }
                 for (_, client) in &mut self.connections {
                     client
-                        .send_chat_message(format!(
-                            "Player {} has joined the server",
-                            player_name
-                        ))
+                        .send_chat_message(format!("Player {} has joined the server", player_name))
                         .await;
                 }
                 let _ = self.update_lua_connections();

@@ -220,11 +220,9 @@ impl Server {
             use LuaCommand::*;
             match command {
                 ChatMessage(id, message) => {
-                    self.connections
-                        .get_mut(&id)
-                        .unwrap()
-                        .send_chat_message(message)
-                        .await;
+                    if let Some(conn) = self.connections.get_mut(&id) {
+                        conn.send_chat_message(message.clone()).await;
+                    }
                 }
                 ChatMessageBroadcast(message) => {
                     for (_, client) in &mut self.connections {
@@ -236,7 +234,9 @@ impl Server {
                 }
                 ResetVehicle(id) => self.reset_vehicle(id, None).await,
                 SendLua(id, lua) => {
-                    self.connections.get_mut(&id).unwrap().send_lua(lua).await;
+                    if let Some(conn) = self.connections.get_mut(&id) {
+                        conn.send_lua(lua.clone()).await;
+                    }
                 }
                 SendVehicleLua(id, lua) => {
                     for (_, client) in &mut self.connections {
@@ -246,12 +246,11 @@ impl Server {
                             .await;
                     }
                 }
-                Kick(id, reason) => self
-                    .connections
-                    .get_mut(&id)
-                    .unwrap()
-                    .conn
-                    .close(1u32.into(), &reason.into_bytes()),
+                Kick(id, reason) => {
+                    if let Some(conn) = self.connections.get_mut(&id) {
+                        conn.conn.close(1u32.into(), &reason.into_bytes())
+                    }
+                }
             }
         }
         self.lua.context(|lua_ctx| {
@@ -277,7 +276,9 @@ impl Server {
         let mut buf = String::new();
         file.read_to_string(&mut buf).unwrap();
         self.lua.context(|lua_ctx| {
-            lua_ctx.load(&buf).eval::<()>().unwrap();
+            if let Err(x) = lua_ctx.load(&buf).eval::<()>() {
+                println!("Lua error: {:?}", x);
+            }
         });
         self.lua_watcher
             .watch(path, notify::RecursiveMode::NonRecursive)
@@ -356,27 +357,20 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
         let decode_json = lua_ctx
             .create_function(move |lua_ctx, json: String| {
                 let decoded = serde_json::from_str::<serde_json::Value>(&json);
-                if let Ok(decoded) = decoded{
+                if let Ok(decoded) = decoded {
                     let result = json_to_lua(lua_ctx, decoded);
                     Ok(result)
-                }
-                else{
+                } else {
                     Ok(rlua::Value::Nil)
                 }
             })
             .unwrap();
-        globals
-            .set("decode_json", decode_json)
-            .unwrap();
+        globals.set("decode_json", decode_json).unwrap();
 
         let encode_json = lua_ctx
-            .create_function(move |_lua_ctx, table: rlua::Value| {
-                Ok(lua_to_json(table).to_string())
-            })
+            .create_function(move |_lua_ctx, table: rlua::Value| Ok(lua_to_json(table).to_string()))
             .unwrap();
-        globals
-            .set("encode_json", encode_json)
-            .unwrap();
+        globals.set("encode_json", encode_json).unwrap();
 
         let encode_json_pretty = lua_ctx
             .create_function(move |_lua_ctx, table: rlua::Value| {
@@ -390,10 +384,13 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
     (lua, rx)
 }
 
-pub fn json_to_lua<'lua>(lua_context: rlua::prelude::LuaContext<'lua>, value: serde_json::Value) -> rlua::Value<'lua> {
-    use serde_json::Value::*;
+pub fn json_to_lua<'lua>(
+    lua_context: rlua::prelude::LuaContext<'lua>,
+    value: serde_json::Value,
+) -> rlua::Value<'lua> {
     use rlua::ToLua;
-    match value{
+    use serde_json::Value::*;
+    match value {
         Null => rlua::Value::Nil,
         Bool(x) => rlua::Value::Boolean(x),
         Number(x) => rlua::Value::Number(x.as_f64().unwrap_or(x.as_u64().unwrap_or(0) as f64)),
@@ -401,7 +398,7 @@ pub fn json_to_lua<'lua>(lua_context: rlua::prelude::LuaContext<'lua>, value: se
         Array(x) => {
             let table = lua_context.create_table().unwrap();
             let mut i = 1;
-            for v in x{
+            for v in x {
                 table.set(i, json_to_lua(lua_context, v)).unwrap();
                 i += 1;
             }
@@ -409,7 +406,7 @@ pub fn json_to_lua<'lua>(lua_context: rlua::prelude::LuaContext<'lua>, value: se
         }
         Object(x) => {
             let table = lua_context.create_table().unwrap();
-            for (k, v) in x{
+            for (k, v) in x {
                 table.set(k, json_to_lua(lua_context, v)).unwrap();
             }
             rlua::Value::Table(table)
@@ -419,7 +416,7 @@ pub fn json_to_lua<'lua>(lua_context: rlua::prelude::LuaContext<'lua>, value: se
 
 pub fn lua_to_json<'lua>(value: rlua::Value) -> serde_json::Value {
     use rlua::Value::*;
-    match value{
+    match value {
         Nil => serde_json::Value::Null,
         Boolean(x) => serde_json::Value::Bool(x),
         Integer(x) => serde_json::Value::Number(serde_json::Number::from_f64(x as f64).unwrap()),
@@ -436,13 +433,13 @@ pub fn lua_to_json<'lua>(value: rlua::Value) -> serde_json::Value {
                             is_object = true;
                         }
                         prev = x as i64;
-                    },
+                    }
                     Integer(x) => {
                         if x > (prev + 1) {
                             is_object = true;
                         }
                         prev = x;
-                    },
+                    }
                     _ => {
                         is_object = true;
                     }
@@ -455,8 +452,7 @@ pub fn lua_to_json<'lua>(value: rlua::Value) -> serde_json::Value {
                     map.insert(k, lua_to_json(v));
                 }
                 serde_json::Value::Object(map)
-            }
-            else{
+            } else {
                 let mut array = vec![];
                 for x in x.pairs() {
                     let (_k, v): (rlua::Value, rlua::Value) = x.unwrap();
@@ -465,9 +461,7 @@ pub fn lua_to_json<'lua>(value: rlua::Value) -> serde_json::Value {
                 serde_json::Value::Array(array)
             }
         }
-        _ => {
-            serde_json::Value::Null
-        }
+        _ => serde_json::Value::Null,
     }
 }
 

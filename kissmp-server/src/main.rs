@@ -30,12 +30,11 @@ pub struct Connection {
     pub client_info: ClientInfo,
 }
 
-
 impl std::fmt::Debug for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Connection")
-         .field("client_info", &self.client_info)
-         .finish()
+            .field("client_info", &self.client_info)
+            .finish()
     }
 }
 impl Connection {
@@ -144,7 +143,7 @@ impl Server {
             tokio_util::codec::FramedRead::new(stdin, tokio_util::codec::LinesCodec::new());
         let mut reader = reader.fuse();
         self.load_lua_addons();
-        self.update_lua_connections();
+        let _ = self.update_lua_connections();
         println!("Server is running!");
 
         loop {
