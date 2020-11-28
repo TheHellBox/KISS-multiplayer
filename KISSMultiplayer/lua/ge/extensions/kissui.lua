@@ -18,6 +18,8 @@ M.downloads_info = {}
 M.COLOR_YELLOW = {r = 1, g = 1, b = 0}
 M.COLOR_RED = {r = 1, g = 0, b = 0}
 
+M.force_disable_nametags = false
+
 local gui_module = require("ge/extensions/editor/api/gui")
 local gui = {setupEditorGuiTheme = nop}
 local imgui = ui_imgui
@@ -700,7 +702,7 @@ local function onUpdate(dt)
   if M.incorrect_install then
      draw_incorrect_install()
   end
-  if M.show_nametags[0] then
+  if (not M.force_disable_nametags) and M.show_nametags[0] then
     draw_names()
   end
   

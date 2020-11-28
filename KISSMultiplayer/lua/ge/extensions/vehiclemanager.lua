@@ -16,6 +16,7 @@ M.ownership = {}
 M.vehicle_updates_buffer = {}
 M.packet_gen_buffer = {}
 M.is_network_session = false
+M.delay_spawns = false
 
 local function enable_spawning(enabled)
   local jsCommand = 'angular.element(document.body).injector().get("VehicleSelectConfig").configs.default.hide = {"spawnNew":' .. tostring(not enabled) .. '}'
@@ -125,8 +126,8 @@ local function spawn_vehicle(data)
   if type(data) == "string" then
     data = jsonDecode(data)
   end
-  if M.loading_map then
-    table.insert(vehicle_buffer, data)
+  if M.loading_map or M.delay_spawns then
+    vehicle_buffer[data.server_id] = data
     return
   end
   print("Trying to spawn vehicle")
@@ -269,6 +270,8 @@ local function remove_vehicle(data)
     M.vehicle_updates_buffer[local_id] = nil
     kisstransform.received_transforms[local_id] = nil
     update_ownership_limits()
+  else
+    vehicle_buffer[id] = nil
   end
 end
 
