@@ -26,7 +26,7 @@ fn main() {
     let mut server_list = ServerList(HashMap::new());
     let mut addresses: HashMap<std::net::IpAddr, HashMap<u16, bool>> = HashMap::new();
 
-    let censor_standart = censor::Censor::Standard;
+    let censor_standard = censor::Censor::Standard;
     let censor_sex = censor::Censor::Sex;
 
     for mut request in server.incoming_requests() {
@@ -51,7 +51,7 @@ fn main() {
                 }
                 server_info.description.truncate(256);
                 server_info.name.truncate(64);
-                if censor_standart.check(&server_info.name) || censor_sex.check(&server_info.name) {
+                if censor_standard.check(&server_info.name) || censor_sex.check(&server_info.name) {
                     continue;
                 }
                 if let Some(ports) = addresses.get_mut(&addr.ip()) {

@@ -15,8 +15,8 @@ pub struct VehicleData {
     pub parts_config: String,
     pub in_game_id: u32,
     pub color: [f32; 4],
-    pub palete_0: [f32; 4],
-    pub palete_1: [f32; 4],
+    pub palette_0: [f32; 4],
+    pub palette_1: [f32; 4],
     pub plate: Option<String>,
     pub name: String,
     #[serde(skip_deserializing)]

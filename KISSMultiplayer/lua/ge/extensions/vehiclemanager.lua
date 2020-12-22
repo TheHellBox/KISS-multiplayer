@@ -39,13 +39,13 @@ local function send_vehicle_meta_updates()
       local id = vehicle:getID()
       
       local color = vehicle.color
-      local palete_0 = vehicle.colorPalette0
-      local palete_1 = vehicle.colorPalette1
+      local palette_0 = vehicle.colorPalette0
+      local palette_1 = vehicle.colorPalette1
       local plate = vehicle.licenseText
       local colors = {
         {color.x, color.y, color.z, color.w},
-        {palete_0.x, palete_0.y, palete_0.z, palete_0.w},
-        {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
+        {palette_0.x, palette_0.y, palette_0.z, palette_0.w},
+        {palette_1.x, palette_1.y, palette_1.z, palette_1.w}
       }
       
       if plates_buffer[id] then
@@ -96,8 +96,8 @@ local function send_vehicle_config_inner(id, parts_config)
   local vehicle = be:getObjectByID(id)
   local parts_config = parts_config
   local color = vehicle.color
-  local palete_0 = vehicle.colorPalette0
-  local palete_1 = vehicle.colorPalette1
+  local palette_0 = vehicle.colorPalette0
+  local palette_1 = vehicle.colorPalette1
   local plate = vehicle.licenseText
   local position = vehicle:getPosition()
   local rotation = vehicle:getRotation()
@@ -106,8 +106,8 @@ local function send_vehicle_config_inner(id, parts_config)
   vehicle_data.parts_config = parts_config
   vehicle_data.in_game_id = id
   vehicle_data.color = {color.x, color.y, color.z, color.w}
-  vehicle_data.palete_0 = {palete_0.x, palete_0.y, palete_0.z, palete_0.w}
-  vehicle_data.palete_1 = {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
+  vehicle_data.palette_0 = {palette_0.x, palette_0.y, palette_0.z, palette_0.w}
+  vehicle_data.palette_1 = {palette_1.x, palette_1.y, palette_1.z, palette_1.w}
   vehicle_data.plate = plate
   vehicle_data.name = vehicle:getJBeamFilename()
   vehicle_data.position = {position.x, position.y, position.z}
@@ -145,8 +145,8 @@ local function spawn_vehicle(data)
   local parts_config = jsonDecode(data.parts_config)
   local c = data.color
   local plate = data.plate
-  local cp0 = data.palete_0
-  local cp1 = data.palete_1
+  local cp0 = data.palette_0
+  local cp1 = data.palette_1
   local name = data.name
   print("Vehicle spawned")
   local spawned = spawn.spawnVehicle(

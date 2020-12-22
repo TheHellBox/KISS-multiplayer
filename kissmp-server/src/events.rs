@@ -189,8 +189,8 @@ impl Server {
                 {
                     if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
                         vehicle.data.color = meta.colors_table[0];
-                        vehicle.data.palete_0 = meta.colors_table[1];
-                        vehicle.data.palete_1 = meta.colors_table[2];
+                        vehicle.data.palette_0 = meta.colors_table[1];
+                        vehicle.data.palette_1 = meta.colors_table[2];
                         vehicle.data.plate = meta.plate.clone();
                         let mut meta = meta.clone();
                         meta.vehicle_id = server_id;

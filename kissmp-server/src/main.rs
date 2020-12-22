@@ -372,7 +372,7 @@ impl Server {
         connection: quinn::Connection,
         mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
-        let mut cmds = streams
+        let mut commands = streams
             .map(|stream| async {
                 let mut stream = stream?;
                 let mut data_type = [0; 1];
@@ -399,7 +399,7 @@ impl Server {
 
         loop {
             let (data_type, data) = select! {
-                data = cmds.try_next() => {
+                data = commands.try_next() => {
                     if let Some(data) = data? {
                         data
                     }

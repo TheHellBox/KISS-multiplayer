@@ -47,8 +47,8 @@ impl rlua::UserData for VehicleData {
         methods.add_method("getInGameID", |_, this, _: ()| Ok(this.in_game_id));
         methods.add_method("getID", |_, this, _: ()| Ok(this.server_id));
         methods.add_method("getColor", |_, this, _: ()| Ok(this.color.to_vec()));
-        methods.add_method("getPalete0", |_, this, _: ()| Ok(this.palete_0.to_vec()));
-        methods.add_method("getPalete1", |_, this, _: ()| Ok(this.palete_1.to_vec()));
+        methods.add_method("getPalette0", |_, this, _: ()| Ok(this.palette_0.to_vec()));
+        methods.add_method("getPalette1", |_, this, _: ()| Ok(this.palette_1.to_vec()));
         methods.add_method("getPlate", |_, this, _: ()| Ok(this.plate.clone()));
         methods.add_method("getName", |_, this, _: ()| Ok(this.name.clone()));
         methods.add_method("getOwner", |_, this, _: ()| Ok(this.owner));

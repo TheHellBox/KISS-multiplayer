@@ -210,8 +210,8 @@ local function connect(addr, player_name)
   local connected, err = M.connection.tcp:connect("127.0.0.1", "7894")
 
   -- Send server address to the bridge
-  local addr_lenght = ffi.string(ffi.new("uint32_t[?]", 1, {#addr}), 4)
-  M.connection.tcp:send(addr_lenght)
+  local addr_length = ffi.string(ffi.new("uint32_t[?]", 1, {#addr}), 4)
+  M.connection.tcp:send(addr_length)
   M.connection.tcp:send(addr)
 
   local connection_confirmed = M.connection.tcp:receive(1)
