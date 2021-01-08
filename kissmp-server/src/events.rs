@@ -125,7 +125,7 @@ impl Server {
                         return;
                     }
                 }
-                self.spawn_vehicle(client_id, data).await;
+                self.spawn_vehicle(Some(client_id), data).await;
             }
             ElectricsUpdate(electrics) => {
                 if let Some(server_id) =

@@ -24,6 +24,8 @@ M.connection = {
   time_offset = 0
 }
 
+local FILE_TRANSFER_CHUNK_SIZE = 4096 * 1024;
+
 local MESSAGETYPE_TRANSFORM = 0
 local MESSAGETYPE_VEHICLE_SPAWN = 1
 local MESSAGETYPE_INPUT = 2
@@ -78,8 +80,11 @@ local function disconnect(data)
   M.connection.tcp:close()
   M.players = {}
   kissrichpresence.update()
-  vehiclemanager.id_map = {}
-  vehiclemanager.ownership = {}
+  --vehiclemanager.id_map = {}
+  --vehiclemanager.ownership = {}
+  --vehiclemanager.delay_spawns = false
+  --kissui.force_disable_nametags = false
+  Lua:requestReload()
   --kissutils.hooks.clear()
 end
 
@@ -91,13 +96,13 @@ local function handle_file_transfer(data)
   kissui.show_download = true
   local file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data:sub(1, 4)))[0]
   local file_name = data:sub(5, #data)
-  local chunks = math.floor(file_len / 4096)
+  local chunks = math.floor(file_len / FILE_TRANSFER_CHUNK_SIZE)
   
   current_download = {
     file_len = file_len,
     file_name = file_name,
     chunks = chunks,
-    last_chunk = file_len - chunks * 4096,
+    last_chunk = file_len - chunks * FILE_TRANSFER_CHUNK_SIZE,
     current_chunk = 0,
     file = kissmods.open_file(file_name)
   }

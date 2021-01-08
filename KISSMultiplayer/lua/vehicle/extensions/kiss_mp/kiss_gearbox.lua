@@ -14,7 +14,7 @@ local function set_gear_indices(indices)
     gearbox:setGearIndex1(indices[1])
     gearbox:setGearIndex2(indices[2])
   else
-    controller.mainController.shiftToGearIndex(indices[1])
+    gearbox:setGearIndex(indices[1])
   end
 end
 
@@ -43,10 +43,6 @@ local function apply(data)
   if not gearbox then return end
   
   local data = jsonDecode(data)
-  if M.arcade then
-    controller.mainController.setGearboxMode("realistic")
-  end
-
   set_gear_indices(data[5])
   if not gearbox_is_manual and data[4] ~= "none" then
     gearbox:setMode(data[4])
