@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use tokio::sync::mpsc;
 
-const SERVER_VERSION: (u32, u32) = (0, 2);
+const SERVER_VERSION: (u32, u32) = (0, 3);
 
 #[derive(Clone)]
 pub struct Connection {

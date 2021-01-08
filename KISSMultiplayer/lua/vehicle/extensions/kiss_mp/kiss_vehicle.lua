@@ -36,7 +36,7 @@ local function update_eligible_nodes()
 end
 
 local function update_transform_info()
-  local r = obj:getRotation()
+  local r = quat(obj:getRotation())
   local transform = {
     rotation  = {r.x, r.y, r.z, r.w},
     vel_pitch = obj:getPitchAngularVelocity(),

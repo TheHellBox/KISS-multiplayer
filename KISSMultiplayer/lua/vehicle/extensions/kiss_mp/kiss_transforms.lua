@@ -40,6 +40,7 @@ local function try_rude()
   if (M.target_transform.rotation / quat(obj:getRotation())):toEulerYXZ():length() > 1.5 then
     local p = M.target_transform.position
     local r = M.target_transform.rotation
+    print(r)
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
   end
 end
@@ -78,11 +79,11 @@ local function update(dt)
   local angle_delta = M.target_transform.rotation / quat(obj:getRotation())
   local angular_force = angle_delta:toEulerYXZ()
   local angular_force = (angular_velocity_difference + angular_force * ang_force + c_ang * local_ang_vel) * dt
-  if angular_force:length() > 15 then
+  if angular_force:length() > 25 then
     return
   end
 
-  if angular_force:length() > 0.1 then
+  if angular_force:length() > 0.2 then
     kiss_vehicle.apply_linear_velocity_ang_torque(
       linear_force.x,
       linear_force.y,
@@ -91,7 +92,7 @@ local function update(dt)
       angular_force.z,
       angular_force.x
     )
-  elseif linear_force:length() > 0.1 then
+  elseif linear_force:length() > 0.2 then
     kiss_vehicle.apply_linear_velocity(
       linear_force.x,
       linear_force.y,
@@ -105,8 +106,13 @@ local function set_target_transform(raw)
   local time_dif = clamp((transform.sent_at - M.received_transform.sent_at), 0.01, 0.1)
 
   M.received_transform.acceleration = (vec3(transform.velocity) - M.received_transform.velocity) / time_dif
+  if M.received_transform.acceleration:length() > 5 then
+    M.received_transform.acceleration = M.received_transform.acceleration:normalized() * 5
+  end
   M.received_transform.angular_acceleration = (vec3(transform.angular_velocity) - M.received_transform.angular_velocity) / time_dif
- 
+  if M.received_transform.acceleration:length() > 5 then
+    M.received_transform.angular_acceleration = M.received_transform.angular_acceleration:normalized() * 5
+  end
   M.received_transform.position = vec3(transform.position)
   M.received_transform.rotation = quat(transform.rotation)
   M.received_transform.velocity = vec3(transform.velocity)

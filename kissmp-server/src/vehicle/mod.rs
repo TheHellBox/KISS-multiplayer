@@ -101,25 +101,27 @@ impl crate::Server {
         }
     }
 
-    pub async fn spawn_vehicle(&mut self, client_id: u32, data: VehicleData) {
+    pub async fn spawn_vehicle(&mut self, owner: Option<u32>, data: VehicleData) {
         let server_id = rand::random::<u16>() as u32;
         let mut data = data.clone();
         data.server_id = server_id;
-        data.owner = Some(client_id);
+        data.owner = owner;
         for (_, client) in &mut self.connections {
             let _ = client
                 .ordered
                 .send(crate::Outgoing::VehicleSpawn(data.clone()))
                 .await;
         }
-        if self.vehicle_ids.get(&client_id).is_none() {
+        if let Some(owner) = owner {
+            if self.vehicle_ids.get(&owner).is_none() {
+                self.vehicle_ids
+                    .insert(owner, std::collections::HashMap::with_capacity(16));
+            }
             self.vehicle_ids
-                .insert(client_id, std::collections::HashMap::with_capacity(16));
+                .get_mut(&owner)
+                .unwrap()
+                .insert(data.in_game_id, server_id);
         }
-        self.vehicle_ids
-            .get_mut(&client_id)
-            .unwrap()
-            .insert(data.in_game_id, server_id);
         self.vehicles.insert(
             server_id,
             Vehicle {
@@ -129,15 +131,17 @@ impl crate::Server {
                 transform: None,
             },
         );
-        self.set_current_vehicle(client_id, server_id).await;
         let _ = self.update_lua_vehicles();
-        self.lua.context(|lua_ctx| {
-            let _ = crate::lua::run_hook::<(u32, u32), ()>(
-                lua_ctx,
-                String::from("OnVehicleSpawned"),
-                (server_id, client_id),
-            );
-        });
+        if let Some(owner) = owner {
+            self.set_current_vehicle(owner, server_id).await;
+            self.lua.context(|lua_ctx| {
+                let _ = crate::lua::run_hook::<(u32, u32), ()>(
+                    lua_ctx,
+                    String::from("OnVehicleSpawned"),
+                    (server_id, owner),
+                );
+            });
+        }
     }
 }
 

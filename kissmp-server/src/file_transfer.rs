@@ -1,7 +1,7 @@
 use crate::*;
 use tokio::io::AsyncReadExt;
 
-const CHUNK_SIZE: usize = 4096;
+const CHUNK_SIZE: usize = 4096 * 1024; // 4 MB chunks
 
 pub async fn transfer_file(
     stream: &mut quinn::SendStream,

@@ -15,6 +15,7 @@ pub enum LuaCommand {
     SendLua(u32, String),
     SendVehicleLua(u32, String),
     Kick(u32, String),
+    SpawnVehicle(VehicleData, Option<u32>),
 }
 
 impl rlua::UserData for Transform {
@@ -52,7 +53,9 @@ impl rlua::UserData for VehicleData {
         methods.add_method("getPlate", |_, this, _: ()| Ok(this.plate.clone()));
         methods.add_method("getName", |_, this, _: ()| Ok(this.name.clone()));
         methods.add_method("getOwner", |_, this, _: ()| Ok(this.owner));
-        methods.add_method("getPartsConfig", |_, this, _: ()| Ok(this.name.clone()));
+        methods.add_method("getPartsConfig", |_, this, _: ()| {
+            Ok(this.parts_config.clone())
+        });
     }
 }
 
@@ -251,6 +254,9 @@ impl Server {
                         conn.conn.close(1u32.into(), &reason.into_bytes())
                     }
                 }
+                SpawnVehicle(data, owner) => {
+                    let _ = self.spawn_vehicle(owner, data);
+                }
             }
         }
         self.lua.context(|lua_ctx| {
@@ -353,6 +359,49 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
         globals
             .set("send_message_broadcast", send_message_broadcast)
             .unwrap();
+        let tx_clone = tx.clone();
+        let spawn_vehicle = lua_ctx
+            .create_function(
+                move |_, (vehicle_data, owner): (VehicleData, Option<u32>)| {
+                    tx_clone
+                        .send(LuaCommand::SpawnVehicle(vehicle_data, owner))
+                        .unwrap();
+                    Ok(())
+                },
+            )
+            .unwrap();
+        globals.set("spawn_vehicle", spawn_vehicle).unwrap();
+
+        let build_vehicle = lua_ctx
+            .create_function(
+                move |_,
+                      (parts_config, color, p0, p1, plate, name, position, rotation): (
+                    String,
+                    Vec<f32>,
+                    Vec<f32>,
+                    Vec<f32>,
+                    String,
+                    String,
+                    Vec<f32>,
+                    Vec<f32>,
+                )| {
+                    Ok(VehicleData {
+                        parts_config,
+                        in_game_id: 0,
+                        color: [color[0], color[1], color[2], color[3]],
+                        palete_0: [p0[0], p0[1], p0[2], p0[3]],
+                        palete_1: [p1[0], p1[1], p1[2], p1[3]],
+                        plate: Some(plate),
+                        name,
+                        server_id: 0,
+                        owner: None,
+                        position: [position[0], position[1], position[2]],
+                        rotation: [rotation[0], rotation[1], rotation[2], rotation[3]],
+                    })
+                },
+            )
+            .unwrap();
+        globals.set("build_vehicle", build_vehicle).unwrap();
 
         let decode_json = lua_ctx
             .create_function(move |lua_ctx, json: String| {
