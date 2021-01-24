@@ -63,7 +63,7 @@ local function update(dt)
 
   local velocity_difference = M.target_transform.velocity - vec3(obj:getVelocity())
   local position_delta = M.target_transform.position - vec3(obj:getPosition())
-  position_delta = position_delta:normalized() * math.pow(position_delta:length(), 2)
+  --position_delta = position_delta:normalized() * math.pow(position_delta:length(), 2)
   local linear_force = (velocity_difference + position_delta * force) * dt * 5
   if linear_force:length() > 10 then
     linear_force = linear_force:normalized() * 10

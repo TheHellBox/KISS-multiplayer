@@ -1,6 +1,7 @@
 local M = {}
 local parts_config = v.config
 local nodes = {}
+local ref_nodes = {}
 
 local last_node = 1
 local nodes_per_frame = 32
@@ -8,14 +9,33 @@ local node_pos_thresh = 32
 
 local function kissInit()
   local force = obj:getPhysicsFPS()
-  force = vec3(force, force, force):toFloat3()
+
+  local ref = {
+    v.data.refNodes[0].left,
+    v.data.refNodes[0].up,
+    v.data.refNodes[0].back,
+    v.data.refNodes[0].ref,
+  }
+
+  local total_mass = 0
   for _, node in pairs(v.data.nodes) do
-    local mass = obj:getNodeMass(node.cid)
+    local node_mass = obj:getNodeMass(node.cid)
     table.insert(
       nodes,
       {
         node.cid,
-        vec3(mass, mass, mass):toFloat3() * force,
+        node_mass * force,
+        true
+      }
+    )
+    total_mass = total_mass + node_mass
+  end
+  for _, node in pairs(ref) do
+    table.insert(
+      ref_nodes,
+      {
+        node,
+        total_mass * force / 4,
         true
       }
     )
@@ -47,25 +67,31 @@ local function update_transform_info()
 end
 
 local function apply_linear_velocity(x, y, z)
-  local velocity = vec3(x, y, z):toFloat3()
+  local velocity = vec3(x, y, z)
   for k=1, #nodes do
     local node = nodes[k]
     if node[3] then
       local force = velocity * node[2]
-      obj:applyForceVector(node[1], force)
+      obj:applyForceVector(node[1], force:toFloat3())
     end
   end
 end
 
 local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw)
-  local velocity = vec3(x, y, z):toFloat3()
-  local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation())):toFloat3()
+  local velocity = vec3(x, y, z)
+  local nodes = nodes
+  -- 0.1 seems like the safe value we can use for low velocities
+  -- NOTE: Doesn't work as well as expected
+  if velocity:length() < 0.2 then
+    nodes = ref_nodes
+  end
+  local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation()))
   for k=1, #nodes do
     local node = nodes[k]
     if node[3] then
-      local node_position = obj:getNodePosition(node[1])
+      local node_position = vec3(obj:getNodePosition(node[1]))
       local force = (velocity + node_position:cross(rot)) * node[2]
-      obj:applyForceVector(node[1], force)
+      obj:applyForceVector(node[1], force:toFloat3())
     end
   end
 end

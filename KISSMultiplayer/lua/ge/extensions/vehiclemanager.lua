@@ -130,7 +130,6 @@ local function spawn_vehicle(data)
     vehicle_buffer[data.server_id] = data
     return
   end
-  print("Trying to spawn vehicle")
   if data.owner == network.get_client_id() then
     print("Vehicle belongs to local client, setting ownership")
     M.id_map[data.server_id] = data.in_game_id
@@ -148,7 +147,7 @@ local function spawn_vehicle(data)
   local cp0 = data.palete_0
   local cp1 = data.palete_1
   local name = data.name
-  print("Vehicle spawned")
+  print("Attempt to spawn vehicle "..name)
   local spawned = spawn.spawnVehicle(
     name,
     serialize(parts_config),
