@@ -3,6 +3,7 @@ Lua is not really designed to be used with rust. And async stuff only makes thin
 This API is probably the best I can do without using unsafe.
 */
 
+use crate::server_vehicle::*;
 use crate::*;
 use std::sync::mpsc;
 
@@ -18,51 +19,61 @@ pub enum LuaCommand {
     SpawnVehicle(VehicleData, Option<u32>),
 }
 
-impl rlua::UserData for Transform {
+struct LuaTransform(Transform);
+struct LuaVehicleData(VehicleData);
+
+impl rlua::UserData for LuaTransform {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("getPosition", |_, this, _: ()| {
-            Ok(vec![this.position[0], this.position[1], this.position[2]])
+            Ok(vec![this.0.position[0], this.0.position[1], this.0.position[2]])
         });
         methods.add_method("getRotation", |_, this, _: ()| {
             Ok(vec![
-                this.rotation[0],
-                this.rotation[1],
-                this.rotation[2],
-                this.rotation[3],
+                this.0.rotation[0],
+                this.0.rotation[1],
+                this.0.rotation[2],
+                this.0.rotation[3],
             ])
         });
         methods.add_method("getVelocity", |_, this, _: ()| {
-            Ok(vec![this.velocity[0], this.velocity[1], this.velocity[2]])
+            Ok(vec![this.0.velocity[0], this.0.velocity[1], this.0.velocity[2]])
         });
         methods.add_method("getAngularVelocity", |_, this, _: ()| {
             Ok(vec![
-                this.angular_velocity[0],
-                this.angular_velocity[1],
-                this.angular_velocity[2],
+                this.0.angular_velocity[0],
+                this.0.angular_velocity[1],
+                this.0.angular_velocity[2],
             ])
         });
     }
 }
-impl rlua::UserData for VehicleData {
+impl rlua::UserData for LuaVehicleData {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("getInGameID", |_, this, _: ()| Ok(this.in_game_id));
-        methods.add_method("getID", |_, this, _: ()| Ok(this.server_id));
-        methods.add_method("getColor", |_, this, _: ()| Ok(this.color.to_vec()));
-        methods.add_method("getPalete0", |_, this, _: ()| Ok(this.palete_0.to_vec()));
-        methods.add_method("getPalete1", |_, this, _: ()| Ok(this.palete_1.to_vec()));
-        methods.add_method("getPlate", |_, this, _: ()| Ok(this.plate.clone()));
-        methods.add_method("getName", |_, this, _: ()| Ok(this.name.clone()));
-        methods.add_method("getOwner", |_, this, _: ()| Ok(this.owner));
+        methods.add_method("getInGameID", |_, this, _: ()| Ok(this.0.in_game_id));
+        methods.add_method("getID", |_, this, _: ()| Ok(this.0.server_id));
+        methods.add_method("getColor", |_, this, _: ()| Ok(this.0.color.to_vec()));
+        methods.add_method("getPalete0", |_, this, _: ()| Ok(this.0.palete_0.to_vec()));
+        methods.add_method("getPalete1", |_, this, _: ()| Ok(this.0.palete_1.to_vec()));
+        methods.add_method("getPlate", |_, this, _: ()| Ok(this.0.plate.clone()));
+        methods.add_method("getName", |_, this, _: ()| Ok(this.0.name.clone()));
+        methods.add_method("getOwner", |_, this, _: ()| Ok(this.0.owner));
         methods.add_method("getPartsConfig", |_, this, _: ()| {
-            Ok(this.parts_config.clone())
+            Ok(this.0.parts_config.clone())
         });
     }
 }
 
 impl rlua::UserData for Vehicle {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("getTransform", |_, this, _: ()| Ok(this.transform.clone()));
-        methods.add_method("getData", |_, this, _: ()| Ok(this.data.clone()));
+        methods.add_method("getTransform", |_, this, _: ()| {
+            if let Some(transform) = &this.transform {
+                Ok(Some(LuaTransform(transform.clone())))
+            }
+            else{
+                Ok(None)
+            }
+        });
+        methods.add_method("getData", |_, this, _: ()| Ok(LuaVehicleData(this.data.clone())));
         methods.add_method("remove", |lua_ctx, this, _: ()| {
             let globals = lua_ctx.globals();
             let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
@@ -193,10 +204,10 @@ impl Server {
                 *id,
                 LuaConnection {
                     id: *id,
-                    current_vehicle: connection.client_info.current_vehicle,
-                    name: connection.client_info.name.clone(),
+                    current_vehicle: connection.client_info_public.current_vehicle,
+                    name: connection.client_info_public.name.clone(),
                     ip: connection.conn.remote_address().ip().to_string(),
-                    secret: connection.client_info.secret.clone(),
+                    secret: connection.client_info_private.secret.clone(),
                 },
             );
         }
@@ -245,7 +256,7 @@ impl Server {
                     for (_, client) in &mut self.connections {
                         let _ = client
                             .ordered
-                            .send(crate::Outgoing::VehicleLuaCommand(id, lua.clone()))
+                            .send(ServerCommand::VehicleLuaCommand(id, lua.clone()))
                             .await;
                     }
                 }
@@ -359,19 +370,20 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
         globals
             .set("send_message_broadcast", send_message_broadcast)
             .unwrap();
-        let tx_clone = tx.clone();
+        // FIXME: Bring it back
+        /*let tx_clone = tx.clone();
         let spawn_vehicle = lua_ctx
             .create_function(
-                move |_, (vehicle_data, owner): (VehicleData, Option<u32>)| {
+                move |_, (vehicle_data, owner): (LuaVehicleData, Option<u32>)| {
                     tx_clone
-                        .send(LuaCommand::SpawnVehicle(vehicle_data, owner))
+                        .send(LuaCommand::SpawnVehicle(vehicle_data.0, owner))
                         .unwrap();
                     Ok(())
                 },
             )
             .unwrap();
         globals.set("spawn_vehicle", spawn_vehicle).unwrap();
-
+        */
         let build_vehicle = lua_ctx
             .create_function(
                 move |_,
@@ -385,7 +397,7 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
                     Vec<f32>,
                     Vec<f32>,
                 )| {
-                    Ok(VehicleData {
+                    Ok(LuaVehicleData(VehicleData{
                         parts_config,
                         in_game_id: 0,
                         color: [color[0], color[1], color[2], color[3]],
@@ -397,7 +409,7 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
                         owner: None,
                         position: [position[0], position[1], position[2]],
                         rotation: [rotation[0], rotation[1], rotation[2], rotation[3]],
-                    })
+                    }))
                 },
             )
             .unwrap();

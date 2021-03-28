@@ -1,4 +1,6 @@
-#![recursion_limit = "256"]
+#![recursion_limit = "1024"]
+
+use shared::vehicle;
 
 pub mod config;
 pub mod events;
@@ -6,10 +8,11 @@ pub mod file_transfer;
 pub mod incoming;
 pub mod lua;
 pub mod outgoing;
-pub mod vehicle;
+pub mod server_vehicle;
 
 use incoming::IncomingEvent;
-use outgoing::Outgoing;
+use shared::{ClientInfoPublic, ClientInfoPrivate, ServerCommand};
+use server_vehicle::*;
 use vehicle::*;
 
 use anyhow::Error;
@@ -19,70 +22,30 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use tokio::sync::mpsc;
-
-const SERVER_VERSION: (u32, u32) = (0, 3);
+use tokio_stream::{self as stream, wrappers::{IntervalStream, ReceiverStream}};
 
 #[derive(Clone)]
 pub struct Connection {
     pub conn: quinn::Connection,
-    pub ordered: mpsc::Sender<Outgoing>,
-    pub unreliable: mpsc::Sender<Outgoing>,
-    pub client_info: ClientInfo,
+    pub ordered: mpsc::Sender<ServerCommand>,
+    pub unreliable: mpsc::Sender<ServerCommand>,
+    pub client_info_private: ClientInfoPrivate,
+    pub client_info_public: ClientInfoPublic
 }
 
 impl std::fmt::Debug for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Connection")
-            .field("client_info", &self.client_info)
+            .field("client_info", &self.client_info_private)
             .finish()
     }
 }
 impl Connection {
     pub async fn send_chat_message(&mut self, message: String) {
-        let _ = self.ordered.send(Outgoing::Chat(message.clone())).await;
+        let _ = self.ordered.send(ServerCommand::Chat(message.clone())).await;
     }
     pub async fn send_lua(&mut self, lua: String) {
-        let _ = self.ordered.send(Outgoing::SendLua(lua.clone())).await;
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ClientInfo {
-    pub name: String,
-    #[serde(skip_deserializing)]
-    pub id: u32,
-    #[serde(skip_deserializing)]
-    pub current_vehicle: u32,
-    #[serde(skip_deserializing)]
-    pub ping: u32,
-    #[serde(skip_serializing)]
-    pub secret: String,
-    #[serde(skip_serializing)]
-    pub client_version: (u32, u32),
-}
-
-impl ClientInfo {
-    pub fn new(id: u32) -> Self {
-        Self {
-            id,
-            ..Default::default()
-        }
-    }
-    pub fn to_bytes(&self) -> Vec<u8> {
-        rmp_serde::encode::to_vec(self).unwrap()
-    }
-}
-
-impl Default for ClientInfo {
-    fn default() -> Self {
-        Self {
-            name: String::from("Unknown"),
-            id: 0,
-            current_vehicle: 0,
-            ping: 0,
-            secret: String::from("Unknown"),
-            client_version: SERVER_VERSION,
-        }
+        let _ = self.ordered.send(ServerCommand::SendLua(lua.clone())).await;
     }
 }
 
@@ -105,13 +68,14 @@ struct Server {
     lua_watcher_rx: std::sync::mpsc::Receiver<notify::DebouncedEvent>,
     lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
     server_identifier: String,
+    tick: u64,
 }
 
 impl Server {
     async fn run(mut self) {
         let mut ticks =
-            tokio::time::interval(std::time::Duration::from_secs(1) / self.tickrate as u32).fuse();
-        let mut send_info_ticks = tokio::time::interval(std::time::Duration::from_secs(1)).fuse();
+            IntervalStream::new(tokio::time::interval(std::time::Duration::from_secs(1) / self.tickrate as u32)).fuse();
+        let mut send_info_ticks = IntervalStream::new(tokio::time::interval(std::time::Duration::from_secs(1))).fuse();
 
         let (certificate_chain, key) = generate_certificate();
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
@@ -133,15 +97,15 @@ impl Server {
             .unwrap();
 
         let (client_events_tx, client_events_rx) = mpsc::channel(128);
-        let mut client_events_rx = client_events_rx.fuse();
+        let mut client_events_rx = ReceiverStream::new(client_events_rx).fuse();
         let mut incoming = incoming
             .inspect(|_conn| println!("Client is trying to connect to the server"))
             .buffer_unordered(16);
 
         let stdin = tokio::io::stdin();
-        let reader =
-            tokio_util::codec::FramedRead::new(stdin, tokio_util::codec::LinesCodec::new());
-        let mut reader = reader.fuse();
+        //let reader =
+        //    tokio_util::codec::FramedRead::new(stdin, tokio_util::codec::LinesCodec::new());
+        //let mut reader = reader.fuse();
         self.load_lua_addons();
         let _ = self.update_lua_connections();
         println!("Server is running!");
@@ -162,11 +126,11 @@ impl Server {
                         }
                     }
                 },
-                stdin_input = reader.next() => {
+                /*stdin_input = reader.next() => {
                     if let Some(stdin_input) = stdin_input {
                         self.on_console_input(stdin_input.unwrap_or(String::from(""))).await;
                     }
-                },
+                },*/
                 e = client_events_rx.select_next_some() => {
                     self.on_client_event(e.0, e.1).await;
                 }
@@ -176,13 +140,13 @@ impl Server {
     async fn send_players_info(&mut self) {
         let mut client_infos = vec![];
         for (_, client) in &self.connections {
-            client_infos.push(client.client_info.clone());
+            client_infos.push(client.client_info_public.clone());
         }
         for (_, client) in &mut self.connections {
             for client_info in &client_infos {
                 let _ = client
                     .ordered
-                    .send(Outgoing::PlayerInfoUpdate(client_info.clone()))
+                    .send(ServerCommand::PlayerInfoUpdate(client_info.clone()))
                     .await;
             }
         }
@@ -198,7 +162,7 @@ impl Server {
             "description": self.description.clone(),
             "map": self.map.clone(),
             "port": self.port,
-            "version": SERVER_VERSION
+            "version": shared::VERSION
         })
         .to_string();
 
@@ -226,24 +190,32 @@ impl Server {
         }
         // Should be strong enough for our targets. TODO: Check for collisions anyway
         let id = rand::random::<u32>();
-        let (ordered_tx, ordered_rx) = mpsc::channel(256);
-        let (unreliable_tx, unreliable_rx) = mpsc::channel(512);
-
+        let (ordered_tx, ordered_rx) = mpsc::channel(128);
+        let (unreliable_tx, unreliable_rx) = mpsc::channel(128);
         async fn receive_client_data(
             new_connection: &mut quinn::NewConnection,
-        ) -> anyhow::Result<ClientInfo> {
+        ) -> anyhow::Result<ClientInfoPrivate> {
             let mut stream = new_connection.uni_streams.try_next().await?;
             if let Some(stream) = &mut stream {
+                println!("we're reading");
                 let mut buf = [0; 4];
-                stream.read_exact(&mut buf[0..1]).await?;
                 stream.read_exact(&mut buf[0..4]).await?;
                 let len = u32::from_le_bytes(buf) as usize;
+                println!("{}", len);
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
-                let data_str = String::from_utf8(buf.to_vec())?;
-                let info: ClientInfo = serde_json::from_str(&data_str)?;
-                Ok(info)
+                println!("please god respond to me {:?}", buf);
+                let info: shared::ClientCommand = bincode::deserialize::<shared::ClientCommand>(&buf).unwrap();
+                println!("i'm tired");
+                if let shared::ClientCommand::ClientInfo(info) = info {
+                    Ok(info)
+                }
+                else{
+                    println!("please....");
+                    Err(anyhow::Error::msg("Failed to fetch client info"))
+                }
             } else {
+                println!("i beg...");
                 Err(anyhow::Error::msg("Failed to fetch client info"))
             }
         }
@@ -251,8 +223,10 @@ impl Server {
         let connection_clone = connection.clone();
         // Receiver
         tokio::spawn(async move {
-            let mut client_data = {
+            let client_info = {
+                println!("Ok, here!");
                 if let Ok(client_data) = receive_client_data(&mut new_connection).await {
+                    println!("Fuck, not here");
                     client_data
                 } else {
                     connection_clone.close(
@@ -262,23 +236,29 @@ impl Server {
                     return;
                 }
             };
-            if client_data.client_version != SERVER_VERSION {
+            if client_info.client_version != shared::VERSION {
                 connection_clone.close(
                     0u32.into(),
                     format!(
                         "Client version mismatch.\nClient version: {:?}\nServer version: {:?}",
-                        client_data.client_version, SERVER_VERSION
+                        client_info.client_version, shared::VERSION
                     )
                     .as_bytes(),
                 );
                 return;
             }
-            client_data.id = id;
+            let client_info_public = ClientInfoPublic{
+                name: client_info.name.clone(),
+                id: id,
+                current_vehicle: 0,
+                ping: 0
+            };
             let client_connection = Connection {
                 conn: connection_clone.clone(),
                 ordered: ordered_tx,
                 unreliable: unreliable_tx,
-                client_info: client_data,
+                client_info_private: client_info,
+                client_info_public: client_info_public
             };
             client_events_tx
                 .send((id, IncomingEvent::ClientConnected(client_connection)))
@@ -300,38 +280,35 @@ impl Server {
             }
         });
 
-        let server_info = serde_json::json!({
-            "name": self.name.clone(),
-            "player_count": self.connections.len(),
-            "client_id": id,
-            "map": self.map.clone(),
-            "tickrate": self.tickrate,
-            "max_vehicles_per_client": self.max_vehicles_per_client,
-            "mods": list_mods().unwrap_or(vec![]),
-            "server_identifier": self.server_identifier.clone()
-        })
-        .to_string()
-        .into_bytes();
-
+        let server_info = bincode::serialize(&shared::ServerCommand::ServerInfo(shared::ServerInfo{
+            name: self.name.clone(),
+            player_count: self.connections.len() as u8,
+            client_id: id,
+            map: self.map.clone(),
+            tickrate: self.tickrate,
+            max_vehicles_per_client: self.max_vehicles_per_client,
+            mods: list_mods().unwrap_or(vec![]),
+            server_identifier: self.server_identifier.clone()
+        })).unwrap();
         // Sender
         tokio::spawn(async move {
             let mut stream = connection.open_uni().await;
             if let Ok(stream) = &mut stream {
-                let _ = send(stream, 3, &server_info).await;
-                let _ = stream.finish().await;
+                let _ = send(stream, &server_info).await;
+                println!("{:?}", stream.finish().await);
+                let _ = Self::drive_send(connection, ordered_rx, unreliable_rx).await;
             }
-            let _ = Self::drive_send(connection, ordered_rx, unreliable_rx).await;
         });
         Ok(())
     }
 
     async fn drive_send(
         connection: quinn::Connection,
-        ordered: mpsc::Receiver<Outgoing>,
-        unreliable: mpsc::Receiver<Outgoing>,
+        ordered: mpsc::Receiver<ServerCommand>,
+        unreliable: mpsc::Receiver<ServerCommand>,
     ) -> anyhow::Result<()> {
-        let mut ordered = ordered.fuse();
-        let mut unreliable = unreliable.fuse();
+        let mut ordered = ReceiverStream::new(ordered).fuse();
+        let mut unreliable = ReceiverStream::new(unreliable).fuse();
         loop {
             select! {
                 command = ordered.select_next_some() => {
@@ -341,20 +318,18 @@ impl Server {
                         if let Ok(stream) = &mut stream {
                             // Kinda ugly and hacky tbh
                             match command {
-                                Outgoing::TransferFile(file) => {
-                                    let _ = file_transfer::transfer_file(stream, std::path::Path::new(&file)).await;
+                                ServerCommand::TransferFile(file) => {
+                                   // let _ = file_transfer::transfer_file(stream, std::path::Path::new(&file)).await;
                                 }
                                 _ => {
-                                    let data_type = outgoing::get_data_type(&command);
-                                    let _ = send(stream, data_type, &Self::handle_outgoing_data(command)).await;
+                                    let _ = send(stream, &Self::handle_outgoing_data(command)).await;
                                 }
                             }
                         }
                     });
                 }
                 command = unreliable.select_next_some() => {
-                    let mut data = vec![outgoing::get_data_type(&command)];
-                    data.append(&mut Self::handle_outgoing_data(command));
+                    let data = Self::handle_outgoing_data(command);
                     connection.send_datagram(data.into())?;
                 }
                 complete => {
@@ -375,30 +350,26 @@ impl Server {
         let mut cmds = streams
             .map(|stream| async {
                 let mut stream = stream?;
-                let mut data_type = [0; 1];
-                stream.read_exact(&mut data_type).await?;
-                let data_type = data_type[0];
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
                 let len = u32::from_le_bytes(buf) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
-                Ok::<_, Error>((data_type, buf))
+                Ok::<_, Error>(buf)
             })
             .buffered(512)
             .fuse();
 
         let mut datagrams = datagrams
             .map(|data| async {
-                let mut data: Vec<u8> = data?.to_vec();
-                let data_type = data.remove(0);
-                Ok::<_, Error>((data_type, data))
+                let data: Vec<u8> = data?.to_vec();
+                Ok::<_, Error>(data)
             })
             .buffered(512)
             .fuse();
 
         loop {
-            let (data_type, data) = select! {
+            let data = select! {
                 data = cmds.try_next() => {
                     if let Some(data) = data? {
                         data
@@ -417,38 +388,31 @@ impl Server {
                 }
                 complete => break
             };
-            // React to ping with pong. Quite hacky
-            if data_type == 254 {
-                let start = std::time::SystemTime::now();
-                let since_the_epoch = start.duration_since(std::time::UNIX_EPOCH).unwrap();
-                let mut header = vec![254];
-                header.append(&mut since_the_epoch.as_secs_f64().to_le_bytes().to_vec());
-                let _ = connection.send_datagram(header.into());
-            }
-            Self::handle_incoming_data(id, data_type, data, &mut client_events_tx).await?;
+            Self::handle_incoming_data(id, data, &mut client_events_tx).await?;
         }
         Err(anyhow::Error::msg("Disconnected"))
     }
 
     async fn tick(&mut self) {
+        self.tick += 1;
         for (_, client) in &mut self.connections {
             for (vehicle_id, vehicle) in &self.vehicles {
-                if let Some(transform) = &vehicle.transform {
+                if let (Some(transform), Some(electrics), Some(gearbox)) =
+                    (&vehicle.transform, &vehicle.electrics, &vehicle.gearbox)
+                {
                     let _ = client
                         .unreliable
-                        .send(Outgoing::PositionUpdate(*vehicle_id, transform.clone()))
-                        .await;
-                }
-                if let Some(electrics) = &vehicle.electrics {
-                    let _ = client
-                        .unreliable
-                        .send(Outgoing::ElectricsUpdate(*vehicle_id, electrics.clone()))
-                        .await;
-                }
-                if let Some(gearbox) = &vehicle.gearbox {
-                    let _ = client
-                        .unreliable
-                        .send(Outgoing::GearboxUpdate(*vehicle_id, gearbox.clone()))
+                        .send(ServerCommand::VehicleUpdate(VehicleUpdate {
+                            transform: transform.clone(),
+                            electrics: electrics.clone(),
+                            gearbox: gearbox.clone(),
+                            undefined_electrics: ElectricsUndefined {
+                                diff: HashMap::new(),
+                            },
+                            vehicle_id: vehicle_id.clone(),
+                            generation: self.tick,
+                            sent_at: 0.0,
+                        }))
                         .await;
                 }
             }
@@ -463,8 +427,7 @@ impl Server {
     }
 }
 
-async fn send(stream: &mut quinn::SendStream, data_type: u8, message: &[u8]) -> anyhow::Result<()> {
-    stream.write_all(&[data_type]).await?;
+async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
     stream
         .write_all(&(message.len() as u32).to_le_bytes())
         .await?;
@@ -487,7 +450,6 @@ fn generate_certificate() -> (CertificateChain, PrivateKey) {
 async fn main() {
     println!("Gas, Gas, Gas!");
     let _ = list_mods(); // Dirty hack to create /mods/ folder
-
     let config = config::Config::load(std::path::Path::new("./config.json"));
     let (lua, receiver) = lua::setup_lua();
     let (watcher_tx, watcher_rx) = std::sync::mpsc::channel();
@@ -510,6 +472,7 @@ async fn main() {
         lua_watcher_rx: watcher_rx,
         lua_commands: receiver,
         server_identifier: config.server_identifier,
+        tick: 0
     };
     server.run().await;
 }

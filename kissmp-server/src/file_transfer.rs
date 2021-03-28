@@ -3,6 +3,7 @@ use tokio::io::AsyncReadExt;
 
 const CHUNK_SIZE: usize = 4096 * 1024; // 4 MB chunks
 
+// FIXME
 pub async fn transfer_file(
     stream: &mut quinn::SendStream,
     path: &std::path::Path,
@@ -14,7 +15,7 @@ pub async fn transfer_file(
     let mut header = vec![];
     header.append(&mut (metadata.len() as u32).to_le_bytes().to_vec());
     header.append(&mut file_name.as_bytes().to_vec());
-    send(stream, 9, &header).await?;
+    send(stream, &header).await?;
 
     let mut buf = [0; CHUNK_SIZE];
     while let Ok(n) = file.read(&mut buf).await {

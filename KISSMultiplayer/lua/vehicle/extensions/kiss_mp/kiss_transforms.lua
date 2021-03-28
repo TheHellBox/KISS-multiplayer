@@ -20,7 +20,7 @@ M.target_transform = {
   angular_acceleration = vec3(0, 0, 0),
 }
 
-M.force = 7
+M.force = 10
 M.ang_force = 100
 
 local function predict(dt)

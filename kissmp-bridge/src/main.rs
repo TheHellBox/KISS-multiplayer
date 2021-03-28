@@ -1,99 +1,30 @@
+pub mod http_proxy;
+pub mod discord;
+pub mod decoder;
+pub mod encoder;
+
 use futures::{StreamExt, TryStreamExt};
-use percent_encoding::percent_decode_str;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-#[cfg(feature = "discord-rpc-client")]
 #[derive(Debug, Clone)]
-struct DiscordState {
-    server_name: Option<String>,
+pub struct DiscordState {
+    pub server_name: Option<String>,
 }
 
 #[tokio::main]
 async fn main() {
-    #[cfg(feature = "discord-rpc-client")]
-    let (mut discord_tx, mut discord_rx) = tokio::sync::mpsc::channel(10);
-    #[cfg(feature = "discord-rpc-client")]
+    let (discord_tx, discord_rx) = tokio::sync::mpsc::channel(10);
     let discord_tx_clone = discord_tx.clone();
+    discord::spawn_discord_rpc(discord_rx);
+    http_proxy::spawn_http_proxy(discord_tx.clone());
 
-    #[cfg(feature = "discord-rpc-client")]
-    std::thread::spawn(move || {
-        let mut drpc_client = discord_rpc_client::Client::new(771278096627662928);
-        drpc_client.start();
-        drpc_client
-            .subscribe(discord_rpc_client::models::Event::ActivityJoin, |j| {
-                j.secret("123456")
-            })
-            .expect("Failed to subscribe to event");
-
-        let mut state = DiscordState { server_name: None };
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-            for new_state in discord_rx.try_recv() {
-                state = new_state;
-            }
-            if state.server_name.is_none() {
-                let _ = drpc_client.clear_activity();
-                continue;
-            }
-            let _ = drpc_client.set_activity(|activity| {
-                activity
-                    .details(state.clone().server_name.unwrap())
-                    //.state("[1/8]")
-                    .assets(|assets| assets.large_image("kissmp_logo"))
-                    //.secrets(|secrets| secrets.game("Test").join("127.0.0.1:3698"))
-            });
-        }
-    });
-
-    // Master server proxy
-    tokio::spawn(async move {
-        let server = tiny_http::Server::http("0.0.0.0:3693").unwrap();
-        for request in server.incoming_requests() {
-            let addr = request.remote_addr();
-            if addr.ip() != Ipv4Addr::new(127, 0, 0, 1) {
-                continue;
-            }
-            let mut url = request.url().to_string();
-            url.remove(0);
-            if url == "check" {
-                let response = tiny_http::Response::from_string("ok");
-                request.respond(response).unwrap();
-                continue;
-            }
-            #[cfg(feature = "discord-rpc-client")]
-            if url.starts_with("rich_presence") {
-                let server_name_encoded = url.replace("rich_presence/", "");
-                let data = percent_decode_str(&server_name_encoded)
-                    .decode_utf8_lossy()
-                    .into_owned();
-                let server_name = {
-                    if data != "none" {
-                        Some(data)
-                    } else {
-                        None
-                    }
-                };
-                let state = DiscordState { server_name };
-                discord_tx.send(state).await.unwrap();
-                let response = tiny_http::Response::from_string("ok");
-                request.respond(response).unwrap();
-                continue;
-            }
-            if let Ok(response) = reqwest::get(&url).await {
-                if let Ok(text) = response.text().await {
-                    let response = tiny_http::Response::from_string(text);
-                    request.respond(response).unwrap();
-                }
-            }
-        }
-    });
     let addr = &"0.0.0.0:7894".parse::<SocketAddr>().unwrap();
     let mut listener = TcpListener::bind(addr).await.unwrap();
     println!("Bridge is running!");
     while let Ok(conn) = listener.accept().await {
-        #[cfg(feature = "discord-rpc-client")]
+        println!("Attempt to connect to a server");
         let mut discord_tx = discord_tx_clone.clone();
         let stream = conn.0;
         tokio::spawn(async move {
@@ -114,13 +45,13 @@ async fn main() {
                     return;
                 }
             };
-
+            println!("addr {:?}", addr);
             let mut endpoint = quinn::Endpoint::builder();
             let mut client_cfg = quinn::ClientConfig::default();
 
             let mut transport = quinn::TransportConfig::default();
             transport
-                .max_idle_timeout(Some(std::time::Duration::from_secs(60)))
+                .max_idle_timeout(Some(std::time::Duration::from_secs(20)))
                 .unwrap();
             client_cfg.transport = std::sync::Arc::new(transport);
 
@@ -136,8 +67,10 @@ async fn main() {
             if connection.is_err() {
                 // Send connection failed message to the client
                 let _ = writer.write_all(&[0]).await;
+                println!("Failed to connect to the server");
                 return;
             }
+            println!("Connection!");
             // Confirm that connection is established
             let _ = writer.write_all(&[1]).await;
 
@@ -148,42 +81,46 @@ async fn main() {
                 let mut buffer = [0; 1];
                 while let Ok(_) = reader.read_exact(&mut buffer).await {
                     let reliable = buffer[0] == 1;
-                    let mut buffer_a = vec![0; 1];
-                    let _ = reader.read_exact(&mut buffer_a).await;
                     let mut len_buf = [0; 4];
                     let _ = reader.read_exact(&mut len_buf).await;
                     let len = i32::from_le_bytes(len_buf) as usize;
                     let mut data = vec![0; len];
                     let _ = reader.read_exact(&mut data).await;
+                    println!("data raw {:?}", data);
+                    let mut data = encoder::encode(&data);
                     if !reliable {
-                        buffer_a.append(&mut data);
-                        let _ = stream_connection.send_datagram(buffer_a.into());
+                        let _ = stream_connection.send_datagram(data.into());
                         continue;
                     }
-                    buffer_a.append(&mut len_buf.to_vec());
-                    buffer_a.append(&mut data);
+                    println!("data {:?}", data);
+                    println!("{}", data.len());
+                    let len_buf = (data.len() as u32).to_le_bytes();
+                    let mut buffer = vec![];
+                    buffer.append(&mut len_buf.to_vec());
+                    buffer.append(&mut data);
+                    println!("Attempt to write");
                     if let Ok(mut stream) = stream_connection.open_uni().await {
-                        let _ = stream.write_all(&buffer_a).await;
+                        let _ = stream.write_all(&buffer).await;
+                        println!("Write!");
                     }
                 }
                 println!("Connection with game is closed");
                 stream_connection.close(0u32.into(), b"Client has left the game.");
-                #[cfg(feature = "discord-rpc-client")]
                 discord_tx
                     .send(DiscordState { server_name: None })
                     .await
                     .unwrap();
             });
-            if let Err(r) = drive_receive(connection, &mut writer).await {
+            if let Err(r) = drive_receive(connection, writer).await {
                 let reason = r.to_string();
                 println!("Disconnected! Reason: {}", reason);
-                let reason_bytes = reason.into_bytes();
+                //let reason_bytes = reason.into_bytes();
                 // Send message type 10(Disconnected) to the game
-                let _ = writer.write_all(&[10]).await;
+                /*let _ = writer.write_all(&[10]).await;
                 let _ = writer
                     .write_all(&(reason_bytes.len() as u32).to_le_bytes())
                     .await;
-                let _ = writer.write_all(&reason_bytes).await;
+                let _ = writer.write_all(&reason_bytes).await;*/
             }
         });
     }
@@ -191,13 +128,27 @@ async fn main() {
 
 pub async fn drive_receive(
     mut connection: quinn::NewConnection,
-    writer: &mut tokio::io::WriteHalf<tokio::net::TcpStream>,
+    mut writer: tokio::io::WriteHalf<tokio::net::TcpStream>,
 ) -> anyhow::Result<()> {
+    let (writer_tx, mut writer_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(10);
+    tokio::spawn(async move {
+        loop {
+            let next = writer_rx.recv().await;
+            if let Some(next) = next {
+                println!("Write!");
+                writer.write_all(&next).await.unwrap();
+            }
+            else{
+                break;
+            }
+        }
+    });
+
     let mut datagrams = connection
         .datagrams
         .map(|data| async {
             let mut data: Vec<u8> = data?.to_vec();
-            let mut result = vec![data.remove(0)];
+            let mut result = vec![];
             let data_len = (data.len() as u32).to_le_bytes();
             result.append(&mut data_len.to_vec());
             result.append(&mut data);
@@ -209,21 +160,25 @@ pub async fn drive_receive(
             stream = connection.uni_streams.try_next() => {
                 let mut stream = stream?;
                 if let Some(stream) = &mut stream {
-                    let mut buf = [0; 1024];
-                    while let Some(n) = stream.read(&mut buf).await? {
-                        if n == 0 {
-                            break
-                        }
-                        let _ = writer.write_all(&buf[0..n].to_vec()).await;
-                    }
+                    println!("New stream!");
+                    let writer_tx = writer_tx.clone();
+                    let mut len_buf = [0; 4];
+                    stream.read_exact(&mut len_buf).await?;
+                    let len = u32::from_le_bytes(len_buf);
+                    let mut buffer = vec![0; len as usize];
+                    stream.read_exact(&mut buffer).await?;
+                    println!("Finished");
+                    decoder::decode(&buffer, writer_tx).await;
                 }
                 else{
                     return Err(anyhow::Error::msg("Connection lost"));
                 }
             },
             data = datagrams.select_next_some() => {
+                let writer_tx = writer_tx.clone();
                 let data = data?;
-                let _ = writer.write_all(&data).await;
+                println!("data {:?}", data);
+                decoder::decode(&data[4..], writer_tx).await;
             }
         };
     }

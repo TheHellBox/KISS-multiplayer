@@ -3,6 +3,7 @@ local M = {}
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 
 local timer = 0
+local generation = 0
 local meta_timer = 0
 local vehicle_buffer = {}
 local colors_buffer = {}
@@ -18,6 +19,13 @@ M.packet_gen_buffer = {}
 M.is_network_session = false
 M.delay_spawns = false
 
+local function get_current_time()
+  local date = os.date("*t", os.time() + network.connection.time_offset)
+  date.sec = 0
+  date.min = 0
+  return (network.socket.gettime() + network.connection.time_offset  - os.time(date))
+end
+
 local function enable_spawning(enabled)
   local jsCommand = 'angular.element(document.body).injector().get("VehicleSelectConfig").configs.default.hide = {"spawnNew":' .. tostring(not enabled) .. '}'
   be:queueJS(jsCommand)
@@ -29,6 +37,47 @@ end
 
 local function colors_eq(a, b)
   return color_eq(a[1], b[1]) and color_eq(a[2], b[2]) and color_eq(a[3], b[3])
+end
+
+local function send_vehicle_update(obj)
+  if not kisstransform.local_transforms[obj:getID()] then return end
+  local t = kisstransform.local_transforms[obj:getID()]
+  local position = obj:getPosition()
+  local velocity = obj:getVelocity()
+  local result = {
+    transform = {
+      position = {position.x, position.y, position.z},
+      rotation = t.rotation,
+      velocity = {velocity.x, velocity.y, velocity.z},
+      angular_velocity = {t.vel_pitch, t.vel_roll, t.vel_yaw}
+    },
+    electrics = {
+      throttle_input = 0,
+      brake_input = 0,
+      clutch = 0,
+      parkingbrake = 0,
+      steering_input = 0
+    },
+    undefined_electrics = {
+      diff = {}
+    },
+    gearbox = {
+      arcade = false,
+      lock_coef = 0,
+      mode = nil,
+      gear_indices = {0, 0}
+    },
+    vehicle_id = obj:getID(),
+    generation = generation,
+    sent_at = get_current_time()
+  }
+  generation = generation + 1
+  network.send_data(
+    {
+      VehicleUpdate = result
+    },
+    false
+  )
 end
 
 local function send_vehicle_meta_updates()
@@ -60,11 +109,13 @@ local function send_vehicle_meta_updates()
       
       if changed then
         local data = {
-          id,
-          plate,
-          colors
+          VehicleMetaUpdate = {
+            id,
+            plate,
+            colors
+          }
         }
-        network.send_messagepack(14, true, jsonEncode(data))
+        network.send_data(data, true)
       end
     end
   end
@@ -112,20 +163,17 @@ local function send_vehicle_config_inner(id, parts_config)
   vehicle_data.name = vehicle:getJBeamFilename()
   vehicle_data.position = {position.x, position.y, position.z}
   vehicle_data.rotation = {rotation.x, rotation.y, rotation.z, rotation.w}
-
-  local result = jsonEncode(vehicle_data)
-  if result then
-    network.send_data(1, true, result)
-  else
-    print("failed to encode vehicle")
-  end
+  vehicle_data.server_id = 0
+  vehicle_data.owner = 0
+  network.send_data(
+    {
+      VehicleData = vehicle_data
+    },
+    true
+  )
 end
 
 local function spawn_vehicle(data)
-  local data = data
-  if type(data) == "string" then
-    data = jsonDecode(data)
-  end
   if M.loading_map or M.delay_spawns then
     vehicle_buffer[data.server_id] = data
     return
@@ -185,7 +233,7 @@ local function onUpdate(dt)
     for i, v in pairs(vehiclemanager.ownership) do
       local vehicle = be:getObjectByID(i)
       if vehicle then
-        kisstransform.send_transform_updates(vehicle)
+        send_vehicle_update(vehicle)
         vehicle:queueLuaCommand("kiss_input.send()")
         vehicle:queueLuaCommand("kiss_electrics.send()")
         vehicle:queueLuaCommand("kiss_gearbox.send()")
@@ -215,49 +263,21 @@ local function onUpdate(dt)
   end
 end
 
-local function update_vehicle_input(data)
-  local data = messagepack.unpack(data)
-  local id = M.id_map[data[1] or -1] or -1
+local function update_vehicle(data)
+  local id = M.id_map[data.vehicle_id]
   if M.ownership[id] then return end
+  if data.generation <= (M.packet_gen_buffer[id] or -1) then return end
+  M.packet_gen_buffer[id] = data.generation
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
-  if not M.vehicle_updates_buffer[id] then M.vehicle_updates_buffer[id] = {} end
-  M.vehicle_updates_buffer[id].input = data
-  vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(data).."\')")
-end
 
-local function update_vehicle_gearbox(data)
-  local data = messagepack.unpack(data)
-  local id = M.id_map[data[1] or -1] or -1
-  if M.ownership[id] then return end
-  local vehicle = be:getObjectByID(id)
-  if not vehicle then return end
-  if not M.vehicle_updates_buffer[id] then M.vehicle_updates_buffer[id] = {} end
-  M.vehicle_updates_buffer[id].gearbox = data
-  vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(data).."\')")
-end
-
-  -- This function is mainly used in context with kiss_vehicle.set_rotation
-local function rotate_nodes(nodes, id, x, y, z, w)
-  local nodes = jsonDecode(nodes)
-  local vehicle = be:getObjectByID(id)
-  local matrix = QuatF(x, y, z, w):getMatrix()
-  local result = {}
-  for id, position in pairs(nodes) do
-    local point = matrix:transformP3F(
-      Point3F(
-        position[1],
-        position[2],
-        position[3]
-      )
-    )
-    result[id] = {point.x, point.y, point.z}
-  end
-  vehicle:queueLuaCommand("kiss_nodes.apply(\'"..jsonEncode(result).."\')")
+  kisstransform.update_vehicle_transform(data)
+  vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(data.electrics).."\')")
+  vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(data.gearbox).."\')")
 end
 
 local function remove_vehicle(data)
-  local id = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0]
+  local id = data
   local local_id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(local_id)
   if vehicle then
@@ -275,7 +295,7 @@ local function remove_vehicle(data)
 end
 
 local function reset_vehicle(data)
-  local id = ffi.cast("uint32_t*", ffi.new("char[?]", 4, data))[0]
+  local id = data
   id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
@@ -298,7 +318,6 @@ local function reset_vehicle(data)
 end
 
 local function update_vehicle_meta(data)
-  local data = messagepack.unpack(data)
   local id = M.id_map[data[1] or -1] or -1
   if M.ownership[id] then return end
   local vehicle = be:getObjectByID(id)
@@ -323,7 +342,6 @@ local function update_vehicle_meta(data)
 end
 
 local function electrics_diff_update(data)
-  local data = messagepack.unpack(data)
   local id = M.id_map[data[1] or -1]
   if id and not M.ownership[id] then
     local vehicle = be:getObjectByID(id)
@@ -334,23 +352,30 @@ local function electrics_diff_update(data)
 end
 
 local function attach_coupler_inner(data)
-  local data = jsonDecode(data)
   data.obj_a = M.server_ids[data.obj_a]
   data.obj_b = M.server_ids[data.obj_b]
-  network.send_messagepack(19, true, data)
+  network.send_data(
+    {
+      CouplerAttached = data
+    },
+    true
+  )
 end
 
 local function detach_coupler_inner(data)
-  local data = jsonDecode(data)
   data.obj_a = M.server_ids[data.obj_a]
   data.obj_b = M.server_ids[data.obj_b]
-  network.send_messagepack(20, true, data)
+  network.send_data(
+    {
+      CouplerDetached = data
+    },
+    true
+  )
 end
 
 local function attach_coupler(data)
-  local data = messagepack.unpack(data)
-  local obj_a = M.id_map[data[1]]
-  local obj_b = M.id_map[data[2]]
+  local obj_a = M.id_map[data.obj_a]
+  local obj_b = M.id_map[data.obj_b]
   if obj_a and obj_b then
     if M.ownership[obj_a] then return end
     local vehicle = be:getObjectByID(obj_a)
@@ -362,15 +387,14 @@ local function attach_coupler(data)
     local node_b_pos = vec3(vehicle_b:getPosition()) + vec3(vehicle_b:getNodePosition(data[4]))
     local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
     vehicle_b:setPosition(Point3F(pos.x, pos.y, pos.z))
-    vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data[4]..")")
-    onCouplerAttached(obj_a, obj_b, data[3], data[4])
+    vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data.node_b_id..")")
+    onCouplerAttached(obj_a, obj_b, data.node_a_id, data.node_b_id)
   end
 end
 
 local function detach_coupler(data)
-  local data = messagepack.unpack(data)
-  local obj_a = M.id_map[data[1]]
-  local obj_b = M.id_map[data[2]]
+  local obj_a = M.id_map[data.obj_a]
+  local obj_b = M.id_map[data.obj_b]
   if obj_a and obj_b then
     if M.ownership[obj_a] then return end
     local vehicle = be:getObjectByID(obj_a)
@@ -378,13 +402,14 @@ local function detach_coupler(data)
     if not vehicle then return end
     if not vehicle_b then return end
     if vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
-    vehicle:queueLuaCommand("kiss_couplers.detach_coupler("..data[3]..")")
-    onCouplerDetached(obj_a, obj_b, data[3], data[4])
+    vehicle:queueLuaCommand("kiss_couplers.detach_coupler("..data.node_a_id..")")
+    onCouplerDetached(obj_a, obj_b, data.node_a_id, data.node_b_id)
   end
 end
 
 local function onVehicleSpawned(id)
-  if not network.connection.connected then return end
+  -- FIXME: Bring back
+  --if not network.connection.connected then return end
   local vehicle = be:getObjectByID(id)
   local position = vehicle:getPosition()
   if first_vehicle then
@@ -403,8 +428,12 @@ local function onVehicleDestroyed(id)
   if M.ownership[id] then
     M.id_map[M.ownership[id]] = nil
     M.ownership[id] = nil
-    local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
-    network.send_data(5, true, packed)
+    network.send_data(
+      {
+        RemoveVehicle = id,
+      },
+      true
+    )
     update_ownership_limits()
   end
 end
@@ -412,15 +441,23 @@ end
 local function onVehicleResetted(id)
   if not network.connection.connected then return end
   if M.ownership[id] then
-    local packed = ffi.string(ffi.new("uint32_t[?]", 1, {id}), 4)
-    network.send_data(6, true, packed)
+    network.send_data(
+      {
+        ResetVehicle = id,
+      },
+      true
+    )
   end
 end
 
 local function onVehicleSwitched(_id, new_id)
   if M.ownership[new_id] then
-    local packed = ffi.string(ffi.new("uint32_t[?]", 1, {new_id}), 4)
-    network.send_data(18, true, packed)
+    network.send_data(
+      {
+        VehicleSwitched = new_id,
+      },
+      true
+    )
   end
 end
 
@@ -441,6 +478,7 @@ local function onMissionLoaded(mission)
 end
 
 M.onUpdate = onUpdate
+M.update_vehicle = update_vehicle
 M.send_vehicle_config = send_vehicle_config
 M.send_vehicle_config_inner = send_vehicle_config_inner
 M.spawn_vehicle = spawn_vehicle

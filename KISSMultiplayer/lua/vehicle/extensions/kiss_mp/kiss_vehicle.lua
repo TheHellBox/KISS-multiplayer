@@ -7,6 +7,8 @@ local last_node = 1
 local nodes_per_frame = 32
 local node_pos_thresh = 32
 
+M.test_quat = quat(0.707, 0, 0, 0.707)
+
 local function kissInit()
   local force = obj:getPhysicsFPS()
 
@@ -28,15 +30,18 @@ local function kissInit()
         true
       }
     )
+    M.test_nodes_sync[node.cid] = vec3(obj:getNodePosition(node.cid))
     total_mass = total_mass + node_mass
   end
+
   for _, node in pairs(ref) do
     table.insert(
       ref_nodes,
       {
         node,
         total_mass * force / 4,
-        true
+        true,
+
       }
     )
   end
@@ -68,11 +73,13 @@ end
 
 local function apply_linear_velocity(x, y, z)
   local velocity = vec3(x, y, z)
+  local force = float3(0, 0, 0)
   for k=1, #nodes do
     local node = nodes[k]
     if node[3] then
-      local force = velocity * node[2]
-      obj:applyForceVector(node[1], force:toFloat3())
+      local result = velocity * node[2]
+      force:set(result.x, result.y, result.z)
+      obj:applyForceVector(node[1], force)
     end
   end
 end
@@ -86,12 +93,15 @@ local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw)
     nodes = ref_nodes
   end
   local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation()))
+  local node_position = vec3()
+  local force = float3(0, 0, 0)
   for k=1, #nodes do
     local node = nodes[k]
     if node[3] then
-      local node_position = vec3(obj:getNodePosition(node[1]))
-      local force = (velocity + node_position:cross(rot)) * node[2]
-      obj:applyForceVector(node[1], force:toFloat3())
+      node_position:set(obj:getNodePosition(node[1]))
+      local result = (velocity + node_position:cross(rot)) * node[2]
+      force:set(result.x, result.y, result.z)
+      obj:applyForceVector(node[1], force)
     end
   end
 end
@@ -101,4 +111,7 @@ M.apply_linear_velocity_ang_torque = apply_linear_velocity_ang_torque
 M.update_eligible_nodes = update_eligible_nodes
 M.apply_linear_velocity = apply_linear_velocity
 M.kissInit = kissInit
+M.set_reference = set_reference
+M.save_state = save_state
+
 return M

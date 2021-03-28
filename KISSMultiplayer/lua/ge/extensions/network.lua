@@ -26,27 +26,6 @@ M.connection = {
 
 local FILE_TRANSFER_CHUNK_SIZE = 4096 * 1024;
 
-local MESSAGETYPE_TRANSFORM = 0
-local MESSAGETYPE_VEHICLE_SPAWN = 1
-local MESSAGETYPE_INPUT = 2
-local MESSAGETYPE_GEARBOX = 3
-local MESSAGETYPE_NODES = 4
-local MESSAGETYPE_VEHICLE_REMOVE = 5
-local MESSAGETYPE_VEHICLE_RESET = 6
-local MESSAGETYPE_CLIENT_INFO= 7
-local MESSAGETYPE_CHAT = 8
-local FILE_TRANSFER = 9
-local DISCONNECTED = 10
-local MESSAGETYPE_LUA = 11
-local MESSAGETYPE_PLAYERINFO = 12
-local MESSAGETYPE_META_UPDATE = 14
-local MESSAGETYPE_ELECTRICS_UNDEFINED = 15
-local MESSAGETYPE_PLAYER_DISCONNECTED = 16
-local MESSAGETYPE_VEHICLE_LUA = 17
-local MESSAGETYPE_COUPLER_ATTACHED = 19
-local MESSAGETYPE_COUPLER_DETACHED = 20
-local PONG = 254
-
 local message_handlers = {}
 
 local time_offset_smoother = {
@@ -55,7 +34,7 @@ local time_offset_smoother = {
 }
 
 time_offset_smoother.get = function(new_sample)
-  if time_offset_smoother.current_sample < 10 then
+  if time_offset_smoother.current_sample < 30 then
     time_offset_smoother.samples[time_offset_smoother.current_sample] = new_sample
   else
     time_offset_smoother.current_sample = 0
@@ -84,7 +63,7 @@ local function disconnect(data)
   --vehiclemanager.ownership = {}
   --vehiclemanager.delay_spawns = false
   --kissui.force_disable_nametags = false
-  Lua:requestReload()
+  --Lua:requestReload()
   --kissutils.hooks.clear()
 end
 
@@ -109,17 +88,8 @@ local function handle_file_transfer(data)
   M.downloading = true
 end
 
-local function handle_player_info(data)
-  local player_info = messagepack.unpack(data)
-  if player_info then
-    local player_info = {
-      name = player_info[1],
-      id = player_info[2],
-      current_vehicle = player_info[3],
-      ping = player_info[4]
-    }
-    M.players[player_info.id] = player_info
-  end
+local function handle_player_info(player_info)
+  M.players[player_info.id] = player_info
 end
 
 local function handle_lua(data)
@@ -127,8 +97,8 @@ local function handle_lua(data)
 end
 
 local function handle_vehicle_lua(data)
-  local id = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data:sub(1, 4)))[0]
-  local lua = data:sub(5, #data)
+  local id = data[1]
+  local lua = data[2]
   local id = vehiclemanager.id_map[id]
   local vehicle = be:getObjectByID(id)
   if vehicle then
@@ -137,7 +107,7 @@ local function handle_vehicle_lua(data)
 end
 
 local function handle_pong(data)
-  local server_time = ffi.cast("double*", ffi.new("char[?]", 9, data))[0]
+  local server_time = data
   local local_time = socket.gettime()
   local ping = local_time - ping_send_time
   if ping > 1 then return end
@@ -147,32 +117,32 @@ local function handle_pong(data)
 end
 
 local function handle_player_disconnected(data)
-  local id = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data))[0]
+  local id = data
   M.players[id] = nil
 end
 
 local function onExtensionLoaded()
-  message_handlers[MESSAGETYPE_TRANSFORM] = kisstransform.update_vehicle_transform
-  message_handlers[MESSAGETYPE_VEHICLE_SPAWN] = vehiclemanager.spawn_vehicle
-  message_handlers[MESSAGETYPE_INPUT] = vehiclemanager.update_vehicle_input
-  message_handlers[MESSAGETYPE_GEARBOX] = vehiclemanager.update_vehicle_gearbox
-  message_handlers[MESSAGETYPE_VEHICLE_REMOVE] = vehiclemanager.remove_vehicle
-  message_handlers[MESSAGETYPE_VEHICLE_RESET] = vehiclemanager.reset_vehicle
-  message_handlers[MESSAGETYPE_CHAT] = kissui.add_message
-  message_handlers[FILE_TRANSFER] = handle_file_transfer
-  message_handlers[DISCONNECTED] = handle_disconnected
-  message_handlers[MESSAGETYPE_LUA] = handle_lua
-  message_handlers[MESSAGETYPE_PLAYERINFO] = handle_player_info
-  message_handlers[MESSAGETYPE_META_UPDATE] = vehiclemanager.update_vehicle_meta
-  message_handlers[MESSAGETYPE_ELECTRICS_UNDEFINED] = vehiclemanager.electrics_diff_update
-  message_handlers[PONG] = handle_pong
-  message_handlers[MESSAGETYPE_PLAYER_DISCONNECTED] = handle_player_disconnected
-  message_handlers[MESSAGETYPE_VEHICLE_LUA] = handle_vehicle_lua
-  message_handlers[MESSAGETYPE_COUPLER_ATTACHED] = vehiclemanager.attach_coupler
-  message_handlers[MESSAGETYPE_COUPLER_DETACHED] = vehiclemanager.detach_coupler
+  message_handlers.VehicleUpdate = vehiclemanager.update_vehicle
+  message_handlers.VehicleSpawn = vehiclemanager.spawn_vehicle
+  message_handlers.RemoveVehicle = vehiclemanager.remove_vehicle
+  message_handlers.ResetVehicle = vehiclemanager.reset_vehicle
+  message_handlers.Chat = kissui.add_message
+  message_handlers.SendLua = handle_lua
+  message_handlers.PlayerInfoUpdate = handle_player_info
+  message_handlers.VehicleMetaUpdate = vehiclemanager.update_vehicle_meta
+  message_handlers.Pong = handle_pong
+  message_handlers.PlayerDisconnected = handle_player_disconnected
+  message_handlers.VehicleLuaCommand = handle_vehicle_lua
+  message_handlers.CouplerAttached = vehiclemanager.attach_coupler
+  message_handlers.CouplerDetached = vehiclemanager.detach_coupler
 end
 
-local function send_data(data_type, reliable, data)
+local function send_data(data, reliable)
+  if type(data) == "number" then
+    print("NOT IMPLEMENTED. PLEASE REPORT TO KISSMP DEVELOPERS. CODE: "..data)
+    return
+  end
+  local data = jsonEncode(data)
   if not M.connection.connected then return -1 end
   local len = #data
   local len = ffi.string(ffi.new("uint32_t[?]", 1, {len}), 4)
@@ -181,14 +151,14 @@ local function send_data(data_type, reliable, data)
   else
     reliable = 0
   end
-  M.connection.tcp:send(string.char(reliable)..string.char(data_type)..len)
+  M.connection.tcp:send(string.char(reliable)..len)
   M.connection.tcp:send(data)
 end
 
 local function sanitize_addr(addr)
   -- Trim leading and trailing spaces that might occur during a copy/paste
   local sanitized = addr:gsub("^%s*(.-)%s*$", "%1")
-  
+
   -- Check if port is missing, add default port if so
   if not sanitized:find(":") then
     sanitized = sanitized .. ":3698" 
@@ -230,13 +200,13 @@ local function connect(addr, player_name)
     return
   end
 
-  local _ = M.connection.tcp:receive(1)
   local len, _, _ = M.connection.tcp:receive(4)
   local len = ffi.cast("uint32_t*", ffi.new("char[?]", #len + 1, len))
   local len = len[0]
 
   local received, _, _ = M.connection.tcp:receive(len)
-  local server_info = jsonDecode(received)
+  print(received)
+  local server_info = jsonDecode(received).ServerInfo
   if not server_info then
     print("Failed to fetch server info")
     return
@@ -251,11 +221,13 @@ local function connect(addr, player_name)
   M.connection.tickrate = server_info.tickrate
 
   local client_info = {
-    name = player_name,
-    secret = generate_secret(server_info.server_identifier),
-    client_version = {0, 2}
+    ClientInfo = {
+      name = player_name,
+      secret = generate_secret(server_info.server_identifier),
+      client_version = {0, 3}
+    }
   }
-  send_data(MESSAGETYPE_CLIENT_INFO, true, jsonEncode(client_info))
+  send_data(client_info, true)
 
   kissmods.set_mods_list(server_info.mods)
   kissmods.update_status_all()
@@ -303,9 +275,12 @@ end
 
 local function send_ping()
   ping_send_time = socket.gettime()
-  -- Btw, this is actually used to send player's ping value
-  local ping = ffi.string(ffi.new("uint32_t[?]", 1, {math.floor(M.connection.ping)}), 4)
-  send_data(254, false, ping)
+  send_data(
+    {
+      Ping = math.floor(M.connection.ping),
+    },
+    false
+  )
 end
 
 local function cancel_download()
@@ -380,20 +355,18 @@ local function onUpdate(dt)
   end
 
   while true do
-    local received, _, _ = M.connection.tcp:receive(1)
-    if not received then break end
-    M.connection.tcp:settimeout(5.0)
-    local data_type = string.byte(received)
-    --print(data_type)
     local data = M.connection.tcp:receive(4)
+    if not data then break end
+    M.connection.tcp:settimeout(5.0)
     local len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data))
 
     local data, _, _ = M.connection.tcp:receive(len[0])
     M.connection.tcp:settimeout(0.0)
-    message_handlers[data_type](data)
-
-    if data_type == FILE_TRANSFER then
-      break
+    local data_decoded = jsonDecode(data)
+    for k, v in pairs(data_decoded) do
+      if message_handlers[k] then
+        message_handlers[k](v)
+      end
     end
   end
 end
