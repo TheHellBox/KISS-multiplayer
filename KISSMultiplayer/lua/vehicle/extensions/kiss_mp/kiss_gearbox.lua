@@ -30,22 +30,41 @@ local function send()
   if not gearbox then return end
   
   local data = {
+    vehicle_id = obj:getID() or 0,
+    arcade = M.arcade or false,
+    lock_coef = gearbox.lockCoef or 0,
+    mode = gearbox.mode or "none",
+    gear_indices = get_gear_indices() or {0, 0},
+  }
+  obj:queueGameEngineLua("network.send_messagepack(3, false, \'"..jsonEncode(data).."\')")
+end
+
+local function get_gearbox_data()
+  if not gearbox then
+    return {
+      vehicle_id = obj:getID(),
+      arcade = true,
+      lock_coef = 0,
+      mode = "none",
+      gear_indices = {0, 0}
+    }
+  end
+  local data = {
     vehicle_id = obj:getID(),
     arcade = M.arcade,
     lock_coef = gearbox.lockCoef,
     mode = gearbox.mode or "none",
     gear_indices = get_gear_indices(),
   }
-  obj:queueGameEngineLua("network.send_messagepack(3, false, \'"..jsonEncode(data).."\')")
+  return data
 end
 
 local function apply(data)
   if not gearbox then return end
-  
   local data = jsonDecode(data)
-  set_gear_indices(data[5])
-  if not gearbox_is_manual and data[4] ~= "none" then
-    gearbox:setMode(data[4])
+  set_gear_indices(data.gear_indices)
+  if not gearbox_is_manual and data.mode ~= "none" then
+    gearbox:setMode(data.mode)
   end
 end
 
@@ -83,8 +102,8 @@ end
 
 M.send = send
 M.apply = apply
+M.get_gearbox_data = get_gearbox_data
 M.gearboxBehaviorChanged = gearboxBehaviorChanged
-
 M.kissInit = kissInit
 M.kissUpdateOwnership = kissUpdateOwnership
 

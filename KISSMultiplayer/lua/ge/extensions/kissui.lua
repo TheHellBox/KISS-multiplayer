@@ -505,7 +505,12 @@ local function send_current_chat_message()
   local message_trimmed = message:gsub("^%s*(.-)%s*$", "%1")
   if message_trimmed:len() == 0 then return end
   
-  network.send_data(8, true, message_trimmed)
+  network.send_data(
+    {
+      Chat = message_trimmed
+    },
+    true
+  )
   message_buffer = imgui.ArrayChar(128)
 end
 
@@ -689,6 +694,7 @@ local function draw_incorrect_install()
   if imgui.Begin("Incorrect install detected") then
     imgui.Text("Incorrect KissMP install. Please, check if mod path is correct")
   end
+  imgui.End()
 end
 
 local function onUpdate(dt)

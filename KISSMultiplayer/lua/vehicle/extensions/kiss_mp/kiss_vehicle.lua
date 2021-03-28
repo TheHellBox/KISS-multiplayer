@@ -30,7 +30,7 @@ local function kissInit()
         true
       }
     )
-    M.test_nodes_sync[node.cid] = vec3(obj:getNodePosition(node.cid))
+    --M.test_nodes_sync[node.cid] = vec3(obj:getNodePosition(node.cid))
     total_mass = total_mass + node_mass
   end
 
@@ -62,8 +62,19 @@ end
 
 local function update_transform_info()
   local r = quat(obj:getRotation())
+  local input = {
+    vehicle_id = obj:getID() or 0,
+    throttle_input = electrics.values.throttle_input or 0,
+    brake_input = electrics.values.brake_input or 0,
+    clutch = electrics.values.clutch_input or 0,
+    parkingbrake = electrics.values.parkingbrake_input or 0,
+    steering_input = electrics.values.steering_input or 0,
+  }
+  local gearbox = kiss_gearbox.get_gearbox_data()
   local transform = {
     rotation  = {r.x, r.y, r.z, r.w},
+    input = input,
+    gearbox = gearbox,
     vel_pitch = obj:getPitchAngularVelocity(),
     vel_roll  = obj:getRollAngularVelocity(),
     vel_yaw   = obj:getYawAngularVelocity(),
@@ -89,8 +100,8 @@ local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw)
   local nodes = nodes
   -- 0.1 seems like the safe value we can use for low velocities
   -- NOTE: Doesn't work as well as expected
-  if velocity:length() < 0.2 then
-    nodes = ref_nodes
+  if velocity:length() < 0.01 then
+    --nodes = ref_nodes
   end
   local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation()))
   local node_position = vec3()

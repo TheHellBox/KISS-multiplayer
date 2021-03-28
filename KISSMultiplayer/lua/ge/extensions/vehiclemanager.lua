@@ -42,6 +42,8 @@ end
 local function send_vehicle_update(obj)
   if not kisstransform.local_transforms[obj:getID()] then return end
   local t = kisstransform.local_transforms[obj:getID()]
+  if not t.input then return end
+  if not t.gearbox then return end
   local position = obj:getPosition()
   local velocity = obj:getVelocity()
   local result = {
@@ -51,22 +53,11 @@ local function send_vehicle_update(obj)
       velocity = {velocity.x, velocity.y, velocity.z},
       angular_velocity = {t.vel_pitch, t.vel_roll, t.vel_yaw}
     },
-    electrics = {
-      throttle_input = 0,
-      brake_input = 0,
-      clutch = 0,
-      parkingbrake = 0,
-      steering_input = 0
-    },
+    electrics = t.input,
     undefined_electrics = {
       diff = {}
     },
-    gearbox = {
-      arcade = false,
-      lock_coef = 0,
-      mode = nil,
-      gear_indices = {0, 0}
-    },
+    gearbox = t.gearbox,
     vehicle_id = obj:getID(),
     generation = generation,
     sent_at = get_current_time()
@@ -234,9 +225,9 @@ local function onUpdate(dt)
       local vehicle = be:getObjectByID(i)
       if vehicle then
         send_vehicle_update(vehicle)
-        vehicle:queueLuaCommand("kiss_input.send()")
-        vehicle:queueLuaCommand("kiss_electrics.send()")
-        vehicle:queueLuaCommand("kiss_gearbox.send()")
+        --vehicle:queueLuaCommand("kiss_input.send()")
+        --vehicle:queueLuaCommand("kiss_electrics.send()")
+        --vehicle:queueLuaCommand("kiss_gearbox.send()")
       end
     end
   end
@@ -254,10 +245,10 @@ local function onUpdate(dt)
     local vehicle = be:getObjectByID(id)
     if vehicle then
       if updates.input then
-        vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(updates.input).."\')")
+        --vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(updates.input).."\')")
       end
       if updates.gearbox then
-        vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(updates.gearbox).."\')")
+        --vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(updates.gearbox).."\')")
       end
     end
   end
@@ -352,6 +343,7 @@ local function electrics_diff_update(data)
 end
 
 local function attach_coupler_inner(data)
+  local data = jsonDecode(data)
   data.obj_a = M.server_ids[data.obj_a]
   data.obj_b = M.server_ids[data.obj_b]
   network.send_data(
@@ -383,8 +375,8 @@ local function attach_coupler(data)
     if not vehicle then return end
     if not vehicle_b then return end
     if vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
-    local node_a_pos = vec3(vehicle:getPosition()) + vec3(vehicle:getNodePosition(data[3]))
-    local node_b_pos = vec3(vehicle_b:getPosition()) + vec3(vehicle_b:getNodePosition(data[4]))
+    local node_a_pos = vec3(vehicle:getPosition()) + vec3(vehicle:getNodePosition(data.node_a_id))
+    local node_b_pos = vec3(vehicle_b:getPosition()) + vec3(vehicle_b:getNodePosition(data.node_b_id))
     local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
     vehicle_b:setPosition(Point3F(pos.x, pos.y, pos.z))
     vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data.node_b_id..")")
@@ -454,7 +446,7 @@ local function onVehicleSwitched(_id, new_id)
   if M.ownership[new_id] then
     network.send_data(
       {
-        VehicleSwitched = new_id,
+        VehicleChanged = new_id,
       },
       true
     )
@@ -478,6 +470,7 @@ local function onMissionLoaded(mission)
 end
 
 M.onUpdate = onUpdate
+M.get_current_time = get_current_time
 M.update_vehicle = update_vehicle
 M.send_vehicle_config = send_vehicle_config
 M.send_vehicle_config_inner = send_vehicle_config_inner

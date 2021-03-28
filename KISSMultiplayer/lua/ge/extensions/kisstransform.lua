@@ -42,7 +42,7 @@ local function update_vehicle_transform(data)
  
   local vehicle = be:getObjectByID(id)
   if vehicle then
-    transform.time_past = clamp(get_current_time() - transform.sent_at, 0, 0.1) * 0.7 + 0.001
+    transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
     vehicle:queueLuaCommand("kiss_transforms.set_target_transform(\'"..jsonEncode(transform).."\')")
     M.received_transforms[id] = transform
   end

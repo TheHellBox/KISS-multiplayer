@@ -14,11 +14,11 @@ end
 
 local function apply(data)
   local data = jsonDecode(data)
-  input.event("throttle", data[2], 1)
-  input.event("brake", data[3], 2)
-  input.event("steering", data[6], 2)
-  input.event("parkingbrake", data[5], 2)
-  input.event("clutch", data[4], 1)
+  input.event("throttle", data.throttle_input, 1)
+  input.event("brake", data.brake_input, 2)
+  input.event("steering", data.steering_input, 2)
+  input.event("parkingbrake", data.parkingbrake, 2)
+  input.event("clutch", data.clutch, 1)
 end
 
 local function kissUpdateOwnership(owned)

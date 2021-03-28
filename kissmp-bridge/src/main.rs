@@ -86,22 +86,17 @@ async fn main() {
                     let len = i32::from_le_bytes(len_buf) as usize;
                     let mut data = vec![0; len];
                     let _ = reader.read_exact(&mut data).await;
-                    println!("data raw {:?}", data);
                     let mut data = encoder::encode(&data);
                     if !reliable {
                         let _ = stream_connection.send_datagram(data.into());
                         continue;
                     }
-                    println!("data {:?}", data);
-                    println!("{}", data.len());
                     let len_buf = (data.len() as u32).to_le_bytes();
                     let mut buffer = vec![];
                     buffer.append(&mut len_buf.to_vec());
                     buffer.append(&mut data);
-                    println!("Attempt to write");
                     if let Ok(mut stream) = stream_connection.open_uni().await {
                         let _ = stream.write_all(&buffer).await;
-                        println!("Write!");
                     }
                 }
                 println!("Connection with game is closed");
@@ -135,7 +130,7 @@ pub async fn drive_receive(
         loop {
             let next = writer_rx.recv().await;
             if let Some(next) = next {
-                println!("Write!");
+                //println!("Write!");
                 writer.write_all(&next).await.unwrap();
             }
             else{
@@ -177,7 +172,7 @@ pub async fn drive_receive(
             data = datagrams.select_next_some() => {
                 let writer_tx = writer_tx.clone();
                 let data = data?;
-                println!("data {:?}", data);
+                //println!("data {:?}", data);
                 decoder::decode(&data[4..], writer_tx).await;
             }
         };

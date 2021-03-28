@@ -197,25 +197,19 @@ impl Server {
         ) -> anyhow::Result<ClientInfoPrivate> {
             let mut stream = new_connection.uni_streams.try_next().await?;
             if let Some(stream) = &mut stream {
-                println!("we're reading");
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
                 let len = u32::from_le_bytes(buf) as usize;
-                println!("{}", len);
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
-                println!("please god respond to me {:?}", buf);
                 let info: shared::ClientCommand = bincode::deserialize::<shared::ClientCommand>(&buf).unwrap();
-                println!("i'm tired");
                 if let shared::ClientCommand::ClientInfo(info) = info {
                     Ok(info)
                 }
                 else{
-                    println!("please....");
                     Err(anyhow::Error::msg("Failed to fetch client info"))
                 }
             } else {
-                println!("i beg...");
                 Err(anyhow::Error::msg("Failed to fetch client info"))
             }
         }
@@ -224,9 +218,7 @@ impl Server {
         // Receiver
         tokio::spawn(async move {
             let client_info = {
-                println!("Ok, here!");
                 if let Ok(client_data) = receive_client_data(&mut new_connection).await {
-                    println!("Fuck, not here");
                     client_data
                 } else {
                     connection_clone.close(
@@ -295,7 +287,6 @@ impl Server {
             let mut stream = connection.open_uni().await;
             if let Ok(stream) = &mut stream {
                 let _ = send(stream, &server_info).await;
-                println!("{:?}", stream.finish().await);
                 let _ = Self::drive_send(connection, ordered_rx, unreliable_rx).await;
             }
         });
