@@ -222,6 +222,7 @@ local function onUpdate(dt)
       local vehicle = be:getObjectByID(i)
       if vehicle then
         send_vehicle_update(vehicle)
+        vehicle:queueLuaCommand("kiss_electrics.send()")
       end
     end
   end
@@ -238,6 +239,7 @@ end
 
 local function update_vehicle(data)
   local id = M.id_map[data.vehicle_id]
+  if not id then return end
   if M.ownership[id] then return end
   if data.generation <= (M.packet_gen_buffer[id] or -1) then return end
   M.packet_gen_buffer[id] = data.generation
@@ -319,7 +321,7 @@ local function electrics_diff_update(data)
   if id and not M.ownership[id] then
     local vehicle = be:getObjectByID(id)
     if not vehicle then return end
-    data = jsonEncode(data[2])
+    local data = jsonEncode(data[2].diff)
     vehicle:queueLuaCommand("kiss_electrics.apply_diff(\'"..data.."\')")
   end
 end
@@ -337,6 +339,7 @@ local function attach_coupler_inner(data)
 end
 
 local function detach_coupler_inner(data)
+  local data = jsonDecode(data)
   data.obj_a = M.server_ids[data.obj_a]
   data.obj_b = M.server_ids[data.obj_b]
   network.send_data(

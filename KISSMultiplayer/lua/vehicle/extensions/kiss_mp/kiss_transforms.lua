@@ -22,10 +22,12 @@ M.target_transform = {
 
 M.force = 10
 M.ang_force = 100
+M.debug = false
+M.lerp_factor = 20.0
 
 local function predict(dt)
   M.target_transform.velocity = M.received_transform.velocity + M.received_transform.acceleration * M.received_transform.time_past
-  M.target_transform.position = M.received_transform.position + M.target_transform.velocity * M.received_transform.time_past
+  M.target_transform.position = lerp(M.target_transform.position, M.received_transform.position + M.target_transform.velocity * M.received_transform.time_past, clamp(M.lerp_factor * dt, 0.00001, 1))
 
   M.target_transform.angular_velocity = M.received_transform.angular_velocity + M.received_transform.angular_acceleration * M.received_transform.time_past
   local rotation_delta = M.target_transform.angular_velocity * M.received_transform.time_past
@@ -56,6 +58,10 @@ local function update(dt)
   predict(dt)
   try_rude()
 
+  if M.debug then
+    draw_debug()
+  end
+ 
   local force = M.force
   local ang_force = M.ang_force
 
@@ -83,7 +89,7 @@ local function update(dt)
     return
   end
 
-  if angular_force:length() > 0.2 then
+  if angular_force:length() > 0.1 then
     kiss_vehicle.apply_linear_velocity_ang_torque(
       linear_force.x,
       linear_force.y,
@@ -92,7 +98,7 @@ local function update(dt)
       angular_force.z,
       angular_force.x
     )
-  elseif linear_force:length() > 0.2 then
+  elseif linear_force:length() > 0.1 then
     kiss_vehicle.apply_linear_velocity(
       linear_force.x,
       linear_force.y,
