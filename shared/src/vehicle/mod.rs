@@ -30,7 +30,6 @@ pub struct VehicleData {
 pub struct VehicleUpdate {
     pub transform: Transform,
     pub electrics: Electrics,
-    pub undefined_electrics: ElectricsUndefined,
     pub gearbox: Gearbox,
     pub vehicle_id: u32,
     pub generation: u64,

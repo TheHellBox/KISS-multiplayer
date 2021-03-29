@@ -110,13 +110,16 @@ local function send()
       prev_electrics[key] = value
     end
   end
-  
+  local data = {
+    ElectricsUndefinedUpdate = data
+  }
   if diff_count > 0 then
-    obj:queueGameEngineLua("network.send_messagepack(15, true, \'"..jsonEncode(data).."\')")
+    obj:queueGameEngineLua("network.send_data(\'"..jsonEncode(data).."\', true)")
   end
 end
 
-local function apply_diff_signals(diff)
+local function apply_diff_signals(data)
+  local diff = data.diff
   local signal_left_input = diff["signal_left_input"] or prev_signal_electrics["signal_left_input"] or 0
   local signal_right_input = diff["signal_right_input"] or prev_signal_electrics["signal_right_input"] or 0
   local hazard_enabled = (signal_left_input > 0.5 and signal_right_input > 0.5)

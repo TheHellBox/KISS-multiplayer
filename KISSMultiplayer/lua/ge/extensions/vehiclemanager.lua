@@ -54,9 +54,6 @@ local function send_vehicle_update(obj)
       angular_velocity = {t.vel_pitch, t.vel_roll, t.vel_yaw}
     },
     electrics = t.input,
-    undefined_electrics = {
-      diff = {}
-    },
     gearbox = t.gearbox,
     vehicle_id = obj:getID(),
     generation = generation,
@@ -225,9 +222,6 @@ local function onUpdate(dt)
       local vehicle = be:getObjectByID(i)
       if vehicle then
         send_vehicle_update(vehicle)
-        --vehicle:queueLuaCommand("kiss_input.send()")
-        --vehicle:queueLuaCommand("kiss_electrics.send()")
-        --vehicle:queueLuaCommand("kiss_gearbox.send()")
       end
     end
   end
@@ -237,18 +231,6 @@ local function onUpdate(dt)
       local vehicle = be:getObjectByID(v)
       if vehicle then
         vehicle:queueLuaCommand("kiss_vehicle.update_eligible_nodes()")
-      end
-    end
-  end
-
-  for id, updates in pairs(M.vehicle_updates_buffer) do
-    local vehicle = be:getObjectByID(id)
-    if vehicle then
-      if updates.input then
-        --vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(updates.input).."\')")
-      end
-      if updates.gearbox then
-        --vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(updates.gearbox).."\')")
       end
     end
   end

@@ -135,14 +135,21 @@ local function onExtensionLoaded()
   message_handlers.VehicleLuaCommand = handle_vehicle_lua
   message_handlers.CouplerAttached = vehiclemanager.attach_coupler
   message_handlers.CouplerDetached = vehiclemanager.detach_coupler
+  message_handlers.ElectricsUndefinedUpdate = vehiclemanager.electrics_diff_update
 end
 
-local function send_data(data, reliable)
-  if type(data) == "number" then
-    print("NOT IMPLEMENTED. PLEASE REPORT TO KISSMP DEVELOPERS. CODE: "..data)
+local function send_data(raw_data, reliable)
+  if type(raw_data) == "number" then
+    print("NOT IMPLEMENTED. PLEASE REPORT TO KISSMP DEVELOPERS. CODE: "..raw_data)
     return
   end
-  local data = jsonEncode(data)
+  local data = ""
+  -- Used in context of it being called from vehicle lua, where it's already encoded into json
+  if type(raw_data) == "string" then
+    data = raw_data
+  else
+    data = jsonEncode(raw_data)
+  end
   if not M.connection.connected then return -1 end
   local len = #data
   local len = ffi.string(ffi.new("uint32_t[?]", 1, {len}), 4)

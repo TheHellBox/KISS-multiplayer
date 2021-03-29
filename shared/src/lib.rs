@@ -65,6 +65,7 @@ pub enum ClientCommand {
     VehicleChanged(u32),
     CouplerAttached(CouplerAttached),
     CouplerDetached(CouplerDetached),
+    ElectricsUndefinedUpdate(u32, ElectricsUndefined),
     Ping(u16)
 }
 
@@ -83,6 +84,7 @@ pub enum ServerCommand {
     VehicleLuaCommand(u32, String),
     CouplerAttached(CouplerAttached),
     CouplerDetached(CouplerDetached),
+    ElectricsUndefinedUpdate(u32, ElectricsUndefined),
     ServerInfo(ServerInfo),
     Pong(f64)
 }

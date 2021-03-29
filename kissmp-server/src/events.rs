@@ -182,9 +182,9 @@ impl Server {
                             }
                         }
                     }
-                    /*ElectricsUndefinedUpdate(undefined_update) => {
+                    ElectricsUndefinedUpdate(vehicle_id, undefined_update) => {
                         if let Some(server_id) =
-                            self.get_server_id_from_game_id(client_id, undefined_update.vehicle_id)
+                            self.get_server_id_from_game_id(client_id, vehicle_id)
                         {
                            /* if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
                                 for (key, value) in &undefined_update.diff {
@@ -193,16 +193,14 @@ impl Server {
                                     }
                                 }
                             }*/
-                            let mut undefined_update = undefined_update.clone();
-                            undefined_update.vehicle_id = server_id;
                             for (_, client) in &mut self.connections {
-                                //let _ = client
-                                //    .ordered
-                                //    .send(ServerCommand::ElectricsUndefinedUpdate(undefined_update.clone()))
-                                //    .await;
+                                let _ = client
+                                    .ordered
+                                    .send(ServerCommand::ElectricsUndefinedUpdate(server_id, undefined_update.clone()))
+                                    .await;
                             }
                         }
-                    }*/
+                    }
                     Ping(ping) => {
                         let connection = self.connections
                             .get_mut(&client_id)

@@ -18,11 +18,10 @@ use vehicle::*;
 use anyhow::Error;
 use futures::{select, StreamExt, TryStreamExt};
 use quinn::{Certificate, CertificateChain, PrivateKey};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use tokio::sync::mpsc;
-use tokio_stream::{self as stream, wrappers::{IntervalStream, ReceiverStream}};
+use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 
 #[derive(Clone)]
 pub struct Connection {
@@ -103,9 +102,9 @@ impl Server {
             .buffer_unordered(16);
 
         let stdin = tokio::io::stdin();
-        //let reader =
-        //    tokio_util::codec::FramedRead::new(stdin, tokio_util::codec::LinesCodec::new());
-        //let mut reader = reader.fuse();
+        let reader =
+            tokio_util::codec::FramedRead::new(stdin, tokio_util::codec::LinesCodec::new());
+        let mut reader = reader.fuse();
         self.load_lua_addons();
         let _ = self.update_lua_connections();
         println!("Server is running!");
@@ -126,11 +125,11 @@ impl Server {
                         }
                     }
                 },
-                /*stdin_input = reader.next() => {
+                stdin_input = reader.next() => {
                     if let Some(stdin_input) = stdin_input {
                         self.on_console_input(stdin_input.unwrap_or(String::from(""))).await;
                     }
-                },*/
+                },
                 e = client_events_rx.select_next_some() => {
                     self.on_client_event(e.0, e.1).await;
                 }
@@ -181,7 +180,7 @@ impl Server {
     async fn on_connect(
         &mut self,
         mut new_connection: quinn::NewConnection,
-        mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
+        client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
         let connection = new_connection.connection.clone();
         if self.connections.len() >= self.max_players.into() {
@@ -202,7 +201,7 @@ impl Server {
                 let len = u32::from_le_bytes(buf) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
-                let info: shared::ClientCommand = bincode::deserialize::<shared::ClientCommand>(&buf).unwrap();
+                let info: shared::ClientCommand = bincode::deserialize::<shared::ClientCommand>(&buf)?;
                 if let shared::ClientCommand::ClientInfo(info) = info {
                     Ok(info)
                 }
@@ -260,7 +259,6 @@ impl Server {
                 id,
                 new_connection.uni_streams,
                 new_connection.datagrams,
-                connection_clone,
                 client_events_tx.clone(),
             )
             .await
@@ -335,7 +333,6 @@ impl Server {
         id: u32,
         streams: quinn::IncomingUniStreams,
         datagrams: quinn::generic::Datagrams<quinn::crypto::rustls::TlsSession>,
-        connection: quinn::Connection,
         mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
         let mut cmds = streams
@@ -379,7 +376,7 @@ impl Server {
                 }
                 complete => break
             };
-            Self::handle_incoming_data(id, data, &mut client_events_tx).await?;
+            let _ = Self::handle_incoming_data(id, data, &mut client_events_tx).await;
         }
         Err(anyhow::Error::msg("Disconnected"))
     }
@@ -397,9 +394,6 @@ impl Server {
                             transform: transform.clone(),
                             electrics: electrics.clone(),
                             gearbox: gearbox.clone(),
-                            undefined_electrics: ElectricsUndefined {
-                                diff: HashMap::new(),
-                            },
                             vehicle_id: vehicle_id.clone(),
                             generation: self.tick,
                             sent_at: 0.0,
