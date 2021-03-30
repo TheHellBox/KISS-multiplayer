@@ -1,7 +1,7 @@
-pub mod http_proxy;
-pub mod discord;
 pub mod decoder;
+pub mod discord;
 pub mod encoder;
+pub mod http_proxy;
 
 use futures::{StreamExt, TryStreamExt};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
@@ -130,8 +130,7 @@ pub async fn drive_receive(
             let next = writer_rx.recv().await;
             if let Some(next) = next {
                 let _ = writer.write_all(&next).await;
-            }
-            else{
+            } else {
                 break;
             }
         }

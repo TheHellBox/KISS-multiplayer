@@ -24,10 +24,7 @@ impl crate::Server {
             if Some(*cid) == client_id {
                 continue;
             }
-            let _ = client
-                .ordered
-                .send(ServerCommand::RemoveVehicle(id))
-                .await;
+            let _ = client.ordered.send(ServerCommand::RemoveVehicle(id)).await;
         }
         self.lua.context(|lua_ctx| {
             let _ = crate::lua::run_hook::<(u32, Option<u32>), ()>(

@@ -5,7 +5,7 @@ pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::Dis
     // Master server proxy
     //println!("start");
     let server = tiny_http::Server::http("0.0.0.0:3693").unwrap();
-    loop{
+    loop {
         for request in server.incoming_requests() {
             let addr = request.remote_addr();
             if addr.ip() != Ipv4Addr::new(127, 0, 0, 1) {

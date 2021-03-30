@@ -11,8 +11,8 @@ pub mod outgoing;
 pub mod server_vehicle;
 
 use incoming::IncomingEvent;
-use shared::{ClientInfoPublic, ClientInfoPrivate, ServerCommand};
 use server_vehicle::*;
+use shared::{ClientInfoPrivate, ClientInfoPublic, ServerCommand};
 use vehicle::*;
 
 use anyhow::Error;
@@ -41,7 +41,10 @@ impl std::fmt::Debug for Connection {
 }
 impl Connection {
     pub async fn send_chat_message(&mut self, message: String) {
-        let _ = self.ordered.send(ServerCommand::Chat(message.clone())).await;
+        let _ = self
+            .ordered
+            .send(ServerCommand::Chat(message.clone()))
+            .await;
     }
     pub async fn send_lua(&mut self, lua: String) {
         let _ = self.ordered.send(ServerCommand::SendLua(lua.clone())).await;
@@ -72,9 +75,12 @@ struct Server {
 
 impl Server {
     async fn run(mut self) {
-        let mut ticks =
-            IntervalStream::new(tokio::time::interval(std::time::Duration::from_secs(1) / self.tickrate as u32)).fuse();
-        let mut send_info_ticks = IntervalStream::new(tokio::time::interval(std::time::Duration::from_secs(1))).fuse();
+        let mut ticks = IntervalStream::new(tokio::time::interval(
+            std::time::Duration::from_secs(1) / self.tickrate as u32,
+        ))
+        .fuse();
+        let mut send_info_ticks =
+            IntervalStream::new(tokio::time::interval(std::time::Duration::from_secs(1))).fuse();
 
         let (certificate_chain, key) = generate_certificate();
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
@@ -201,11 +207,11 @@ impl Server {
                 let len = u32::from_le_bytes(buf) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
-                let info: shared::ClientCommand = bincode::deserialize::<shared::ClientCommand>(&buf)?;
+                let info: shared::ClientCommand =
+                    bincode::deserialize::<shared::ClientCommand>(&buf)?;
                 if let shared::ClientCommand::ClientInfo(info) = info {
                     Ok(info)
-                }
-                else{
+                } else {
                     Err(anyhow::Error::msg("Failed to fetch client info"))
                 }
             } else {
@@ -232,24 +238,25 @@ impl Server {
                     0u32.into(),
                     format!(
                         "Client version mismatch.\nClient version: {:?}\nServer version: {:?}",
-                        client_info.client_version, shared::VERSION
+                        client_info.client_version,
+                        shared::VERSION
                     )
                     .as_bytes(),
                 );
                 return;
             }
-            let client_info_public = ClientInfoPublic{
+            let client_info_public = ClientInfoPublic {
                 name: client_info.name.clone(),
                 id: id,
                 current_vehicle: 0,
-                ping: 0
+                ping: 0,
             };
             let client_connection = Connection {
                 conn: connection_clone.clone(),
                 ordered: ordered_tx,
                 unreliable: unreliable_tx,
                 client_info_private: client_info,
-                client_info_public: client_info_public
+                client_info_public: client_info_public,
             };
             client_events_tx
                 .send((id, IncomingEvent::ClientConnected(client_connection)))
@@ -270,16 +277,18 @@ impl Server {
             }
         });
 
-        let server_info = bincode::serialize(&shared::ServerCommand::ServerInfo(shared::ServerInfo{
-            name: self.name.clone(),
-            player_count: self.connections.len() as u8,
-            client_id: id,
-            map: self.map.clone(),
-            tickrate: self.tickrate,
-            max_vehicles_per_client: self.max_vehicles_per_client,
-            mods: list_mods().unwrap_or(vec![]),
-            server_identifier: self.server_identifier.clone()
-        })).unwrap();
+        let server_info =
+            bincode::serialize(&shared::ServerCommand::ServerInfo(shared::ServerInfo {
+                name: self.name.clone(),
+                player_count: self.connections.len() as u8,
+                client_id: id,
+                map: self.map.clone(),
+                tickrate: self.tickrate,
+                max_vehicles_per_client: self.max_vehicles_per_client,
+                mods: list_mods().unwrap_or(vec![]),
+                server_identifier: self.server_identifier.clone(),
+            }))
+            .unwrap();
         // Sender
         tokio::spawn(async move {
             let mut stream = connection.open_uni().await;
@@ -458,7 +467,7 @@ async fn main() {
         lua_watcher_rx: watcher_rx,
         lua_commands: receiver,
         server_identifier: config.server_identifier,
-        tick: 0
+        tick: 0,
     };
     server.run().await;
 }

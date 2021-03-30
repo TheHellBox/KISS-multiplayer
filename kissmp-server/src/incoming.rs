@@ -4,7 +4,7 @@ use crate::*;
 pub enum IncomingEvent {
     ClientConnected(Connection),
     ConnectionLost,
-    ClientCommand(shared::ClientCommand)
+    ClientCommand(shared::ClientCommand),
 }
 
 impl Server {
@@ -14,7 +14,9 @@ impl Server {
         client_events_tx: &mut mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
         let client_command = bincode::deserialize::<shared::ClientCommand>(&data)?;
-        client_events_tx.send((id, IncomingEvent::ClientCommand(client_command))).await?;
+        client_events_tx
+            .send((id, IncomingEvent::ClientCommand(client_command)))
+            .await?;
         Ok(())
     }
 }

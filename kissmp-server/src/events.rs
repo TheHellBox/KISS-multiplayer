@@ -2,8 +2,8 @@ use crate::*;
 
 impl Server {
     pub async fn on_client_event(&mut self, client_id: u32, event: IncomingEvent) {
-        use IncomingEvent::*;
         use shared::ClientCommand::*;
+        use IncomingEvent::*;
         match event {
             ClientConnected(connection) => {
                 let player_name = connection.client_info_public.name.clone();
@@ -109,7 +109,9 @@ impl Server {
                         }
                     }
                     VehicleUpdate(data) => {
-                        if let Some(server_id) = self.get_server_id_from_game_id(client_id, data.vehicle_id) {
+                        if let Some(server_id) =
+                            self.get_server_id_from_game_id(client_id, data.vehicle_id)
+                        {
                             if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
                                 vehicle.data.position = data.transform.position;
                                 vehicle.data.rotation = data.transform.rotation;
@@ -121,12 +123,15 @@ impl Server {
                     }
                     VehicleData(data) => {
                         // Remove old vehicle with the same ID
-                        if let Some(server_id) = self.get_server_id_from_game_id(client_id, data.in_game_id)
+                        if let Some(server_id) =
+                            self.get_server_id_from_game_id(client_id, data.in_game_id)
                         {
                             self.remove_vehicle(server_id, Some(client_id)).await;
                         }
                         if let Some(client_vehicles) = self.vehicle_ids.get(&client_id) {
-                            if (data.name == "unicicle") && (client_vehicles.len() as u8 >= self.max_vehicles_per_client) {
+                            if (data.name == "unicicle")
+                                && (client_vehicles.len() as u8 >= self.max_vehicles_per_client)
+                            {
                                 return;
                             }
                         }
@@ -164,7 +169,8 @@ impl Server {
                         }
                     }
                     VehicleMetaUpdate(meta) => {
-                        if let Some(server_id) = self.get_server_id_from_game_id(client_id, meta.vehicle_id)
+                        if let Some(server_id) =
+                            self.get_server_id_from_game_id(client_id, meta.vehicle_id)
                         {
                             if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
                                 vehicle.data.color = meta.colors_table[0];
@@ -186,7 +192,7 @@ impl Server {
                         if let Some(server_id) =
                             self.get_server_id_from_game_id(client_id, vehicle_id)
                         {
-                           /* if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
+                            /* if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
                                 for (key, value) in &undefined_update.diff {
                                     if let Some(electrics) = &mut vehicle.electrics {
                                         electrics.undefined.insert(key.clone(), *value);
@@ -196,21 +202,23 @@ impl Server {
                             for (_, client) in &mut self.connections {
                                 let _ = client
                                     .ordered
-                                    .send(ServerCommand::ElectricsUndefinedUpdate(server_id, undefined_update.clone()))
+                                    .send(ServerCommand::ElectricsUndefinedUpdate(
+                                        server_id,
+                                        undefined_update.clone(),
+                                    ))
                                     .await;
                             }
                         }
                     }
                     Ping(ping) => {
-                        let connection = self.connections
-                            .get_mut(&client_id)
-                            .unwrap();
-                        connection
-                            .client_info_public
-                            .ping = ping as u32;
+                        let connection = self.connections.get_mut(&client_id).unwrap();
+                        connection.client_info_public.ping = ping as u32;
                         let start = std::time::SystemTime::now();
                         let since_the_epoch = start.duration_since(std::time::UNIX_EPOCH).unwrap();
-                        let data = bincode::serialize(&shared::ServerCommand::Pong(since_the_epoch.as_secs_f64())).unwrap();
+                        let data = bincode::serialize(&shared::ServerCommand::Pong(
+                            since_the_epoch.as_secs_f64(),
+                        ))
+                        .unwrap();
                         let _ = connection.conn.send_datagram(data.into());
                     }
                     VehicleChanged(id) => {

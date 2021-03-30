@@ -12,7 +12,7 @@ pub async fn decode(data: &[u8], writer: tokio::sync::mpsc::Sender<Vec<u8>>) {
                 result.append(&mut data_left.to_le_bytes().to_vec());
                 result.append(&mut data.clone());
                 writer.send(result).await.unwrap();
-            },
+            }
             _ => {
                 let json = serde_json::to_string(&decoded);
                 if let Ok(json) = json {
@@ -22,14 +22,12 @@ pub async fn decode(data: &[u8], writer: tokio::sync::mpsc::Sender<Vec<u8>>) {
                     result.append(&mut (data.len() as u32).to_le_bytes().to_vec());
                     result.append(&mut data);
                     writer.send(result).await.unwrap();
-                }
-                else{
+                } else {
                     println!("Error: {:?}", json);
                 }
-            },
+            }
         }
-    }
-    else{
+    } else {
         println!("Error bin: {:?}", decoded);
     }
 }

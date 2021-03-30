@@ -25,7 +25,11 @@ struct LuaVehicleData(VehicleData);
 impl rlua::UserData for LuaTransform {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("getPosition", |_, this, _: ()| {
-            Ok(vec![this.0.position[0], this.0.position[1], this.0.position[2]])
+            Ok(vec![
+                this.0.position[0],
+                this.0.position[1],
+                this.0.position[2],
+            ])
         });
         methods.add_method("getRotation", |_, this, _: ()| {
             Ok(vec![
@@ -36,7 +40,11 @@ impl rlua::UserData for LuaTransform {
             ])
         });
         methods.add_method("getVelocity", |_, this, _: ()| {
-            Ok(vec![this.0.velocity[0], this.0.velocity[1], this.0.velocity[2]])
+            Ok(vec![
+                this.0.velocity[0],
+                this.0.velocity[1],
+                this.0.velocity[2],
+            ])
         });
         methods.add_method("getAngularVelocity", |_, this, _: ()| {
             Ok(vec![
@@ -68,12 +76,13 @@ impl rlua::UserData for Vehicle {
         methods.add_method("getTransform", |_, this, _: ()| {
             if let Some(transform) = &this.transform {
                 Ok(Some(LuaTransform(transform.clone())))
-            }
-            else{
+            } else {
                 Ok(None)
             }
         });
-        methods.add_method("getData", |_, this, _: ()| Ok(LuaVehicleData(this.data.clone())));
+        methods.add_method("getData", |_, this, _: ()| {
+            Ok(LuaVehicleData(this.data.clone()))
+        });
         methods.add_method("remove", |lua_ctx, this, _: ()| {
             let globals = lua_ctx.globals();
             let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
@@ -397,7 +406,7 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
                     Vec<f32>,
                     Vec<f32>,
                 )| {
-                    Ok(LuaVehicleData(VehicleData{
+                    Ok(LuaVehicleData(VehicleData {
                         parts_config,
                         in_game_id: 0,
                         color: [color[0], color[1], color[2], color[3]],

@@ -3,13 +3,11 @@ pub fn encode(data: &[u8]) -> Vec<u8> {
     if let Ok(decoded) = decoded {
         let binary = bincode::serialize::<shared::ClientCommand>(&decoded);
         if let Ok(binary) = binary {
-            return binary
-        }
-        else{
+            return binary;
+        } else {
             println!("e {:?}", binary);
         }
-    }
-    else{
+    } else {
         println!("e j {:?}", decoded);
     }
     vec![]

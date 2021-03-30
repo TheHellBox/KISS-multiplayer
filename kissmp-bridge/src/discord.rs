@@ -1,7 +1,7 @@
 pub async fn spawn_discord_rpc(mut discord_rx: std::sync::mpsc::Receiver<crate::DiscordState>) {
     //let discord_rx = tokio_stream::wrappers::ReceiverStream::new(discord_rx);
     std::thread::spawn(move || {
-        async move{
+        async move {
             let mut drpc_client = discord_rpc_client::Client::new(771278096627662928);
             drpc_client.start();
             drpc_client
@@ -21,7 +21,7 @@ pub async fn spawn_discord_rpc(mut discord_rx: std::sync::mpsc::Receiver<crate::
                 let _ = drpc_client.set_activity(|activity| {
                     activity
                         .details(state.clone().server_name.unwrap())
-                    //.state("[1/8]")
+                        //.state("[1/8]")
                         .assets(|assets| assets.large_image("kissmp_logo"))
                     //.secrets(|secrets| secrets.game("Test").join("127.0.0.1:3698"))
                 });
