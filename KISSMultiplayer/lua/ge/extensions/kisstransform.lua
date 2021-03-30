@@ -11,6 +11,8 @@ M.threshold = 3
 M.rot_threshold = 2.5
 M.velocity_error_limit = 10
 
+M.hidden = {}
+
 local function update(dt)
   if not network.connection.connected then return end
     -- Get rotation/angular velocity from vehicle lua
@@ -36,10 +38,11 @@ local function update_vehicle_transform(data)
   local transform = data.transform
   transform.owner = data.vehicle_id
   transform.sent_at = data.sent_at
+
   local id = vehiclemanager.id_map[transform.owner or -1] or -1
   if vehiclemanager.ownership[id] then return end
   M.raw_positions[transform.owner or -1] = transform.position
- 
+
   local vehicle = be:getObjectByID(id)
   if vehicle then
     transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001

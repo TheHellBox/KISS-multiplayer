@@ -44,12 +44,18 @@ local function send_vehicle_update(obj)
   local t = kisstransform.local_transforms[obj:getID()]
   if not t.input then return end
   if not t.gearbox then return end
+  local rotation = t.rotation
+  if obj:getJBeamFilename() == "unicycle" then
+    local q = quat(getCameraQuat()):toEulerYXZ()
+    local q = quatFromEuler(0.0, 0.0, q.x)
+    rotation = {q.x, q.y, q.z, q.w}
+  end
   local position = obj:getPosition()
   local velocity = obj:getVelocity()
   local result = {
     transform = {
       position = {position.x, position.y, position.z},
-      rotation = t.rotation,
+      rotation = rotation,
       velocity = {velocity.x, velocity.y, velocity.z},
       angular_velocity = {t.vel_pitch, t.vel_roll, t.vel_yaw}
     },
@@ -183,6 +189,11 @@ local function spawn_vehicle(data)
   local cp0 = data.palete_0
   local cp1 = data.palete_1
   local name = data.name
+  if name == "unicycle" then
+    print("Attempt to spawn player")
+    kissplayers.spawn_player(data)
+    return
+  end
   print("Attempt to spawn vehicle "..name)
   local spawned = spawn.spawnVehicle(
     name,
@@ -192,6 +203,7 @@ local function spawn_vehicle(data)
     ColorF(c[1],c[2],c[3],c[4]),
     ColorF(cp0[1],cp0[2],cp0[3],cp0[4]),
     ColorF(cp1[1],cp1[2],cp1[3],cp1[4]),
+    "mp_veh",
     true,
     false
   )
@@ -201,7 +213,7 @@ local function spawn_vehicle(data)
   end
   M.id_map[data.server_id] = spawned:getID()
   M.server_ids[spawned:getID()] = data.server_id
-  if current_vehicle then be:enterVehicle(0, current_vehicle) end
+  --if current_vehicle then be:enterVehicle(0, current_vehicle) end
   spawned:queueLuaCommand("extensions.hook('kissUpdateOwnership', false)")
 end
 
@@ -240,6 +252,16 @@ local function onUpdate(dt)
 end
 
 local function update_vehicle(data)
+    -- If vehicle is a unicycle(Walking mode character), sync it differently
+  local character = kissplayers.players[data.vehicle_id]
+  if character then
+    kissplayers.player_transforms[data.vehicle_id].target_position = vec3(data.transform.position)
+    kissplayers.player_transforms[data.vehicle_id].rotation = data.transform.rotation
+    kissplayers.player_transforms[data.vehicle_id].velocity = vec3(data.transform.velocity)
+    kissplayers.player_transforms[data.vehicle_id].time_past = clamp(get_current_time() - data.sent_at, 0, 0.3) + 0.0001
+    return
+  end
+ 
   local id = M.id_map[data.vehicle_id]
   if not id then return end
   if M.ownership[id] then return end
@@ -255,6 +277,12 @@ end
 
 local function remove_vehicle(data)
   local id = data
+  if kissplayers.players[id] then
+    kissplayers.players[id]:delete()
+    kissplayers.players[id] = nil
+    kissplayers.player_transforms[id] = nil
+    return
+  end
   local local_id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(local_id)
   if vehicle then

@@ -29,7 +29,7 @@ pub struct Connection {
     pub ordered: mpsc::Sender<ServerCommand>,
     pub unreliable: mpsc::Sender<ServerCommand>,
     pub client_info_private: ClientInfoPrivate,
-    pub client_info_public: ClientInfoPublic
+    pub client_info_public: ClientInfoPublic,
 }
 
 impl std::fmt::Debug for Connection {

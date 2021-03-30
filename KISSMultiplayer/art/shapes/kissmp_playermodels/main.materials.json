@@ -1,0 +1,66 @@
+{
+  "base_nb_body": {
+    "name": "base_nb_body",
+    "mapTo": "base_nb_body",
+    "class": "material",
+    "persistentId": "be389ad5-9cc7-47d1-a6fb-854af1f84e35",
+    "Stages": [
+      {
+        "diffuseColor": [
+          0.800000012,
+          0.800000012,
+          0.800000012,
+          1
+        ],
+        "instanceDiffuse": true
+      },
+      {},
+      {},
+      {}
+    ],
+    "translucentBlendOp": "None"
+  },
+  "base_nb_face": {
+    "name": "base_nb_face",
+    "mapTo": "base_nb_face",
+    "class": "material",
+    "persistentId": "4bd6fc2b-d72b-4a17-95c6-dbc729ec19cc",
+    "Stages": [
+      {
+        "diffuseColor": [
+          0.800000012,
+          0.800000012,
+          0.800000012,
+          1
+        ],
+        "instanceDiffuse": true
+      },
+      {},
+      {},
+      {}
+    ],
+    "order_simset": 0,
+    "translucentBlendOp": "None"
+  },
+  "base_nb_mask": {
+    "name": "base_nb_mask",
+    "mapTo": "base_nb_mask",
+    "class": "material",
+    "persistentId": "edc7c5c6-6f39-4e4d-8a89-407c4f8c8328",
+    "Stages": [
+      {
+        "diffuseColor": [
+          0.100000012,
+          0.100000012,
+          0.100000012,
+          1
+        ]
+      },
+      {},
+      {},
+      {}
+    ],
+    "doubleSided": true,
+    "translucentBlendOp": "None"
+  }
+}

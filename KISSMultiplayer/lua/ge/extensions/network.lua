@@ -24,7 +24,7 @@ M.connection = {
   time_offset = 0
 }
 
-local FILE_TRANSFER_CHUNK_SIZE = 65536;
+local FILE_TRANSFER_CHUNK_SIZE = 16384;
 
 local message_handlers = {}
 
@@ -58,6 +58,8 @@ local function disconnect(data)
   M.connection.connected = false
   M.connection.tcp:close()
   M.players = {}
+  kissplayers.players = {}
+  kissplayers.player_transforms = {}
   kissrichpresence.update()
   --vehiclemanager.id_map = {}
   --vehiclemanager.ownership = {}
@@ -258,16 +260,18 @@ local function connect(addr, player_name)
   for k, v in pairs(missing_mods) do
     print(k.." "..v)
   end
-  -- Request mods
-  send_data(
-    {
-      RequestMods = missing_mods
-    },
-    true
-  )
-  if server_info.map ~= "any" and #missing_mods == 0 then
+  if #missing_mods > 0 then
+    -- Request mods
+    send_data(
+      {
+        RequestMods = missing_mods
+      },
+      true
+    )
+  end
+  vehiclemanager.loading_map = true
+  if #missing_mods == 0 then
     freeroam_freeroam.startFreeroam(server_info.map)
-    vehiclemanager.loading_map = true
   end
   kissrichpresence.update()
   kissui.add_message("Connected!")
@@ -283,10 +287,8 @@ local function send_messagepack(data_type, reliable, data)
 end
 
 local function on_finished_download()
-  if M.connection.server_info.map ~= "any" then
-    vehiclemanager.loading_map = true
-    freeroam_freeroam.startFreeroam(M.connection.server_info.map)
-  end
+  vehiclemanager.loading_map = true
+  freeroam_freeroam.startFreeroam(M.connection.server_info.map)
 end
 
 local function send_ping()
@@ -347,7 +349,6 @@ local function onUpdate(dt)
       local chunk_n = ffi.cast("uint32_t*", ffi.new("char[?]", 5, chunk_n_b))[0]
       local file_length = ffi.cast("uint32_t*", ffi.new("char[?]", 5, chunk_a_b))[0]
       local read_size = ffi.cast("uint32_t*", ffi.new("char[?]", 5, read_size_b))[0]
-      print(read_size)
       local file_data, _, _ = M.connection.tcp:receive(read_size)
       M.downloads_status[name] = {
         name = name,
@@ -365,6 +366,8 @@ local function onUpdate(dt)
         kissmods.mount_mod(name)
         M.downloads[name]:close()
         M.downloads[name] = nil
+        M.downloads_status = {}
+        on_finished_download()
       end
       M.connection.tcp:settimeout(0.0)
       break

@@ -1,4 +1,5 @@
 local M = {}
+local cooldown_timer = 2
 
 M.received_transform = {
   position = vec3(0, 0, 0),
@@ -39,11 +40,11 @@ local function try_rude()
     local p = M.target_transform.position
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPosition(Point3F("..p.x..", "..p.y..", "..p.z.."))")
   end
-  --if quat(obj:getRotation()):distance(M.target_transform.rotation) > 1.5 then
-  --  local p = M.target_transform.position
-  --  local r = M.target_transform.rotation
-  --  obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
-  --end
+  if (M.target_transform.position - vec3(obj:getPosition())):length() > 50 then
+    local p = M.target_transform.position
+    local r = M.target_transform.rotation
+    obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
+  end
 end
 
 local function draw_debug()
@@ -52,7 +53,11 @@ local function draw_debug()
 end
 
 local function update(dt)
-  if dt > 0.15 then return end
+  if cooldown_timer > 0 then
+    cooldown_timer = cooldown_timer - clamp(dt, 0, 0.02)
+    return
+  end
+  if dt > 0.1 then return end
   M.received_transform.time_past = clamp(M.received_transform.time_past + dt, 0, 0.5)
   predict(dt)
   try_rude()
@@ -125,7 +130,17 @@ local function set_target_transform(raw)
   M.received_transform.time_past = transform.time_past
 end
 
+local function kissInit()
+  M.received_transform.position = vec3(obj:getPosition())
+  M.target_transform.position = vec3(obj:getPosition())
+  M.received_transform.rotation = quat(obj:getRotation())
+  M.target_transform.rotation = quat(obj:getRotation())
+  cooldown_timer = 1.5
+end
+
 M.set_target_transform = set_target_transform
 M.update = update
+M.kissInit = kissInit
+M.onReset = kissInit
 
 return M

@@ -15,11 +15,12 @@ pub struct DiscordState {
 
 #[tokio::main]
 async fn main() {
-    let (discord_tx, discord_rx) = tokio::sync::mpsc::channel(10);
+    let (discord_tx, discord_rx) = std::sync::mpsc::channel();
     let discord_tx_clone = discord_tx.clone();
-    discord::spawn_discord_rpc(discord_rx);
-    http_proxy::spawn_http_proxy(discord_tx.clone());
-
+    discord::spawn_discord_rpc(discord_rx).await;
+    tokio::spawn(async move {
+        http_proxy::spawn_http_proxy(discord_tx).await;
+    });
     let addr = &"0.0.0.0:7894".parse::<SocketAddr>().unwrap();
     let mut listener = TcpListener::bind(addr).await.unwrap();
     println!("Bridge is running!");
@@ -100,10 +101,9 @@ async fn main() {
                 }
                 println!("Connection with game is closed");
                 stream_connection.close(0u32.into(), b"Client has left the game.");
-                discord_tx
-                    .send(DiscordState { server_name: None })
-                    .await
-                    .unwrap();
+                //discord_tx
+                //    .send(DiscordState { server_name: None })
+                //    .unwrap();
             });
             if let Err(r) = drive_receive(connection, writer).await {
                 let reason = r.to_string();
@@ -129,7 +129,7 @@ pub async fn drive_receive(
         loop {
             let next = writer_rx.recv().await;
             if let Some(next) = next {
-                writer.write_all(&next).await.unwrap();
+                let _ = writer.write_all(&next).await;
             }
             else{
                 break;

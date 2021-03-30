@@ -673,10 +673,14 @@ local function draw_names()
   for id, player in pairs(network.players) do
     local vehicle_id = vehiclemanager.id_map[player.current_vehicle] or 0
     local vehicle = be:getObjectByID(vehicle_id)
+    if not vehicle then
+      vehicle = kissplayers.players[player.current_vehicle]
+    end
     if id ~= network.connection.client_id and vehicle then
-      local vehicle_position = vec3(vehicle:getPosition())
-      local local_position = be:getPlayerVehicle(0):getPosition()
-      local distance = vehicle_position:distance(vec3(local_position))
+      local vehicle_position = vec3(vehicle:getPosition() or vec3())
+      if not be:getPlayerVehicle(0) then return end
+      local local_position = be:getPlayerVehicle(0):getPosition() or vec3()
+      local distance = vehicle_position:distance(vec3(local_position)) or 0
       vehicle_position.z = vehicle_position.z + 1.6
       debugDrawer:drawTextAdvanced(
         Point3F(vehicle_position.x, vehicle_position.y, vehicle_position.z),
