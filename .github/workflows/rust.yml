@@ -44,3 +44,20 @@ jobs:
         path: |
           ./kissmp-server/target/release/kissmp-server
           ./kissmp-server/target/release/kissmp-server.exe
+
+  build_master:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      working-directory: ./kissmp-master
+      run: cargo build --verbose --release
+    - name: Store Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: build_results
+        path: |
+          ./kissmp-server/target/release/kissmp-master
