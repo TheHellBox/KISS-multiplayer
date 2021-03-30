@@ -60,4 +60,4 @@ jobs:
       with:
         name: build_results
         path: |
-          ./kissmp-server/target/release/kissmp-master
+          ./kissmp-master/target/release/kissmp-master
