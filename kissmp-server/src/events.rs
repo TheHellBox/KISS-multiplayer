@@ -129,7 +129,7 @@ impl Server {
                             self.remove_vehicle(server_id, Some(client_id)).await;
                         }
                         if let Some(client_vehicles) = self.vehicle_ids.get(&client_id) {
-                            if (data.name == "unicicle")
+                            if (data.name != "unicycle")
                                 && (client_vehicles.len() as u8 >= self.max_vehicles_per_client)
                             {
                                 return;
