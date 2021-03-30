@@ -191,7 +191,9 @@ local function spawn_vehicle(data)
     quat(data.rotation),
     ColorF(c[1],c[2],c[3],c[4]),
     ColorF(cp0[1],cp0[2],cp0[3],cp0[4]),
-    ColorF(cp1[1],cp1[2],cp1[3],cp1[4])
+    ColorF(cp1[1],cp1[2],cp1[3],cp1[4]),
+    true,
+    false
   )
   if not spawned then return end
   if plate ~= nil then
@@ -385,8 +387,7 @@ local function detach_coupler(data)
 end
 
 local function onVehicleSpawned(id)
-  -- FIXME: Bring back
-  --if not network.connection.connected then return end
+  if not network.connection.connected then return end
   local vehicle = be:getObjectByID(id)
   local position = vehicle:getPosition()
   if first_vehicle then

@@ -303,14 +303,15 @@ impl Server {
                 command = ordered.select_next_some() => {
                     let connection = connection.clone();
                     tokio::spawn(async move {
-                        let mut stream = connection.open_uni().await;
-                        if let Ok(stream) = &mut stream {
-                            // Kinda ugly and hacky tbh
-                            match command {
-                                ServerCommand::TransferFile(file) => {
-                                   // let _ = file_transfer::transfer_file(stream, std::path::Path::new(&file)).await;
-                                }
-                                _ => {
+                        // Kinda ugly and hacky tbh
+                        match command {
+                            ServerCommand::TransferFile(file) => {
+                                //println!("Transfer");
+                                let _ = file_transfer::transfer_file(connection.clone(), std::path::Path::new(&file)).await;
+                            }
+                            _ => {
+                                let mut stream = connection.open_uni().await;
+                                if let Ok(stream) = &mut stream {
                                     let _ = send(stream, &Self::handle_outgoing_data(command)).await;
                                 }
                             }

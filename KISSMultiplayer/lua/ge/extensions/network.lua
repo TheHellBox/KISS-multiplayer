@@ -1,4 +1,5 @@
 local M = {}
+M.downloads = {}
 M.downloading = false
 M.downloads_status = {}
 
@@ -11,7 +12,6 @@ local ping_send_time = 0
 M.players = {}
 M.socket = socket
 M.base_secret = "None"
-
 M.connection = {
   tcp = nil,
   connected = false,
@@ -24,7 +24,7 @@ M.connection = {
   time_offset = 0
 }
 
-local FILE_TRANSFER_CHUNK_SIZE = 4096 * 1024;
+local FILE_TRANSFER_CHUNK_SIZE = 65536;
 
 local message_handlers = {}
 
@@ -207,6 +207,9 @@ local function connect(addr, player_name)
     return
   end
 
+    -- Ignore message type
+  M.connection.tcp:receive(1)
+
   local len, _, _ = M.connection.tcp:receive(4)
   local len = ffi.cast("uint32_t*", ffi.new("char[?]", #len + 1, len))
   local len = len[0]
@@ -252,10 +255,16 @@ local function connect(addr, player_name)
  
   kissmods.deactivate_all_mods()
   kissmods.mount_mods(mod_names)
-  
+  for k, v in pairs(missing_mods) do
+    print(k.." "..v)
+  end
   -- Request mods
-  send_data(9, true, jsonEncode(missing_mods))
-
+  send_data(
+    {
+      RequestMods = missing_mods
+    },
+    true
+  )
   if server_info.map ~= "any" and #missing_mods == 0 then
     freeroam_freeroam.startFreeroam(server_info.map)
     vehiclemanager.loading_map = true
@@ -291,69 +300,17 @@ local function send_ping()
 end
 
 local function cancel_download()
-  if not current_download then return end
+  --[[if not current_download then return end
   io.close(current_download.file)
   current_download = nil
-  M.downloading = false
-end
-
-local function continue_download()
-  send_ping()
-  kissui.show_download = true
-  
-  local packets = 0
-  local attempts = 0
-  while current_download.current_chunk < current_download.chunks do
-    M.downloads_status[current_download.file_name].progress = current_download.current_chunk / current_download.chunks
-    M.connection.tcp:settimeout(2.0)
-    local data, _, _ = M.connection.tcp:receive(4096)
-    if data then
-      attempts = 0
-      current_download.file:write(data)
-      current_download.current_chunk =  current_download.current_chunk + 1
-      packets = packets + 1
-      if packets > 10 then
-        return
-      end
-    else
-      if attempts > 5 then
-        M.downloading = false
-        current_download.file:close()
-        current_download = nil
-        kissui.show_download = false
-        kissui.add_message("Download failed, disconnecting.", kissui.COLOR_RED)
-        disconnect()
-        return
-      end
-      attempts = attempts + 1
-    end
-  end
-  local data, _, _ = M.connection.tcp:receive(current_download.last_chunk)
-  current_download.file:write(data)
-  
-  M.downloading = false
-  current_download.file:close()
-  kissmods.update_status(kissmods.mods[current_download.file_name])
-  kissmods.mount_mod(current_download.file_name)
-  current_download = nil
-  
-  M.connection.tcp:settimeout(0.0)
-  M.connection.mods_left = M.connection.mods_left - 1
-  if M.connection.mods_left < 1 then
-    M.downloads_status = nil
-    kissui.show_download = false
-    on_finished_download()
+    M.downloading = false]]--
+  for k, v in pairs(M.downloads) do
+     M.downloads[k]:close()
   end
 end
 
 local function onUpdate(dt)
   if not M.connection.connected then return end
-
-  if M.downloading then
-    continue_download()
-    return
-  end
-
   if M.connection.timer < M.connection.heartbeat_time then
     M.connection.timer = M.connection.timer + dt
   else
@@ -362,18 +319,55 @@ local function onUpdate(dt)
   end
 
   while true do
-    local data = M.connection.tcp:receive(4)
-    if not data then break end
+    local msg_type = M.connection.tcp:receive(1)
+    if not msg_type then break end
+    --print("msg_t"..string.byte(msg_type))
     M.connection.tcp:settimeout(5.0)
-    local len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data))
-
-    local data, _, _ = M.connection.tcp:receive(len[0])
-    M.connection.tcp:settimeout(0.0)
-    local data_decoded = jsonDecode(data)
-    for k, v in pairs(data_decoded) do
-      if message_handlers[k] then
-        message_handlers[k](v)
+    -- JSON data
+    if string.byte(msg_type) == 1 then
+      local data = M.connection.tcp:receive(4)
+      local len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data))
+      local data, _, _ = M.connection.tcp:receive(len[0])
+      M.connection.tcp:settimeout(0.0)
+      local data_decoded = jsonDecode(data)
+      for k, v in pairs(data_decoded) do
+        if message_handlers[k] then
+          message_handlers[k](v)
+        end
       end
+    elseif string.byte(msg_type) == 0 then -- Binary data
+      M.downloading = true
+      kissui.show_download = true
+      local name_b = M.connection.tcp:receive(4)
+      local len_n = ffi.cast("uint32_t*", ffi.new("char[?]", 5, name_b))
+      local name, _, _ = M.connection.tcp:receive(len_n[0])
+      local chunk_n_b = M.connection.tcp:receive(4)
+      local chunk_a_b = M.connection.tcp:receive(4)
+      local read_size_b = M.connection.tcp:receive(4)
+      local chunk_n = ffi.cast("uint32_t*", ffi.new("char[?]", 5, chunk_n_b))[0]
+      local file_length = ffi.cast("uint32_t*", ffi.new("char[?]", 5, chunk_a_b))[0]
+      local read_size = ffi.cast("uint32_t*", ffi.new("char[?]", 5, read_size_b))[0]
+      print(read_size)
+      local file_data, _, _ = M.connection.tcp:receive(read_size)
+      M.downloads_status[name] = {
+        name = name,
+        progress = 0
+      }
+      M.downloads_status[name].progress = chunk_n * FILE_TRANSFER_CHUNK_SIZE / file_length
+      local file = M.downloads[name]
+      if not file then
+        M.downloads[name] = kissmods.open_file(name)
+      end
+      M.downloads[name]:write(file_data)
+      if read_size < FILE_TRANSFER_CHUNK_SIZE then
+        M.downloading = false
+        kissui.show_download = false
+        kissmods.mount_mod(name)
+        M.downloads[name]:close()
+        M.downloads[name] = nil
+      end
+      M.connection.tcp:settimeout(0.0)
+      break
     end
   end
 end

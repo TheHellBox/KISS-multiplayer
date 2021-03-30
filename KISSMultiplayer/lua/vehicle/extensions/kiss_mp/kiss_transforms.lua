@@ -29,9 +29,9 @@ local function predict(dt)
   M.target_transform.velocity = M.received_transform.velocity + M.received_transform.acceleration * M.received_transform.time_past
   M.target_transform.position = lerp(M.target_transform.position, M.received_transform.position + M.target_transform.velocity * M.received_transform.time_past, clamp(M.lerp_factor * dt, 0.00001, 1))
 
-  M.target_transform.angular_velocity = M.received_transform.angular_velocity + M.received_transform.angular_acceleration * M.received_transform.time_past
-  local rotation_delta = M.target_transform.angular_velocity * M.received_transform.time_past
-  M.target_transform.rotation = quat(M.received_transform.rotation) * quatFromEuler(rotation_delta.x, rotation_delta.y, rotation_delta.z)
+  --M.target_transform.angular_velocity = M.received_transform.angular_velocity + M.received_transform.angular_acceleration * M.received_transform.time_past
+  --local rotation_delta = M.target_transform.angular_velocity * M.received_transform.time_past
+  M.target_transform.rotation = quat(M.received_transform.rotation)-- * quatFromEuler(rotation_delta.x, rotation_delta.y, rotation_delta.z)
 end
 
 local function try_rude()
@@ -39,12 +39,11 @@ local function try_rude()
     local p = M.target_transform.position
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPosition(Point3F("..p.x..", "..p.y..", "..p.z.."))")
   end
-  if (M.target_transform.rotation / quat(obj:getRotation())):toEulerYXZ():length() > 1.5 then
-    local p = M.target_transform.position
-    local r = M.target_transform.rotation
-    print(r)
-    obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
-  end
+  --if quat(obj:getRotation()):distance(M.target_transform.rotation) > 1.5 then
+  --  local p = M.target_transform.position
+  --  local r = M.target_transform.rotation
+  --  obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
+  --end
 end
 
 local function draw_debug()

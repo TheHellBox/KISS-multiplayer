@@ -86,5 +86,6 @@ pub enum ServerCommand {
     CouplerDetached(CouplerDetached),
     ElectricsUndefinedUpdate(u32, ElectricsUndefined),
     ServerInfo(ServerInfo),
+    FilePart(String, Vec<u8>, u32, u32, u32),
     Pong(f64)
 }

@@ -45,7 +45,6 @@ async fn main() {
                     return;
                 }
             };
-            println!("addr {:?}", addr);
             let mut endpoint = quinn::Endpoint::builder();
             let mut client_cfg = quinn::ClientConfig::default();
 
@@ -130,7 +129,6 @@ pub async fn drive_receive(
         loop {
             let next = writer_rx.recv().await;
             if let Some(next) = next {
-                //println!("Write!");
                 writer.write_all(&next).await.unwrap();
             }
             else{
@@ -155,14 +153,12 @@ pub async fn drive_receive(
             stream = connection.uni_streams.try_next() => {
                 let mut stream = stream?;
                 if let Some(stream) = &mut stream {
-                    println!("New stream!");
                     let writer_tx = writer_tx.clone();
                     let mut len_buf = [0; 4];
                     stream.read_exact(&mut len_buf).await?;
                     let len = u32::from_le_bytes(len_buf);
                     let mut buffer = vec![0; len as usize];
                     stream.read_exact(&mut buffer).await?;
-                    println!("Finished");
                     decoder::decode(&buffer, writer_tx).await;
                 }
                 else{
