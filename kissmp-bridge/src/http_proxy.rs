@@ -31,7 +31,7 @@ pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::Dis
                         None
                     }
                 };
-                let state = crate::DiscordState { server_name };
+                //let state = crate::DiscordState { server_name };
                 //let _ = discord_tx.send(state);
                 let response = tiny_http::Response::from_string("ok");
                 request.respond(response).unwrap();

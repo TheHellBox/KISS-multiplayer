@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use warp::Filter;
 
-const VERSION: (u32, u32) = (0, 2);
+const VERSION: (u32, u32) = (0, 3);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServerInfo {
