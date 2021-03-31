@@ -51,7 +51,7 @@ async fn main() {
 
             let mut transport = quinn::TransportConfig::default();
             transport
-                .max_idle_timeout(Some(std::time::Duration::from_secs(20)))
+                .max_idle_timeout(Some(std::time::Duration::from_secs(120)))
                 .unwrap();
             client_cfg.transport = std::sync::Arc::new(transport);
 
@@ -105,16 +105,15 @@ async fn main() {
                 //    .send(DiscordState { server_name: None })
                 //    .unwrap();
             });
-            if let Err(r) = drive_receive(connection, writer).await {
+            let (writer_tx, writer_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(10);
+            if let Err(r) = drive_receive(connection, writer, writer_tx.clone(), writer_rx).await {
                 let reason = r.to_string();
                 println!("Disconnected! Reason: {}", reason);
-                //let reason_bytes = reason.into_bytes();
-                // Send message type 10(Disconnected) to the game
-                /*let _ = writer.write_all(&[10]).await;
-                let _ = writer
-                    .write_all(&(reason_bytes.len() as u32).to_le_bytes())
-                    .await;
-                let _ = writer.write_all(&reason_bytes).await;*/
+                let reason_bytes = reason.into_bytes().to_vec();
+                let mut result = vec![2];
+                result.append(&mut (reason_bytes.len() as u32).to_le_bytes().to_vec());
+                result.append(&mut reason_bytes.to_vec());
+                let _ = writer_tx.send(result).await.unwrap();
             }
         });
     }
@@ -123,8 +122,9 @@ async fn main() {
 pub async fn drive_receive(
     mut connection: quinn::NewConnection,
     mut writer: tokio::io::WriteHalf<tokio::net::TcpStream>,
+    writer_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    mut writer_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
 ) -> anyhow::Result<()> {
-    let (writer_tx, mut writer_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(10);
     tokio::spawn(async move {
         loop {
             let next = writer_rx.recv().await;

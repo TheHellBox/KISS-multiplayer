@@ -371,6 +371,11 @@ local function onUpdate(dt)
       end
       M.connection.tcp:settimeout(0.0)
       break
+    elseif string.byte(msg_type) == 2 then
+      local len_b = M.connection.tcp:receive(4)
+      local len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, len_b))[0]
+      local reason, _, _ = M.connection.tcp:receive(len)
+      disconnect(reason)
     end
   end
 end
