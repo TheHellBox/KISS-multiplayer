@@ -62,6 +62,7 @@ end
 
 local function update_transform_info()
   local r = quat(obj:getRotation())
+  local p = obj:getPosition()
   local input = {
     vehicle_id = obj:getID() or 0,
     throttle_input = electrics.values.throttle_input or 0,
@@ -72,6 +73,7 @@ local function update_transform_info()
   }
   local gearbox = kiss_gearbox.get_gearbox_data()
   local transform = {
+    position  = {p.x, p.y, p.z},
     rotation  = {r.x, r.y, r.z, r.w},
     input = input,
     gearbox = gearbox,

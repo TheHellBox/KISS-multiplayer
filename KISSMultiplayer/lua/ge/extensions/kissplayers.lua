@@ -1,11 +1,60 @@
 local M = {}
 M.lerp_factor = 5
 M.players = {}
+M.players_in_cars = {}
 M.player_transforms = {}
+
+local blacklist = {
+  woodplanks = true,
+  woodcrate = true,
+  weightpad = true,
+  wall = true,
+  tsfb = true,
+  tube = true,
+  trafficbarrel = true,
+  tirewall = true,
+  tirestacks = true,
+  testroller = true,
+  tanker = true,
+  suspensionbridge = true,
+  streetlight = true,
+  shipping_container = true,
+  sawhorse = true,
+  rollover = true,
+  rocks = true,
+  roadsigns = true,
+  piano = true,
+  metal_ramp = true,
+  metal_box = true,
+  large_tilt = true,
+  large_spinner = true,
+  large_roller = true,
+  large_hamster_wheel = true,
+  large_crusher = true,
+  large_cannon = true,
+  large_bridge = true,
+  large_angletester = true,
+  kickplate = true,
+  inflated_mat = true,
+  haybale = true,
+  gate = true,
+  flipramp = true,
+  flatbed = true,
+  flail = true,
+  cones = true,
+  christmas_tree = true,
+  cannon = true,
+  blockwall = true,
+  barrier = true,
+  barrels = true,
+  ball = true,
+  unicycle = true
+}
 
 local function spawn_player(data)
   local player = createObject('TSStatic')
   player:setField("shapeName", 0, "/art/shapes/kissmp_playermodels/base_nb.dae")
+  player:setField("dynamic", 0, "true")
   player.scale = Point3F(1, 1, 1)
   player:registerObject("player"..data.owner)
   player:setPosRot(
@@ -32,11 +81,45 @@ local function update_players(dt)
     local player = M.players[id]
     if player and data then
       data.time_past = data.time_past + dt
-      data.position = lerp(data.position, data.target_position + data.velocity * data.time_past, dt * M.lerp_factor)
+      data.position = lerp(data.position, data.target_position + data.velocity * data.time_past, clamp(dt * M.lerp_factor, 0, 1))
+      local p = data.position + data.velocity * dt
+      --player.position = m
       player:setPosRot(
-        data.position.x, data.position.y, data.position.z,
+        p.x, p.y, p.z,
         data.rotation[1], data.rotation[2], data.rotation[3], data.rotation[4]
       )
+    end
+  end
+  for id, player_data in pairs(network.players) do
+    local vehicle = be:getObjectByID(vehiclemanager.id_map[player_data.current_vehicle or -1] or -1)
+    if vehicle and (not blacklist[vehicle:getJBeamFilename()]) then
+      if not M.players_in_cars[id] then
+        local player = createObject('TSStatic')
+        player:setField("shapeName", 0, "/art/shapes/kissmp_playermodels/base_nb_head.dae")
+        player:setField("dynamic", 0, "true")
+        player.scale = Point3F(1, 1, 1)
+        math.randomseed(id)
+        player:setField('instanceColor', 0, string.format("%g %g %g %g", 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 1))
+        math.randomseed(os.time())
+        player:registerObject("player_head"..id)
+        M.players_in_cars[id] = player
+      end
+
+      local cam_node, _ = core_camera.getDriverData(vehicle)
+      if cam_node and kisstransform.local_transforms[vehicle:getID()] then
+        local p = vec3(vehicle:getNodePosition(cam_node)) + vec3(vehicle:getPosition()) + vec3(vehicle:getVelocity()) * dt
+        local r = kisstransform.local_transforms[vehicle:getID()].rotation
+        local player = M.players_in_cars[id]
+        player:setPosRot(
+          p.x, p.y, p.z,
+          r[1], r[2], r[3], r[4]
+        )
+      end
+    else
+      if M.players_in_cars[id] then
+        M.players_in_cars[id]:delete()
+        M.players_in_cars[id] = nil
+      end
     end
   end
 end

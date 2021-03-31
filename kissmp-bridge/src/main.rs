@@ -22,11 +22,11 @@ async fn main() {
         http_proxy::spawn_http_proxy(discord_tx).await;
     });
     let addr = &"0.0.0.0:7894".parse::<SocketAddr>().unwrap();
-    let mut listener = TcpListener::bind(addr).await.unwrap();
+    let listener = TcpListener::bind(addr).await.unwrap();
     println!("Bridge is running!");
     while let Ok(conn) = listener.accept().await {
         println!("Attempt to connect to a server");
-        let mut discord_tx = discord_tx_clone.clone();
+        let discord_tx = discord_tx_clone.clone();
         let stream = conn.0;
         tokio::spawn(async move {
             let (mut reader, mut writer) = tokio::io::split(stream);
@@ -101,11 +101,11 @@ async fn main() {
                 }
                 println!("Connection with game is closed");
                 stream_connection.close(0u32.into(), b"Client has left the game.");
-                //discord_tx
-                //    .send(DiscordState { server_name: None })
-                //    .unwrap();
+                discord_tx
+                    .send(DiscordState { server_name: None })
+                    .unwrap();
             });
-            let (writer_tx, writer_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(10);
+            let (writer_tx, writer_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(128);
             if let Err(r) = drive_receive(connection, writer, writer_tx.clone(), writer_rx).await {
                 let reason = r.to_string();
                 println!("Disconnected! Reason: {}", reason);

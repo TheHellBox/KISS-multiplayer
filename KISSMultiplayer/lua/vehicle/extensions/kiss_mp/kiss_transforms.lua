@@ -36,11 +36,11 @@ local function predict(dt)
 end
 
 local function try_rude()
-  if (M.target_transform.position - vec3(obj:getPosition())):length() > 7 then
+  if (M.target_transform.position - vec3(obj:getPosition())):length() > 3 then
     local p = M.target_transform.position
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPosition(Point3F("..p.x..", "..p.y..", "..p.z.."))")
   end
-  if (M.target_transform.position - vec3(obj:getPosition())):length() > 50 then
+  if (M.target_transform.position - vec3(obj:getPosition())):length() > 15 then
     local p = M.target_transform.position
     local r = M.target_transform.rotation
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
@@ -138,9 +138,13 @@ local function kissInit()
   cooldown_timer = 1.5
 end
 
+local function onReset()
+  cooldown_timer = 0.2
+end
+
 M.set_target_transform = set_target_transform
 M.update = update
 M.kissInit = kissInit
-M.onReset = kissInit
+M.onReset = onReset
 
 return M
