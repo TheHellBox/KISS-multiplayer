@@ -219,7 +219,9 @@ end
 
 local function onUpdate(dt)
   if not network.connection.connected then return end
-
+  if (getMissionFilename():lower() ~= network.connection.server_info.map:lower()) and not M.loading_map then
+    network.disconnect()
+  end
   -- Track color and plate changes
   meta_timer = meta_timer + dt
   if meta_timer >= 1 then

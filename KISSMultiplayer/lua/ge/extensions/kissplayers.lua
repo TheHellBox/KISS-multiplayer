@@ -2,6 +2,7 @@ local M = {}
 M.lerp_factor = 5
 M.players = {}
 M.players_in_cars = {}
+M.player_heads_attachments = {}
 M.player_transforms = {}
 
 local blacklist = {
@@ -51,6 +52,8 @@ local blacklist = {
   unicycle = true
 }
 
+local current_camera_mode = ""
+
 local function spawn_player(data)
   local player = createObject('TSStatic')
   player:setField("shapeName", 0, "/art/shapes/kissmp_playermodels/base_nb.dae")
@@ -93,7 +96,8 @@ local function update_players(dt)
   for id, player_data in pairs(network.players) do
     local vehicle = be:getObjectByID(vehiclemanager.id_map[player_data.current_vehicle or -1] or -1)
     if vehicle and (not blacklist[vehicle:getJBeamFilename()]) then
-      if not M.players_in_cars[id] then
+      local hide = be:getPlayerVehicle(0) and (be:getPlayerVehicle(0):getID() == vehicle:getID()) and (current_camera_mode == "driver")
+      if (not M.players_in_cars[id]) and (not hide) then
         local player = createObject('TSStatic')
         player:setField("shapeName", 0, "/art/shapes/kissmp_playermodels/base_nb_head.dae")
         player:setField("dynamic", 0, "true")
@@ -103,8 +107,13 @@ local function update_players(dt)
         math.randomseed(os.time())
         player:registerObject("player_head"..id)
         M.players_in_cars[id] = player
+        M.player_heads_attachments[id] = vehicle:getID()
       end
-
+      if hide and  M.players_in_cars[id] then
+        M.players_in_cars[id]:delete()
+        M.players_in_cars[id] = nil
+        M.player_heads_attachments[id] = nil
+      end
       local cam_node, _ = core_camera.getDriverData(vehicle)
       if cam_node and kisstransform.local_transforms[vehicle:getID()] then
         local p = vec3(vehicle:getNodePosition(cam_node)) + vec3(vehicle:getPosition()) + vec3(vehicle:getVelocity()) * dt
@@ -124,7 +133,12 @@ local function update_players(dt)
   end
 end
 
+local function onCameraModeChanged(v)
+  current_camera_mode = v
+end
+
 M.spawn_player = spawn_player
 M.onUpdate = update_players
+M.onCameraModeChanged = onCameraModeChanged
 
 return M

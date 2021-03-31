@@ -60,6 +60,8 @@ local function disconnect(data)
   M.players = {}
   kissplayers.players = {}
   kissplayers.player_transforms = {}
+  kissplayers.players_in_cars = {}
+  kissplayers.player_heads_attachments = {}
   kissrichpresence.update()
   --vehiclemanager.id_map = {}
   --vehiclemanager.ownership = {}
@@ -67,6 +69,7 @@ local function disconnect(data)
   --kissui.force_disable_nametags = false
   --Lua:requestReload()
   --kissutils.hooks.clear()
+  returnToMainMenu()
 end
 
 local function handle_disconnected(data)
@@ -121,6 +124,9 @@ end
 local function handle_player_disconnected(data)
   local id = data
   M.players[id] = nil
+  kissplayers.players_in_cars[id]:delete()
+  kissplayers.players_in_cars[id] = nil
+  kissplayers.player_heads_attachments[id] = nil
 end
 
 local function onExtensionLoaded()
