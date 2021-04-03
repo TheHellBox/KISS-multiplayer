@@ -111,7 +111,7 @@ pub fn run_vc_recording(
         let sample_rate = config.sample_rate();
         let sample_format = config.sample_format();
         let mut config = config.config();
-        let send_m = std::sync::Arc::new(std::sync::Mutex::new(true));
+        let send_m = std::sync::Arc::new(std::sync::Mutex::new(false));
         let send = send_m.clone();
         config.buffer_size = buffer_size;
         let stream = match sample_format {
