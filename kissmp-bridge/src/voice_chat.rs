@@ -68,35 +68,24 @@ pub fn run_vc_recording(
         }
         let (config, buffer_size) = {
             let config = config.unwrap();
-            if config.max_sample_rate() >= SAMPLE_RATE && config.min_sample_rate() <= SAMPLE_RATE {
-                let buffer_size = config.buffer_size();
-                let buffer_size = match buffer_size {
-                    cpal::SupportedBufferSize::Range { min, .. } => {
-                        if BUFFER_LEN as u32 > *min {
-                            cpal::BufferSize::Fixed(BUFFER_LEN as u32)
-                        } else {
-                            cpal::BufferSize::Default
-                        }
+            let buffer_size = config.buffer_size();
+            let buffer_size = match buffer_size {
+                cpal::SupportedBufferSize::Range { min, .. } => {
+                    if BUFFER_LEN as u32 > *min {
+                        cpal::BufferSize::Fixed(BUFFER_LEN as u32)
+                    } else {
+                        cpal::BufferSize::Default
                     }
-                    _ => cpal::BufferSize::Default,
-                };
+                }
+                _ => cpal::BufferSize::Default,
+            };
+            if config.max_sample_rate() >= SAMPLE_RATE && config.min_sample_rate() <= SAMPLE_RATE {
                 (
-                    config.with_sample_rate(cpal::SampleRate(16000)),
+                    config.with_sample_rate(SAMPLE_RATE),
                     buffer_size,
                 )
             } else {
                 let sr = config.max_sample_rate();
-                let buffer_size = config.buffer_size();
-                let buffer_size = match buffer_size {
-                    cpal::SupportedBufferSize::Range { min, .. } => {
-                        if BUFFER_LEN as u32 > *min {
-                            cpal::BufferSize::Fixed(BUFFER_LEN as u32)
-                        } else {
-                            cpal::BufferSize::Default
-                        }
-                    }
-                    _ => cpal::BufferSize::Default,
-                };
                 (config.with_sample_rate(sr), buffer_size)
             }
         };
