@@ -18,8 +18,8 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install alsa dev
+      if: runner.os == 'Linux' 
       run: |
-        if [ "$RUNNER_OS" == "Linux" ]; then
           sudo apt-get update
           sudo apt-get install libasound2-dev
     - name: Build
