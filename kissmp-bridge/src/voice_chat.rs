@@ -4,6 +4,11 @@ use rodio::DeviceTrait;
 
 const SAMPLE_RATE: cpal::SampleRate = cpal::SampleRate(16000);
 const BUFFER_LEN: usize = 1920;
+const SAMPLE_FORMATS: &[cpal::SampleFormat] = &[
+    cpal::SampleFormat::I16,
+    cpal::SampleFormat::U16,
+    cpal::SampleFormat::F32
+];
 
 pub enum VoiceChatPlaybackEvent {
     Packet(u32, [f32; 3], Vec<u8>),
@@ -41,18 +46,16 @@ pub fn run_vc_recording(
             device.supported_input_configs().unwrap().collect();
         let mut channels = 1;
         for c in 1..5 {
-            if config.is_none() {
-                config = search_config(configs.clone(), c, cpal::SampleFormat::I16);
-            }
-            if config.is_none() {
-                config = search_config(configs.clone(), c, cpal::SampleFormat::U16);
-            }
-            if config.is_none() {
-                config = search_config(configs.clone(), c, cpal::SampleFormat::F32);
+            for sample_format in SAMPLE_FORMATS {
+                if config.is_none() {
+                    config = search_config(configs.clone(), c, *sample_format);
+                } else {
+                    break
+                }
             }
             if config.is_some() {
                 channels = c;
-                break;
+                break
             }
         }
         if config.is_none() {
