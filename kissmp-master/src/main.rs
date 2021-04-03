@@ -127,4 +127,3 @@ fn outdated_ver() -> String {
     }
     serde_json::to_string(&server_list).unwrap()
 }
-3
