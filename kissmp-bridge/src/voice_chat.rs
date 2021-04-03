@@ -101,6 +101,7 @@ pub fn run_vc_recording(
         println!("\tChannels: {:?}", stream_config.channels);
         println!("\tSample rate: {:?}", stream_config.sample_rate);
         println!("\tBuffer size: {:?}", stream_config.buffer_size);
+        println!("Use it with a key bound in BeamNG.Drive");
         let err_fn = move |err| {
             eprintln!("an error occurred on stream: {}", err);
         };
