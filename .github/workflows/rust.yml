@@ -17,6 +17,11 @@ jobs:
         os: [ubuntu-16.04, windows-latest]
     steps:
     - uses: actions/checkout@v2
+    - name: Install alsa dev
+      run: |
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          sudo apt-get update
+          sudo apt-get install libasound2-dev
     - name: Build
       working-directory: ./kissmp-bridge
       run: cargo build --verbose --release
