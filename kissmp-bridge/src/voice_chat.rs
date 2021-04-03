@@ -34,6 +34,7 @@ fn search_config(
 }
 
 // Too much repetetive code, lol
+// It's _less_ repetitive now, sorta.
 pub fn run_vc_recording(
     sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
     receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
