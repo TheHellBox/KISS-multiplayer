@@ -40,7 +40,7 @@ pub fn run_vc_recording(
 ) -> Result<(), anyhow::Error> {
     std::thread::spawn(move || {
         let device = cpal::default_host().default_input_device().unwrap();
-        println!("{}", device.name().unwrap());
+        println!("Using default audio input device: {}", device.name().unwrap());
         let mut config = None;
         let configs: Vec<cpal::SupportedStreamConfigRange> =
             device.supported_input_configs().unwrap().collect();
@@ -59,12 +59,18 @@ pub fn run_vc_recording(
             }
         }
         if config.is_none() {
-            let configs = device.supported_input_configs().unwrap();
-            for cfg in configs {
-                println!("{:?}", cfg);
+            println!("Device incompatible due to the parameters it offered:");
+            for cfg in device.supported_input_configs().unwrap() {
+                println!("\tChannels: {:?}",            cfg.channels());
+                // These are not important it seems at the moment but for when it does...
+                //println!("\tMinimum Sample Rate: {:?}", cfg.min_sample_rate());
+                //println!("\tMaximum Sample Rate: {:?}", cfg.max_sample_rate());
+                //println!("\tBuffer Size: {:?}",         cfg.buffer_size());
+                println!("\tSample Format: {:?}",       cfg.sample_format());
+                println!("---");
             }
-            println!("Failed to find suitable input device configuration");
-            return;
+            println!("Try a different default audio input in your OS's settings.");
+            return
         }
         let (config, buffer_size) = {
             let config = config.unwrap();
@@ -89,7 +95,11 @@ pub fn run_vc_recording(
                 (config.with_sample_rate(sr), buffer_size)
             }
         };
-        println!("{:?}", config.config());
+        let stream_config = config.config();
+        println!("Audio stream configured with the following settings:");
+        println!("\tChannels: {:?}", stream_config.channels);
+        println!("\tSample rate: {:?}", stream_config.sample_rate);
+        println!("\tBuffer size: {:?}", stream_config.buffer_size);
         let err_fn = move |err| {
             eprintln!("an error occurred on stream: {}", err);
         };
