@@ -46,20 +46,19 @@ pub fn run_vc_recording(
         let configs: Vec<cpal::SupportedStreamConfigRange> =
             device.supported_input_configs().unwrap().collect();
         let mut channels = 1;
-        let mut found_config = false;
-        for c in 1..5 {
-            for sample_format in SAMPLE_FORMATS {
-                config = search_config(configs.clone(), c, *sample_format);
-                if config.is_some() {
-                    channels = c;
-                    found_config = true;
-                    break
+        // https://github.com/rust-lang/rfcs/issues/961#issuecomment-264699920
+        let found_config = 'l: loop {
+            for c in 1..5 {
+                for sample_format in SAMPLE_FORMATS {
+                    config = search_config(configs.clone(), c, *sample_format);
+                    if config.is_some() {
+                        channels = c;
+                        break 'l true;
+                    }
                 }
             }
-            if found_config {
-                break
-            }
-        }
+            break false
+        };
         if !found_config {
             println!("Device incompatible due to the parameters it offered:");
             for cfg in device.supported_input_configs().unwrap() {
