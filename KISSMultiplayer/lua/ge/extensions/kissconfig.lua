@@ -19,6 +19,7 @@ local function save_config()
     name = ffi.string(kissui.player_name),
     addr = ffi.string(kissui.addr),
     show_nametags = kissui.show_nametags[0],
+    show_drivers = kissui.show_drivers[0],
     window_opacity = kissui.window_opacity[0],
     base_secret = secret
   }
@@ -48,6 +49,9 @@ local function load_config()
   if config.show_nametags ~= nil then
     kissui.show_nametags[0] = config.show_nametags
   end
+  if config.show_drivers ~= nil then
+    kissui.show_drivers[0] = config.show_drivers
+  end
   if config.window_opacity ~= nil then
     kissui.window_opacity[0] = config.window_opacity
   end
@@ -62,6 +66,10 @@ local function init()
   if #FS:findFiles("/mods/", "KISSMultiplayer.zip", 1000) == 0 then
     kissui.incorrect_install = true
   end
+    -- Hack to reload input actions
+  local actions = require("lua/ge/extensions/core/input/actions")
+  extensions.core_input_actions = actions
+  core_input_bindings.onFirstUpdate()
 end
 
 M.save_config = save_config

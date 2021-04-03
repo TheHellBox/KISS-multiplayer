@@ -2,7 +2,7 @@ pub mod vehicle;
 use vehicle::*;
 use serde::{Serialize, Deserialize};
 
-pub const VERSION: (u32, u32) = (0, 3);
+pub const VERSION: (u32, u32) = (0, 4);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientInfoPrivate {
@@ -17,6 +17,7 @@ pub struct ClientInfoPublic {
     pub id: u32,
     pub current_vehicle: u32,
     pub ping: u32,
+    pub hide_nametag: bool
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -47,6 +48,7 @@ impl Default for ClientInfoPublic {
             id: 0,
             current_vehicle: 0,
             ping: 0,
+            hide_nametag: false
         }
     }
 }
@@ -66,6 +68,13 @@ pub enum ClientCommand {
     CouplerAttached(CouplerAttached),
     CouplerDetached(CouplerDetached),
     ElectricsUndefinedUpdate(u32, ElectricsUndefined),
+    VoiceChatPacket(Vec<u8>),
+    // Only used by bridge
+    SpatialUpdate([f32; 3], [f32; 3]),
+    // Only used by bridge
+    StartTalking,
+    // Only used by bridge
+    EndTalking,
     Ping(u16)
 }
 
@@ -87,5 +96,6 @@ pub enum ServerCommand {
     ElectricsUndefinedUpdate(u32, ElectricsUndefined),
     ServerInfo(ServerInfo),
     FilePart(String, Vec<u8>, u32, u32, u32),
+    VoiceChatPacket(u32, [f32; 3], Vec<u8>),
     Pong(f64)
 }

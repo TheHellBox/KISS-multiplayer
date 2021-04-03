@@ -1,6 +1,6 @@
 [package]
 name = "kissmp-bridge"
-version = "0.2.0"
+version = "0.4.0"
 authors = ["hellbox"]
 edition = "2018"
 
@@ -24,3 +24,7 @@ rustls = { version = "0.19.0", features = ["dangerous_configuration"] }
 tokio = { version = "1.4", features = ["time", "macros", "sync", "io-util", "net"] }
 discord-rpc-client = {version = "0.3", optional = true}
 percent-encoding = "2.1.0"
+audiopus = "0.2"
+rodio = "0.13.1"
+cpal = "0.13"
+fon = "0.5.0"

@@ -1,4 +1,8 @@
-pub async fn decode(data: &[u8], writer: tokio::sync::mpsc::Sender<Vec<u8>>) {
+pub async fn decode(
+    data: &[u8],
+    writer: tokio::sync::mpsc::Sender<Vec<u8>>,
+    vc_pb_writer: Option<std::sync::mpsc::Sender<crate::voice_chat::VoiceChatPlaybackEvent>>,
+) {
     let decoded = bincode::deserialize::<shared::ServerCommand>(data);
     if let Ok(decoded) = decoded {
         match decoded {
@@ -12,6 +16,15 @@ pub async fn decode(data: &[u8], writer: tokio::sync::mpsc::Sender<Vec<u8>>) {
                 result.append(&mut data_left.to_le_bytes().to_vec());
                 result.append(&mut data.clone());
                 writer.send(result).await.unwrap();
+            }
+            shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
+                if let Some(vc_pb_writer) = vc_pb_writer {
+                    let _ = vc_pb_writer
+                        .send(crate::voice_chat::VoiceChatPlaybackEvent::Packet(
+                            client, pos, data,
+                        ))
+                        .unwrap();
+                }
             }
             _ => {
                 let json = serde_json::to_string(&decoded);

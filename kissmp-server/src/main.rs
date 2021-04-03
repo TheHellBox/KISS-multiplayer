@@ -101,7 +101,7 @@ impl Server {
             .with_socket(UdpSocket::bind(&addr).unwrap())
             .unwrap();
 
-        let (client_events_tx, client_events_rx) = mpsc::channel(128);
+        let (client_events_tx, client_events_rx) = mpsc::channel(512);
         let mut client_events_rx = ReceiverStream::new(client_events_rx).fuse();
         let mut incoming = incoming
             .inspect(|_conn| println!("Client is trying to connect to the server"))
@@ -202,6 +202,7 @@ impl Server {
         ) -> anyhow::Result<ClientInfoPrivate> {
             let mut stream = new_connection.uni_streams.try_next().await?;
             if let Some(stream) = &mut stream {
+                println!("Attempting to receive client info...");
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
                 let len = u32::from_le_bytes(buf) as usize;
@@ -250,6 +251,7 @@ impl Server {
                 id: id,
                 current_vehicle: 0,
                 ping: 0,
+                hide_nametag: false
             };
             let client_connection = Connection {
                 conn: connection_clone.clone(),

@@ -1,0 +1,3 @@
+{
+    "voicechat":{"cat":"general", "order":  0, "ctx": "tlua", "onDown"  :"kissvoicechat.start_vc()", "onUp": "kissvoicechat.end_vc()", "isBasic":true, "title": "Voice Chat", "desc": "KissMP Voice qChat" }
+}

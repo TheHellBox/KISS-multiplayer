@@ -8,7 +8,7 @@ M.chat = {
   {text = "KissMP chat", has_color = false}
 }
 M.server_list = {}
-M.master_addr = "http://51.210.135.45:3692/"
+M.master_addr = "http://kissmp.online:3692/"
 M.bridge_launched = false
 
 M.show_download = false
@@ -29,6 +29,7 @@ local ui_showing = false
 M.addr = imgui.ArrayChar(128)
 M.player_name = imgui.ArrayChar(32, "Unknown")
 M.show_nametags = imgui.BoolPtr(true)
+M.show_drivers = imgui.BoolPtr(true)
 M.window_opacity = imgui.FloatPtr(0.8)
 
 local add_favorite_addr = imgui.ArrayChar(128)
@@ -162,7 +163,7 @@ local function refresh_server_list()
   if b and b == "ok" then
     M.bridge_launched = true
   end
-  local b, _, _  = http.request("http://127.0.0.1:3693/"..M.master_addr)
+  local b, _, _  = http.request("http://127.0.0.1:3693/"..M.master_addr.."/0.4")
   if b then
     M.server_list = jsonDecode(b) or {}
   end
@@ -369,7 +370,9 @@ local function draw_settings_tab()
   if imgui.Checkbox("Show Name Tags", M.show_nametags) then
     kissconfig.save_config()
   end
-  
+  if imgui.Checkbox("Show Players In Vehicles", M.show_drivers) then
+    kissconfig.save_config()
+  end
   imgui.Text("Window Opacity")
   imgui.SameLine()
   if imgui.SliderFloat("###window_opacity", M.window_opacity, 0, 1) then

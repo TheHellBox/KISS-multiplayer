@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use warp::Filter;
 
-const VERSION: (u32, u32) = (0, 3);
+const VERSION: (u32, u32) = (0, 4);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServerInfo {
@@ -80,7 +80,10 @@ async fn main() {
         });
     let server_list = server_list_r.clone();
     let addresses = addresses_r.clone();
-    let get = warp::get().map(move || {
+    let ver = warp::path::param().map(move |ver: String| {
+        if ver != String::from("0.4") {
+            return outdated_ver()
+        }
         let server_list = server_list.clone();
         let addresses = addresses.clone();
         {
@@ -101,6 +104,27 @@ async fn main() {
         };
         response
     });
-    let routes = post.or(get);
+    let outdated = warp::get().map(move || {
+        return outdated_ver()
+    });
+    let routes = post.or(ver).or(outdated);
     warp::serve(routes).run(([0, 0, 0, 0], 3692)).await;
 }
+
+fn outdated_ver() -> String {
+    let mut server_list = ServerList(HashMap::with_capacity(5));
+    for k in 0..5 {
+        server_list.0.insert(SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)), k), ServerInfo {
+            name: "You're running an outdated version of KissMP. Please, consider updating to a newer version".to_string(),
+            player_count: 0,
+            max_players: 0,
+            description: "You can find updated version of KissMP on a github releases page".to_string(),
+            map: "Update to a newer version of KissMP".to_string(),
+            port: 0,
+            version: (0, 4),
+            update_time: None
+        });
+    }
+    serde_json::to_string(&server_list).unwrap()
+}
+3

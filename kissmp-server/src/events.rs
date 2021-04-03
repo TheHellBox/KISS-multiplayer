@@ -245,6 +245,27 @@ impl Server {
                                 .send(ServerCommand::CouplerDetached(event.clone()))
                                 .await;
                         }
+                    },
+                    VoiceChatPacket(data) => {
+                        let connection = self.connections.get_mut(&client_id).unwrap();
+                        let position = {
+                            if let Some(vehicle) = self.vehicles.get(&connection.client_info_public.current_vehicle) {
+                                vehicle.data.position
+                            }
+                            else{
+                                [0.0, 0.0, 0.0]
+                            }
+                        };
+                        let data = bincode::serialize(&shared::ServerCommand::VoiceChatPacket(
+                            client_id,
+                            position,
+                            data,
+                        )).unwrap();
+                        // TODO: Check for distane
+                        for (id, client) in &self.connections {
+                            if client_id == *id { continue; }
+                            let _ = client.conn.send_datagram(data.clone().into());
+                        }
                     }
                     _ => {}
                 }
@@ -252,3 +273,8 @@ impl Server {
         }
     }
 }
+
+
+//fn _distance_sqrt(a: [f32; 3], b: [f32; 3]) -> f32 {
+//    return ((b[0].powi(2) - a[0].powi(2)) +  (b[1].powi(2) - a[1].powi(2)) +  (b[2].powi(2) - a[2].powi(2)))
+//}

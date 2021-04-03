@@ -22,7 +22,7 @@ pub async fn spawn_discord_rpc(mut discord_rx: std::sync::mpsc::Receiver<crate::
             let _ = drpc_client.set_activity(|activity| {
                 activity
                     .details(state.clone().server_name.unwrap())
-                //.state("[1/8]")
+                    //.state("[1/8]")
                     .assets(|assets| assets.large_image("kissmp_logo"))
                 //.secrets(|secrets| secrets.game("Test").join("127.0.0.1:3698"))
             });

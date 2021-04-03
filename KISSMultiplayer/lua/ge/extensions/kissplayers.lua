@@ -96,28 +96,29 @@ local function update_players(dt)
   for id, player_data in pairs(network.players) do
     local vehicle = be:getObjectByID(vehiclemanager.id_map[player_data.current_vehicle or -1] or -1)
     if vehicle and (not blacklist[vehicle:getJBeamFilename()]) then
-      local hide = be:getPlayerVehicle(0) and (be:getPlayerVehicle(0):getID() == vehicle:getID()) and (current_camera_mode == "driver")
-      if (not M.players_in_cars[id]) and (not hide) then
-        local player = createObject('TSStatic')
-        player:setField("shapeName", 0, "/art/shapes/kissmp_playermodels/base_nb_head.dae")
-        player:setField("dynamic", 0, "true")
-        player.scale = Point3F(1, 1, 1)
-        math.randomseed(id)
-        player:setField('instanceColor', 0, string.format("%g %g %g %g", 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 1))
-        math.randomseed(os.time())
-        player:registerObject("player_head"..id)
-        M.players_in_cars[id] = player
-        M.player_heads_attachments[id] = vehicle:getID()
-      end
-      if hide and  M.players_in_cars[id] then
-        M.players_in_cars[id]:delete()
-        M.players_in_cars[id] = nil
-        M.player_heads_attachments[id] = nil
-      end
       local cam_node, _ = core_camera.getDriverData(vehicle)
       if cam_node and kisstransform.local_transforms[vehicle:getID()] then
         local p = vec3(vehicle:getNodePosition(cam_node)) + vec3(vehicle:getPosition()) + vec3(vehicle:getVelocity()) * dt
         local r = kisstransform.local_transforms[vehicle:getID()].rotation
+        local hide = be:getPlayerVehicle(0) and (be:getPlayerVehicle(0):getID() == vehicle:getID()) and (vec3(getCameraPosition()):distance(p) < 2) --and (current_camera_mode == "driver")
+        hide = hide or (not kissui.show_drivers[0])
+        if (not M.players_in_cars[id]) and (not hide) then
+          local player = createObject('TSStatic')
+          player:setField("shapeName", 0, "/art/shapes/kissmp_playermodels/base_nb_head.dae")
+          player:setField("dynamic", 0, "true")
+          player.scale = Point3F(1, 1, 1)
+          math.randomseed(id)
+          player:setField('instanceColor', 0, string.format("%g %g %g %g", 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 1))
+          math.randomseed(os.time())
+          player:registerObject("player_head"..id)
+          M.players_in_cars[id] = player
+          M.player_heads_attachments[id] = vehicle:getID()
+        end
+        if hide and M.players_in_cars[id] then
+          M.players_in_cars[id]:delete()
+          M.players_in_cars[id] = nil
+          M.player_heads_attachments[id] = nil
+        end
         local player = M.players_in_cars[id]
         player:setPosRot(
           p.x, p.y, p.z,
@@ -128,7 +129,15 @@ local function update_players(dt)
       if M.players_in_cars[id] then
         M.players_in_cars[id]:delete()
         M.players_in_cars[id] = nil
+        M.player_heads_attachments[id] = nil
       end
+    end
+  end
+  for id, v in pairs(M.players_in_cars) do
+    if not be:getObjectByID(M.player_heads_attachments[id] or -1) then
+      v:delete()
+      M.players_in_cars[id] = nil
+      M.player_heads_attachments[id] = nil
     end
   end
 end

@@ -25,5 +25,8 @@ registerCoreModule("network")
 load("kissconfig")
 registerCoreModule("kissconfig")
 
+load("kissvoicechat")
+registerCoreModule("kissvoicechat")
+
 --load("kissutils")
 --registerCoreModule("kissutils")

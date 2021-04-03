@@ -2,6 +2,7 @@ pub mod decoder;
 pub mod discord;
 pub mod encoder;
 pub mod http_proxy;
+pub mod voice_chat;
 
 use futures::{StreamExt, TryStreamExt};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
@@ -75,18 +76,12 @@ async fn main() {
             let _ = writer.write_all(&[1]).await;
 
             let connection = connection.unwrap();
-            // That's some stupid naming
             let stream_connection = connection.connection.clone();
+            let (sender_tx, mut sender_rx) =
+                tokio::sync::mpsc::unbounded_channel::<(bool, shared::ClientCommand)>();
             tokio::spawn(async move {
-                let mut buffer = [0; 1];
-                while let Ok(_) = reader.read_exact(&mut buffer).await {
-                    let reliable = buffer[0] == 1;
-                    let mut len_buf = [0; 4];
-                    let _ = reader.read_exact(&mut len_buf).await;
-                    let len = i32::from_le_bytes(len_buf) as usize;
-                    let mut data = vec![0; len];
-                    let _ = reader.read_exact(&mut data).await;
-                    let mut data = encoder::encode(&data);
+                while let Some((reliable, next)) = sender_rx.recv().await {
+                    let mut data = encoder::encode(&next);
                     if !reliable {
                         let _ = stream_connection.send_datagram(data.into());
                         continue;
@@ -96,17 +91,65 @@ async fn main() {
                     buffer.append(&mut len_buf.to_vec());
                     buffer.append(&mut data);
                     if let Ok(mut stream) = stream_connection.open_uni().await {
-                        let _ = stream.write_all(&buffer).await;
+                        stream.write_all(&buffer).await.unwrap();
+                    } else {
+                        break;
+                    }
+                }
+            });
+            let stream_connection = connection.connection.clone();
+            let (vc_rc_writer, vc_rc_reader) = std::sync::mpsc::channel();
+            let _ = voice_chat::run_vc_recording(sender_tx.clone(), vc_rc_reader);
+            let (vc_pb_writer, vc_pb_reader) = std::sync::mpsc::channel();
+            voice_chat::run_vc_playback(vc_pb_reader);
+            let vc_pb_writer_c = vc_pb_writer.clone();
+            tokio::spawn(async move {
+                let mut buffer = [0; 1];
+                while let Ok(_) = reader.read_exact(&mut buffer).await {
+                    let reliable = buffer[0] == 1;
+                    let mut len_buf = [0; 4];
+                    let _ = reader.read_exact(&mut len_buf).await;
+                    let len = i32::from_le_bytes(len_buf) as usize;
+                    let mut data = vec![0; len];
+                    let _ = reader.read_exact(&mut data).await;
+                    let decoded = serde_json::from_slice::<shared::ClientCommand>(&data);
+                    if let Ok(decoded) = decoded {
+                        match decoded {
+                            shared::ClientCommand::SpatialUpdate(left_ear, right_ear) => {
+                                let _ = vc_pb_writer_c.send(
+                                    voice_chat::VoiceChatPlaybackEvent::PositionUpdate(
+                                        left_ear, right_ear,
+                                    ),
+                                );
+                            },
+                            shared::ClientCommand::StartTalking => {
+                                let _ = vc_rc_writer.send(voice_chat::VoiceChatRecordingEvent::Start);
+                            },
+                            shared::ClientCommand::EndTalking => {
+                                let _ = vc_rc_writer.send(voice_chat::VoiceChatRecordingEvent::End);
+                            }
+                            _ => sender_tx.send((reliable, decoded)).unwrap(),
+                        };
+                    }
+                    else{
+                        println!("error decoding json {:?}", decoded);
+                        println!("{:?}", String::from_utf8(data));
                     }
                 }
                 println!("Connection with game is closed");
                 stream_connection.close(0u32.into(), b"Client has left the game.");
-                discord_tx
-                    .send(DiscordState { server_name: None })
-                    .unwrap();
+                discord_tx.send(DiscordState { server_name: None }).unwrap();
             });
             let (writer_tx, writer_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(128);
-            if let Err(r) = drive_receive(connection, writer, writer_tx.clone(), writer_rx).await {
+            if let Err(r) = drive_receive(
+                connection,
+                writer,
+                writer_tx.clone(),
+                writer_rx,
+                vc_pb_writer,
+            )
+            .await
+            {
                 let reason = r.to_string();
                 println!("Disconnected! Reason: {}", reason);
                 let reason_bytes = reason.into_bytes().to_vec();
@@ -124,6 +167,7 @@ pub async fn drive_receive(
     mut writer: tokio::io::WriteHalf<tokio::net::TcpStream>,
     writer_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
     mut writer_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    vc_pb_writer: std::sync::mpsc::Sender<voice_chat::VoiceChatPlaybackEvent>,
 ) -> anyhow::Result<()> {
     tokio::spawn(async move {
         loop {
@@ -158,7 +202,7 @@ pub async fn drive_receive(
                     let len = u32::from_le_bytes(len_buf);
                     let mut buffer = vec![0; len as usize];
                     stream.read_exact(&mut buffer).await?;
-                    decoder::decode(&buffer, writer_tx).await;
+                    decoder::decode(&buffer, writer_tx, None).await;
                 }
                 else{
                     return Err(anyhow::Error::msg("Connection lost"));
@@ -168,7 +212,8 @@ pub async fn drive_receive(
                 let writer_tx = writer_tx.clone();
                 let data = data?;
                 //println!("data {:?}", data);
-                decoder::decode(&data[4..], writer_tx).await;
+                let vc_pb_writer = vc_pb_writer.clone();
+                decoder::decode(&data[4..], writer_tx, Some(vc_pb_writer)).await;
             }
         };
     }

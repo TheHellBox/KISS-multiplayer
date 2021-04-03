@@ -124,9 +124,6 @@ end
 local function handle_player_disconnected(data)
   local id = data
   M.players[id] = nil
-  kissplayers.players_in_cars[id]:delete()
-  kissplayers.players_in_cars[id] = nil
-  kissplayers.player_heads_attachments[id] = nil
 end
 
 local function onExtensionLoaded()
@@ -242,7 +239,7 @@ local function connect(addr, player_name)
     ClientInfo = {
       name = player_name,
       secret = generate_secret(server_info.server_identifier),
-      client_version = {0, 3}
+      client_version = {0, 4}
     }
   }
   send_data(client_info, true)
