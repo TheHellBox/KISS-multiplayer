@@ -46,20 +46,21 @@ pub fn run_vc_recording(
         let configs: Vec<cpal::SupportedStreamConfigRange> =
             device.supported_input_configs().unwrap().collect();
         let mut channels = 1;
+        let mut found_config = false;
         for c in 1..5 {
             for sample_format in SAMPLE_FORMATS {
-                if config.is_none() {
-                    config = search_config(configs.clone(), c, *sample_format);
-                } else {
+                config = search_config(configs.clone(), c, *sample_format);
+                if config.is_some() {
+                    channels = c;
+                    found_config = true;
                     break
                 }
             }
-            if config.is_some() {
-                channels = c;
+            if found_config {
                 break
             }
         }
-        if config.is_none() {
+        if !found_config {
             println!("Device incompatible due to the parameters it offered:");
             for cfg in device.supported_input_configs().unwrap() {
                 println!("\tChannels: {:?}",            cfg.channels());
