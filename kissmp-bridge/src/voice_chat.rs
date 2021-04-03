@@ -111,12 +111,15 @@ pub fn run_vc_recording(
         let sample_rate = config.sample_rate();
         let sample_format = config.sample_format();
         let mut config = config.config();
+        let send_m = std::sync::Arc::new(std::sync::Mutex::new(true));
+        let send = send_m.clone();
         config.buffer_size = buffer_size;
         let stream = match sample_format {
             cpal::SampleFormat::F32 => device
                 .build_input_stream(
                     &config,
                     move |data: &[f32], _: &_| {
+                        if !*send.clone().lock().unwrap() { return };
                         let samples: Vec<i16> = data
                             .to_vec()
                             .iter()
@@ -138,6 +141,7 @@ pub fn run_vc_recording(
                 .build_input_stream(
                     &config,
                     move |data: &[i16], _: &_| {
+                        if !*send.lock().unwrap() { return };
                         encode_and_send_samples(
                             &mut buffer,
                             &data,
@@ -154,6 +158,7 @@ pub fn run_vc_recording(
                 .build_input_stream(
                     &config,
                     move |data: &[u16], _: &_| {
+                        if !*send.lock().unwrap() { return };
                         let samples: Vec<i16> = data
                             .to_vec()
                             .iter()
@@ -172,14 +177,16 @@ pub fn run_vc_recording(
                 )
                 .unwrap(),
         };
-        stream.pause().unwrap();
+        stream.play().unwrap();
         loop {
             match receiver.recv() {
                 Ok(VoiceChatRecordingEvent::Start) => {
-                    let _ = stream.play();
+                    let mut send = send_m.lock().unwrap();
+                    *send = true;
                 },
                 Ok(VoiceChatRecordingEvent::End) => {
-                    let _ = stream.pause();
+                    let mut send = send_m.lock().unwrap();
+                    *send = false;
                 },
                 _ => {
                     break
@@ -254,7 +261,7 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                             sinks.insert(client, sink);
                         }
                         let sink = sinks.get(&client).unwrap();
-                        let position = [position[0] / 1.6, position[1] / 1.6, position[2] / 1.6];
+                        let position = [position[0] / 3.0, position[1] / 3.0, position[2] / 3.0];
                         sink.set_emitter_position(position);
                         let mut samples: Vec<i16> = Vec::with_capacity(BUFFER_LEN);
                         samples.resize(BUFFER_LEN, 0);
@@ -266,8 +273,8 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                     }
                     VoiceChatPlaybackEvent::PositionUpdate(left_ear, right_ear) => {
                         for (_, sink) in &mut sinks {
-                            let left_ear = [left_ear[0] / 1.6, left_ear[1] / 1.6, left_ear[2] / 1.6];
-                            let right_ear = [right_ear[0] / 1.6, right_ear[1] / 1.6, right_ear[2] / 1.6];
+                            let left_ear = [left_ear[0] / 3.0, left_ear[1] / 3.0, left_ear[2] / 3.0];
+                            let right_ear = [right_ear[0] / 3.0, right_ear[1] / 3.0, right_ear[2] / 3.0];
                             sink.set_left_ear_position(left_ear);
                             sink.set_right_ear_position(right_ear);
                         }

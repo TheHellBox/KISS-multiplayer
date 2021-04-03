@@ -85,7 +85,7 @@ local function update_players(dt)
     if player and data then
       data.time_past = data.time_past + dt
       data.position = lerp(data.position, data.target_position + data.velocity * data.time_past, clamp(dt * M.lerp_factor, 0, 1))
-      local p = data.position + data.velocity * dt
+      local p = data.position
       --player.position = m
       player:setPosRot(
         p.x, p.y, p.z,
