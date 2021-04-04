@@ -121,17 +121,17 @@ async fn main() {
                                         left_ear, right_ear,
                                     ),
                                 );
-                            },
+                            }
                             shared::ClientCommand::StartTalking => {
-                                let _ = vc_rc_writer.send(voice_chat::VoiceChatRecordingEvent::Start);
-                            },
+                                let _ =
+                                    vc_rc_writer.send(voice_chat::VoiceChatRecordingEvent::Start);
+                            }
                             shared::ClientCommand::EndTalking => {
                                 let _ = vc_rc_writer.send(voice_chat::VoiceChatRecordingEvent::End);
                             }
                             _ => sender_tx.send((reliable, decoded)).unwrap(),
                         };
-                    }
-                    else{
+                    } else {
                         println!("error decoding json {:?}", decoded);
                         println!("{:?}", String::from_utf8(data));
                     }
@@ -170,7 +170,7 @@ pub async fn drive_receive(
     vc_pb_writer: std::sync::mpsc::Sender<voice_chat::VoiceChatPlaybackEvent>,
 ) -> anyhow::Result<()> {
     tokio::spawn(async move {
-        while let Some(next) = writer_rx.recv().await{
+        while let Some(next) = writer_rx.recv().await {
             let _ = writer.write_all(&next).await;
         }
     });

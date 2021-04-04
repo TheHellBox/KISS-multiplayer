@@ -251,7 +251,7 @@ impl Server {
                 id: id,
                 current_vehicle: 0,
                 ping: 0,
-                hide_nametag: false
+                hide_nametag: false,
             };
             let client_connection = Connection {
                 conn: connection_clone.clone(),

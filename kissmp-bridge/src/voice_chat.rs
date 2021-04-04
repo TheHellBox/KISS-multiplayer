@@ -119,7 +119,9 @@ pub fn run_vc_recording(
                 .build_input_stream(
                     &config,
                     move |data: &[f32], _: &_| {
-                        if !*send.clone().lock().unwrap() { return };
+                        if !*send.clone().lock().unwrap() {
+                            return;
+                        };
                         let samples: Vec<i16> = data
                             .to_vec()
                             .iter()
@@ -141,7 +143,9 @@ pub fn run_vc_recording(
                 .build_input_stream(
                     &config,
                     move |data: &[i16], _: &_| {
-                        if !*send.lock().unwrap() { return };
+                        if !*send.lock().unwrap() {
+                            return;
+                        };
                         encode_and_send_samples(
                             &mut buffer,
                             &data,
@@ -158,7 +162,9 @@ pub fn run_vc_recording(
                 .build_input_stream(
                     &config,
                     move |data: &[u16], _: &_| {
-                        if !*send.lock().unwrap() { return };
+                        if !*send.lock().unwrap() {
+                            return;
+                        };
                         let samples: Vec<i16> = data
                             .to_vec()
                             .iter()
@@ -183,11 +189,11 @@ pub fn run_vc_recording(
                 VoiceChatRecordingEvent::Start => {
                     let mut send = send_m.lock().unwrap();
                     *send = true;
-                },
+                }
                 VoiceChatRecordingEvent::End => {
                     let mut send = send_m.lock().unwrap();
                     *send = false;
-                },
+                }
             }
         }
     });
@@ -250,7 +256,7 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                             [0.0, -1.0, 0.0],
                             [0.0, 1.0, 0.0],
                         )
-                            .unwrap();
+                        .unwrap();
                         sink.set_volume(2.0);
                         sink.play();
                         let updated_at = std::time::Instant::now();
@@ -275,7 +281,8 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                             remove_list.push(entry.clone());
                         }
                         let left_ear = [left_ear[0] / 4.0, left_ear[1] / 4.0, left_ear[2] / 4.0];
-                        let right_ear = [right_ear[0] / 4.0, right_ear[1] / 4.0, right_ear[2] / 4.0];
+                        let right_ear =
+                            [right_ear[0] / 4.0, right_ear[1] / 4.0, right_ear[2] / 4.0];
                         sink.set_left_ear_position(left_ear);
                         sink.set_right_ear_position(right_ear);
                     }
