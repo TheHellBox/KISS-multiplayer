@@ -1,3 +1,4 @@
+local VERSION = "0.4.1"
 local M = {}
 local http = require("socket.http")
 
@@ -163,7 +164,7 @@ local function refresh_server_list()
   if b and b == "ok" then
     M.bridge_launched = true
   end
-  local b, _, _  = http.request("http://127.0.0.1:3693/"..M.master_addr.."/0.4.1")
+  local b, _, _  = http.request("http://127.0.0.1:3693/"..M.master_addr.."/"..VERSION)
   if b then
     M.server_list = jsonDecode(b) or {}
   end

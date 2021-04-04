@@ -7,6 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+shared = { path = "../shared" }
 #tide = "0.15.0"
 warp = "0.2"
 serde_json="1.0"

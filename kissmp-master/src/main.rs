@@ -7,8 +7,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use warp::Filter;
-
-const VERSION: (u32, u32) = (0, 4);
+use shared::{VERSION_STR, VERSION};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServerInfo {
@@ -81,7 +80,7 @@ async fn main() {
     let server_list = server_list_r.clone();
     let addresses = addresses_r.clone();
     let ver = warp::path::param().map(move |ver: String| {
-        if ver != String::from("0.4.1") {
+        if ver != VERSION_STR && ver != "latest" {
             return outdated_ver()
         }
         let server_list = server_list.clone();
@@ -121,7 +120,7 @@ fn outdated_ver() -> String {
             description: "You can find updated version of KissMP on a github releases page".to_string(),
             map: "Update to a newer version of KissMP".to_string(),
             port: 0,
-            version: (0, 4),
+            version: VERSION,
             update_time: None
         });
     }
