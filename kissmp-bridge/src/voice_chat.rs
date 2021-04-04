@@ -4,6 +4,11 @@ use rodio::DeviceTrait;
 
 const SAMPLE_RATE: cpal::SampleRate = cpal::SampleRate(16000);
 const BUFFER_LEN: usize = 1920;
+const SAMPLE_FORMATS: &[cpal::SampleFormat] = &[
+    cpal::SampleFormat::I16,
+    cpal::SampleFormat::U16,
+    cpal::SampleFormat::F32
+];
 
 pub enum VoiceChatPlaybackEvent {
     Packet(u32, [f32; 3], Vec<u8>),
@@ -28,76 +33,67 @@ fn search_config(
     None
 }
 
-// Too much repetetive code, lol
 pub fn run_vc_recording(
     sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
     receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
 ) -> Result<(), anyhow::Error> {
     std::thread::spawn(move || {
         let device = cpal::default_host().default_input_device().unwrap();
-        println!("{}", device.name().unwrap());
+        println!("Using default audio input device: {}", device.name().unwrap());
         let mut config = None;
         let configs: Vec<cpal::SupportedStreamConfigRange> =
             device.supported_input_configs().unwrap().collect();
         let mut channels = 1;
-        for c in 1..5 {
-            if config.is_none() {
-                config = search_config(configs.clone(), c, cpal::SampleFormat::I16);
+        // https://github.com/rust-lang/rfcs/issues/961#issuecomment-264699920
+        let found_config = 'l: loop {
+            for c in 1..5 {
+                for sample_format in SAMPLE_FORMATS {
+                    config = search_config(configs.clone(), c, *sample_format);
+                    if config.is_some() {
+                        channels = c;
+                        break 'l true;
+                    }
+                }
             }
-            if config.is_none() {
-                config = search_config(configs.clone(), c, cpal::SampleFormat::U16);
+            break false
+        };
+        if !found_config {
+            println!("Device incompatible due to the parameters it offered:");
+            for cfg in device.supported_input_configs().unwrap() {
+                // Not showing every field of SupportedStreamConfigRange since they are not important at this time.
+                // Only printing fields we currently care about. 
+                println!("\tChannels: {:?}",        cfg.channels());
+                println!("\tSample Format: {:?}",   cfg.sample_format());
+                println!("---");
             }
-            if config.is_none() {
-                config = search_config(configs.clone(), c, cpal::SampleFormat::F32);
-            }
-            if config.is_some() {
-                channels = c;
-                break;
-            }
-        }
-        if config.is_none() {
-            let configs = device.supported_input_configs().unwrap();
-            for cfg in configs {
-                println!("{:?}", cfg);
-            }
-            println!("Failed to find suitable input device configuration");
-            return;
+            println!("Try a different default audio input in your OS's settings.");
+            return
         }
         let (config, buffer_size) = {
             let config = config.unwrap();
-            if config.max_sample_rate() >= SAMPLE_RATE && config.min_sample_rate() <= SAMPLE_RATE {
-                let buffer_size = config.buffer_size();
-                let buffer_size = match buffer_size {
-                    cpal::SupportedBufferSize::Range { min, .. } => {
-                        if BUFFER_LEN as u32 > *min {
-                            cpal::BufferSize::Fixed(BUFFER_LEN as u32)
-                        } else {
-                            cpal::BufferSize::Default
-                        }
+            let buffer_size = match config.buffer_size() {
+                cpal::SupportedBufferSize::Range { min, .. } => {
+                    if BUFFER_LEN as u32 > *min {
+                        cpal::BufferSize::Fixed(BUFFER_LEN as u32)
+                    } else {
+                        cpal::BufferSize::Default
                     }
-                    _ => cpal::BufferSize::Default,
-                };
-                (
-                    config.with_sample_rate(cpal::SampleRate(16000)),
-                    buffer_size,
-                )
+                }
+                _ => cpal::BufferSize::Default,
+            };
+            if config.max_sample_rate() >= SAMPLE_RATE && config.min_sample_rate() <= SAMPLE_RATE {
+                (config.with_sample_rate(SAMPLE_RATE),  buffer_size)
             } else {
                 let sr = config.max_sample_rate();
-                let buffer_size = config.buffer_size();
-                let buffer_size = match buffer_size {
-                    cpal::SupportedBufferSize::Range { min, .. } => {
-                        if BUFFER_LEN as u32 > *min {
-                            cpal::BufferSize::Fixed(BUFFER_LEN as u32)
-                        } else {
-                            cpal::BufferSize::Default
-                        }
-                    }
-                    _ => cpal::BufferSize::Default,
-                };
-                (config.with_sample_rate(sr), buffer_size)
+                (config.with_sample_rate(sr),           buffer_size)
             }
         };
-        println!("{:?}", config.config());
+        let stream_config = config.config();
+        println!("Audio stream configured with the following settings:");
+        println!("\tChannels: {:?}", stream_config.channels);
+        println!("\tSample rate: {:?}", stream_config.sample_rate);
+        println!("\tBuffer size: {:?}", stream_config.buffer_size);
+        println!("Use it with a key bound in BeamNG.Drive");
         let err_fn = move |err| {
             eprintln!("an error occurred on stream: {}", err);
         };
@@ -249,7 +245,7 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
         while let Ok(event) = receiver.recv() {
             match event {
                 VoiceChatPlaybackEvent::Packet(client, position, encoded) => {
-                    if sinks.get(&client).is_none() {
+                    let (sink, updated_at) = sinks.entry(client).or_insert_with(|| {
                         let sink = rodio::SpatialSink::try_new(
                             &stream_handle,
                             position,
@@ -259,10 +255,8 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                         .unwrap();
                         sink.set_volume(2.0);
                         sink.play();
-                        let updated_at = std::time::Instant::now();
-                        sinks.insert(client, (sink, updated_at));
-                    }
-                    let (sink, updated_at) = sinks.get_mut(&client).unwrap();
+                        (sink, std::time::Instant::now())
+                    });
                     *updated_at = std::time::Instant::now();
                     let position = [position[0] / 3.0, position[1] / 3.0, position[2] / 3.0];
                     sink.set_emitter_position(position);
@@ -276,9 +270,9 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                 }
                 VoiceChatPlaybackEvent::PositionUpdate(left_ear, right_ear) => {
                     let mut remove_list = vec![];
-                    for (entry, (sink, updated_at)) in &mut sinks {
+                    for (client, (sink, updated_at)) in &mut sinks {
                         if updated_at.elapsed().as_secs() > 1 {
-                            remove_list.push(entry.clone());
+                            remove_list.push(client.clone());
                         }
                         let left_ear = [left_ear[0] / 3.0, left_ear[1] / 3.0, left_ear[2] / 3.0];
                         let right_ear =
@@ -286,8 +280,8 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                         sink.set_left_ear_position(left_ear);
                         sink.set_right_ear_position(right_ear);
                     }
-                    for entry in remove_list {
-                        sinks.remove(&entry).unwrap().0.detach();
+                    for client in remove_list {
+                        sinks.remove(&client).unwrap().0.detach();
                     }
                 }
             }
