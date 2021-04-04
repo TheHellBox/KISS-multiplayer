@@ -60,6 +60,8 @@ pub fn run_vc_recording(
         if !found_config {
             println!("Device incompatible due to the parameters it offered:");
             for cfg in device.supported_input_configs().unwrap() {
+                // Not showing every field of SupportedStreamConfigRange since they are not important at this time.
+                // Only printing fields we currently care about. 
                 println!("\tChannels: {:?}",        cfg.channels());
                 println!("\tSample Format: {:?}",   cfg.sample_format());
                 println!("---");
