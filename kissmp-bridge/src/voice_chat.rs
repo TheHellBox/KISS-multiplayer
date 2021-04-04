@@ -264,7 +264,7 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                     }
                     let (sink, updated_at) = sinks.get_mut(&client).unwrap();
                     *updated_at = std::time::Instant::now();
-                    let position = [position[0] / 4.0, position[1] / 4.0, position[2] / 4.0];
+                    let position = [position[0] / 3.0, position[1] / 3.0, position[2] / 3.0];
                     sink.set_emitter_position(position);
                     let mut samples: Vec<i16> = Vec::with_capacity(BUFFER_LEN);
                     samples.resize(BUFFER_LEN, 0);
