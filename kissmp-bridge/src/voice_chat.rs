@@ -245,7 +245,7 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                 .unwrap();
 
         loop {
-            for event in receiver.try_iter() {
+            if let Ok(event) = receiver.recv() {
                 match event {
                     VoiceChatPlaybackEvent::Packet(client, position, encoded) => {
                         if sinks.get(&client).is_none() {
@@ -290,7 +290,6 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                     }
                 }
             }
-            std::thread::sleep(std::time::Duration::from_millis(1));
         }
     });
 }

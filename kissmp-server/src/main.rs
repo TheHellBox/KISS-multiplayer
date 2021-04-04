@@ -101,7 +101,7 @@ impl Server {
             .with_socket(UdpSocket::bind(&addr).unwrap())
             .unwrap();
 
-        let (client_events_tx, client_events_rx) = mpsc::channel(512);
+        let (client_events_tx, client_events_rx) = mpsc::channel(128);
         let mut client_events_rx = ReceiverStream::new(client_events_rx).fuse();
         let mut incoming = incoming
             .inspect(|_conn| println!("Client is trying to connect to the server"))
