@@ -81,7 +81,7 @@ async fn main() {
     let server_list = server_list_r.clone();
     let addresses = addresses_r.clone();
     let ver = warp::path::param().map(move |ver: String| {
-        if ver != String::from("0.4") {
+        if ver != String::from("0.4.1") {
             return outdated_ver()
         }
         let server_list = server_list.clone();
