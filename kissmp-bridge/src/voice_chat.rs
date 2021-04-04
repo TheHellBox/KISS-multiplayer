@@ -246,7 +246,6 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
             match event {
                 VoiceChatPlaybackEvent::Packet(client, position, encoded) => {
                     let (sink, updated_at) = sinks.entry(client).or_insert_with(|| {
-                        let updated_at = std::time::Instant::now();
                         let sink = rodio::SpatialSink::try_new(
                             &stream_handle,
                             position,
@@ -256,7 +255,7 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                         .unwrap();
                         sink.set_volume(2.0);
                         sink.play();
-                        (sink, updated_at)
+                        (sink, std::time::Instant::now())
                     });
                     *updated_at = std::time::Instant::now();
                     let position = [position[0] / 3.0, position[1] / 3.0, position[2] / 3.0];
