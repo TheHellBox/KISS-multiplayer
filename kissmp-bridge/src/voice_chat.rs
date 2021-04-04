@@ -271,9 +271,9 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                 }
                 VoiceChatPlaybackEvent::PositionUpdate(left_ear, right_ear) => {
                     let mut remove_list = vec![];
-                    for (entry, (sink, updated_at)) in &mut sinks {
+                    for (client, (sink, updated_at)) in &mut sinks {
                         if updated_at.elapsed().as_secs() > 1 {
-                            remove_list.push(entry.clone());
+                            remove_list.push(client.clone());
                         }
                         let left_ear = [left_ear[0] / 3.0, left_ear[1] / 3.0, left_ear[2] / 3.0];
                         let right_ear =
@@ -281,8 +281,8 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                         sink.set_left_ear_position(left_ear);
                         sink.set_right_ear_position(right_ear);
                     }
-                    for entry in remove_list {
-                        sinks.remove(&entry).unwrap().0.detach();
+                    for client in remove_list {
+                        sinks.remove(&client).unwrap().0.detach();
                     }
                 }
             }
