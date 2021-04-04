@@ -75,8 +75,7 @@ pub fn run_vc_recording(
         }
         let (config, buffer_size) = {
             let config = config.unwrap();
-            let buffer_size = config.buffer_size();
-            let buffer_size = match buffer_size {
+            let buffer_size = match config.buffer_size() {
                 cpal::SupportedBufferSize::Range { min, .. } => {
                     if BUFFER_LEN as u32 > *min {
                         cpal::BufferSize::Fixed(BUFFER_LEN as u32)
@@ -87,13 +86,10 @@ pub fn run_vc_recording(
                 _ => cpal::BufferSize::Default,
             };
             if config.max_sample_rate() >= SAMPLE_RATE && config.min_sample_rate() <= SAMPLE_RATE {
-                (
-                    config.with_sample_rate(SAMPLE_RATE),
-                    buffer_size,
-                )
+                (config.with_sample_rate(SAMPLE_RATE),  buffer_size)
             } else {
                 let sr = config.max_sample_rate();
-                (config.with_sample_rate(sr), buffer_size)
+                (config.with_sample_rate(sr),           buffer_size)
             }
         };
         let stream_config = config.config();
