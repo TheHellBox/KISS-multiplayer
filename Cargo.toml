@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "kissmp-bridge",
+    "kissmp-server",
+    "kissmp-master",
+    "shared"
+]
+default-members = [
+    "kissmp-bridge",
+    "kissmp-server"
+]
