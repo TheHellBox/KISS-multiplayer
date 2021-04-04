@@ -258,10 +258,12 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                             .unwrap();
                             sink.set_volume(2.0);
                             sink.play();
-                            sinks.insert(client, sink);
+                            let updated_at = std::time::Instant::now();
+                            sinks.insert(client, (sink, updated_at));
                         }
-                        let sink = sinks.get(&client).unwrap();
-                        let position = [position[0] / 3.0, position[1] / 3.0, position[2] / 3.0];
+                        let (sink, updated_at) = sinks.get_mut(&client).unwrap();
+                        *updated_at = std::time::Instant::now();
+                        let position = [position[0] / 4.0, position[1] / 4.0, position[2] / 4.0];
                         sink.set_emitter_position(position);
                         let mut samples: Vec<i16> = Vec::with_capacity(BUFFER_LEN);
                         samples.resize(BUFFER_LEN, 0);
@@ -272,15 +274,23 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                         sink.append(buf);
                     }
                     VoiceChatPlaybackEvent::PositionUpdate(left_ear, right_ear) => {
-                        for (_, sink) in &mut sinks {
-                            let left_ear = [left_ear[0] / 3.0, left_ear[1] / 3.0, left_ear[2] / 3.0];
-                            let right_ear = [right_ear[0] / 3.0, right_ear[1] / 3.0, right_ear[2] / 3.0];
+                        let mut remove_list = vec![];
+                        for (entry, (sink, updated_at)) in &mut sinks {
+                            if updated_at.elapsed().as_secs() > 1 {
+                                remove_list.push(entry.clone());
+                            }
+                            let left_ear = [left_ear[0] / 4.0, left_ear[1] / 4.0, left_ear[2] / 4.0];
+                            let right_ear = [right_ear[0] / 4.0, right_ear[1] / 4.0, right_ear[2] / 4.0];
                             sink.set_left_ear_position(left_ear);
                             sink.set_right_ear_position(right_ear);
+                        }
+                        for entry in remove_list {
+                            sinks.remove(&entry).unwrap().0.detach();
                         }
                     }
                 }
             }
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
     });
 }
