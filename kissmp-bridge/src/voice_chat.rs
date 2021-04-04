@@ -1,6 +1,7 @@
 use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
 use rodio::DeviceTrait;
+use std::collections::hash_map::Entry;
 
 const SAMPLE_RATE: cpal::SampleRate = cpal::SampleRate(16000);
 const BUFFER_LEN: usize = 1920;
@@ -242,7 +243,9 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
             for event in receiver.try_iter() {
                 match event {
                     VoiceChatPlaybackEvent::Packet(client, position, encoded) => {
-                        if sinks.get(&client).is_none() {
+                        // Get an existing sink for a client or create a new one.
+                        // https://stackoverflow.com/a/28512504
+                        let sink = sinks.entry(client).or_insert_with(|| {
                             let sink = rodio::SpatialSink::try_new(
                                 &stream_handle,
                                 position,
@@ -252,9 +255,8 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                             .unwrap();
                             sink.set_volume(2.0);
                             sink.play();
-                            sinks.insert(client, sink);
-                        }
-                        let sink = sinks.get(&client).unwrap();
+                            sink
+                        });
                         let position = [position[0] / 3.0, position[1] / 3.0, position[2] / 3.0];
                         sink.set_emitter_position(position);
                         let mut samples: Vec<i16> = Vec::with_capacity(BUFFER_LEN);
