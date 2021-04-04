@@ -178,21 +178,17 @@ pub fn run_vc_recording(
                 .unwrap(),
         };
         stream.play().unwrap();
-        loop {
-            match receiver.recv() {
-                Ok(VoiceChatRecordingEvent::Start) => {
+        while let Ok(event) = receiver.recv() {
+            match event {
+                VoiceChatRecordingEvent::Start => {
                     let mut send = send_m.lock().unwrap();
                     *send = true;
                 },
-                Ok(VoiceChatRecordingEvent::End) => {
+                VoiceChatRecordingEvent::End => {
                     let mut send = send_m.lock().unwrap();
                     *send = false;
                 },
-                _ => {
-                    break
-                }
             }
-
         }
     });
     Ok(())
@@ -244,49 +240,47 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
             audiopus::coder::Decoder::new(audiopus::SampleRate::Hz16000, audiopus::Channels::Mono)
                 .unwrap();
 
-        loop {
-            if let Ok(event) = receiver.recv() {
-                match event {
-                    VoiceChatPlaybackEvent::Packet(client, position, encoded) => {
-                        if sinks.get(&client).is_none() {
-                            let sink = rodio::SpatialSink::try_new(
-                                &stream_handle,
-                                position,
-                                [0.0, -1.0, 0.0],
-                                [0.0, 1.0, 0.0],
-                            )
+        while let Ok(event) = receiver.recv() {
+            match event {
+                VoiceChatPlaybackEvent::Packet(client, position, encoded) => {
+                    if sinks.get(&client).is_none() {
+                        let sink = rodio::SpatialSink::try_new(
+                            &stream_handle,
+                            position,
+                            [0.0, -1.0, 0.0],
+                            [0.0, 1.0, 0.0],
+                        )
                             .unwrap();
-                            sink.set_volume(2.0);
-                            sink.play();
-                            let updated_at = std::time::Instant::now();
-                            sinks.insert(client, (sink, updated_at));
-                        }
-                        let (sink, updated_at) = sinks.get_mut(&client).unwrap();
-                        *updated_at = std::time::Instant::now();
-                        let position = [position[0] / 4.0, position[1] / 4.0, position[2] / 4.0];
-                        sink.set_emitter_position(position);
-                        let mut samples: Vec<i16> = Vec::with_capacity(BUFFER_LEN);
-                        samples.resize(BUFFER_LEN, 0);
-                        let res = decoder.decode(Some(&encoded), &mut samples, false).unwrap();
-                        samples.resize(res, 0);
-                        let buf = rodio::buffer::SamplesBuffer::new(1, 16000, samples.as_slice())
-                            .convert_samples::<f32>();
-                        sink.append(buf);
+                        sink.set_volume(2.0);
+                        sink.play();
+                        let updated_at = std::time::Instant::now();
+                        sinks.insert(client, (sink, updated_at));
                     }
-                    VoiceChatPlaybackEvent::PositionUpdate(left_ear, right_ear) => {
-                        let mut remove_list = vec![];
-                        for (entry, (sink, updated_at)) in &mut sinks {
-                            if updated_at.elapsed().as_secs() > 1 {
-                                remove_list.push(entry.clone());
-                            }
-                            let left_ear = [left_ear[0] / 4.0, left_ear[1] / 4.0, left_ear[2] / 4.0];
-                            let right_ear = [right_ear[0] / 4.0, right_ear[1] / 4.0, right_ear[2] / 4.0];
-                            sink.set_left_ear_position(left_ear);
-                            sink.set_right_ear_position(right_ear);
+                    let (sink, updated_at) = sinks.get_mut(&client).unwrap();
+                    *updated_at = std::time::Instant::now();
+                    let position = [position[0] / 4.0, position[1] / 4.0, position[2] / 4.0];
+                    sink.set_emitter_position(position);
+                    let mut samples: Vec<i16> = Vec::with_capacity(BUFFER_LEN);
+                    samples.resize(BUFFER_LEN, 0);
+                    let res = decoder.decode(Some(&encoded), &mut samples, false).unwrap();
+                    samples.resize(res, 0);
+                    let buf = rodio::buffer::SamplesBuffer::new(1, 16000, samples.as_slice())
+                        .convert_samples::<f32>();
+                    sink.append(buf);
+                }
+                VoiceChatPlaybackEvent::PositionUpdate(left_ear, right_ear) => {
+                    let mut remove_list = vec![];
+                    for (entry, (sink, updated_at)) in &mut sinks {
+                        if updated_at.elapsed().as_secs() > 1 {
+                            remove_list.push(entry.clone());
                         }
-                        for entry in remove_list {
-                            sinks.remove(&entry).unwrap().0.detach();
-                        }
+                        let left_ear = [left_ear[0] / 4.0, left_ear[1] / 4.0, left_ear[2] / 4.0];
+                        let right_ear = [right_ear[0] / 4.0, right_ear[1] / 4.0, right_ear[2] / 4.0];
+                        sink.set_left_ear_position(left_ear);
+                        sink.set_right_ear_position(right_ear);
+                    }
+                    for entry in remove_list {
+                        sinks.remove(&entry).unwrap().0.detach();
                     }
                 }
             }

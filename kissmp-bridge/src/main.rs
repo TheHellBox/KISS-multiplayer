@@ -170,13 +170,8 @@ pub async fn drive_receive(
     vc_pb_writer: std::sync::mpsc::Sender<voice_chat::VoiceChatPlaybackEvent>,
 ) -> anyhow::Result<()> {
     tokio::spawn(async move {
-        loop {
-            let next = writer_rx.recv().await;
-            if let Some(next) = next {
-                let _ = writer.write_all(&next).await;
-            } else {
-                break;
-            }
+        while let Some(next) = writer_rx.recv().await{
+            let _ = writer.write_all(&next).await;
         }
     });
 
