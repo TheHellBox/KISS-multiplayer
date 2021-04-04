@@ -101,7 +101,7 @@ impl Server {
             .with_socket(UdpSocket::bind(&addr).unwrap())
             .unwrap();
 
-        let (client_events_tx, client_events_rx) = mpsc::channel(512);
+        let (client_events_tx, client_events_rx) = mpsc::channel(128);
         let mut client_events_rx = ReceiverStream::new(client_events_rx).fuse();
         let mut incoming = incoming
             .inspect(|_conn| println!("Client is trying to connect to the server"))
@@ -205,7 +205,7 @@ impl Server {
                 println!("Attempting to receive client info...");
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
-                let len = u32::from_le_bytes(buf) as usize;
+                let len = u32::from_le_bytes(buf).min(16384) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
                 let info: shared::ClientCommand =
@@ -251,7 +251,7 @@ impl Server {
                 id: id,
                 current_vehicle: 0,
                 ping: 0,
-                hide_nametag: false
+                hide_nametag: false,
             };
             let client_connection = Connection {
                 conn: connection_clone.clone(),
@@ -352,12 +352,12 @@ impl Server {
                 let mut stream = stream?;
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
-                let len = u32::from_le_bytes(buf) as usize;
+                let len = u32::from_le_bytes(buf).min(65536) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
                 Ok::<_, Error>(buf)
             })
-            .buffered(512)
+            .buffered(256)
             .fuse();
 
         let mut datagrams = datagrams
@@ -365,7 +365,7 @@ impl Server {
                 let data: Vec<u8> = data?.to_vec();
                 Ok::<_, Error>(data)
             })
-            .buffered(512)
+            .buffered(256)
             .fuse();
 
         loop {
