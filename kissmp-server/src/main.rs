@@ -205,7 +205,7 @@ impl Server {
                 println!("Attempting to receive client info...");
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
-                let len = u32::from_le_bytes(buf) as usize;
+                let len = u32::from_le_bytes(buf).min(16384) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
                 let info: shared::ClientCommand =
@@ -352,7 +352,7 @@ impl Server {
                 let mut stream = stream?;
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
-                let len = u32::from_le_bytes(buf) as usize;
+                let len = u32::from_le_bytes(buf).min(24576) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
                 Ok::<_, Error>(buf)
