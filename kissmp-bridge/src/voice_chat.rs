@@ -33,8 +33,6 @@ fn search_config(
     None
 }
 
-// Too much repetetive code, lol
-// It's _less_ repetitive now, sorta.
 pub fn run_vc_recording(
     sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
     receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
@@ -62,12 +60,8 @@ pub fn run_vc_recording(
         if !found_config {
             println!("Device incompatible due to the parameters it offered:");
             for cfg in device.supported_input_configs().unwrap() {
-                println!("\tChannels: {:?}",            cfg.channels());
-                // These are not important it seems at the moment but for when it does...
-                //println!("\tMinimum Sample Rate: {:?}", cfg.min_sample_rate());
-                //println!("\tMaximum Sample Rate: {:?}", cfg.max_sample_rate());
-                //println!("\tBuffer Size: {:?}",         cfg.buffer_size());
-                println!("\tSample Format: {:?}",       cfg.sample_format());
+                println!("\tChannels: {:?}",        cfg.channels());
+                println!("\tSample Format: {:?}",   cfg.sample_format());
                 println!("---");
             }
             println!("Try a different default audio input in your OS's settings.");
