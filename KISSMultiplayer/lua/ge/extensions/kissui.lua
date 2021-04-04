@@ -464,6 +464,11 @@ local function draw_add_favorite_window()
   imgui.End()
 end
 
+local function disconnect_from_server()
+  network.stop_downloading()
+  network.disconnect()
+end
+
 local function draw_menu()
   if M.show_download then return end
 
@@ -475,7 +480,7 @@ local function draw_menu()
     imgui.InputText("##name", M.player_name)
     if network.connection.connected then
       if imgui.Button("Disconnect") then
-        network.disconnect()
+        disconnect_from_server()
       end
     end
    
@@ -664,10 +669,9 @@ local function draw_download()
       imgui.Dummy(imgui.ImVec2(extra_size, -1))
     end
     imgui.SameLine()
-    if imgui.Button("Cancel###cancel_download", imgui.ImVec2(split_width, -1)) then
-      network.cancel_download()
-      M.show_download = false
-      network.disconnect()
+    if imgui.Button("Cancel###stop_downloading", imgui.ImVec2(split_width, -1)) then
+      -- Effectively the same as leaving the server
+      disconnect_from_server()
     end
   end
   imgui.End()

@@ -63,6 +63,7 @@ local function disconnect(data)
   kissplayers.players_in_cars = {}
   kissplayers.player_heads_attachments = {}
   kissrichpresence.update()
+  vehiclemanager.loading_map = false
   --vehiclemanager.id_map = {}
   --vehiclemanager.ownership = {}
   --vehiclemanager.delay_spawns = false
@@ -263,6 +264,9 @@ local function connect(addr, player_name)
   for k, v in pairs(missing_mods) do
     print(k.." "..v)
   end
+
+  vehiclemanager.loading_map = true
+  -- Mods need to be downloaded.
   if #missing_mods > 0 then
     -- Request mods
     send_data(
@@ -271,11 +275,11 @@ local function connect(addr, player_name)
       },
       true
     )
-  end
-  vehiclemanager.loading_map = true
-  if #missing_mods == 0 then
+  -- Otherwise, load in the map.
+  else
     freeroam_freeroam.startFreeroam(server_info.map)
   end
+  
   kissrichpresence.update()
   kissui.add_message("Connected!")
 end
@@ -289,9 +293,36 @@ local function send_messagepack(data_type, reliable, data)
   send_data(data_type, reliable, data)
 end
 
-local function on_finished_download()
-  vehiclemanager.loading_map = true
-  freeroam_freeroam.startFreeroam(M.connection.server_info.map)
+-- Stops all downloads and updates associated UI states to reflect
+local function stop_downloading()
+  M.connection.mods_left = 0
+  M.downloading = false
+  kissui.show_download = false
+
+  for k, _ in pairs(M.downloads) do
+     M.downloads[k]:close()
+     M.downloads[k] = nil
+  end
+
+  for k, _ in pairs(M.downloads_status) do
+     M.downloads_status[k] = nil
+  end
+end
+
+-- Mod going by name finished downloading
+-- Handles wrapping up downloads if all mods were obtained and triggering the map load
+local function on_mod_downloaded(name)
+  kissmods.mount_mod(name)
+  M.downloads[name]:close()
+  M.downloads[name] = nil
+  M.downloads_status[name] = nil
+  -- Decrement the mods left to download
+  M.connection.mods_left = M.connection.mods_left - 1
+  if M.connection.mods_left < 1 then
+    stop_downloading()
+    vehiclemanager.loading_map = true
+    freeroam_freeroam.startFreeroam(M.connection.server_info.map)
+  end
 end
 
 local function send_ping()
@@ -302,16 +333,6 @@ local function send_ping()
     },
     false
   )
-end
-
-local function cancel_download()
-  --[[if not current_download then return end
-  io.close(current_download.file)
-  current_download = nil
-    M.downloading = false]]--
-  for k, v in pairs(M.downloads) do
-     M.downloads[k]:close()
-  end
 end
 
 local function onUpdate(dt)
@@ -355,22 +376,16 @@ local function onUpdate(dt)
       local file_data, _, _ = M.connection.tcp:receive(read_size)
       M.downloads_status[name] = {
         name = name,
-        progress = 0
+        progress = chunk_n * FILE_TRANSFER_CHUNK_SIZE / file_length
       }
-      M.downloads_status[name].progress = chunk_n * FILE_TRANSFER_CHUNK_SIZE / file_length
       local file = M.downloads[name]
       if not file then
         M.downloads[name] = kissmods.open_file(name)
       end
       M.downloads[name]:write(file_data)
+      -- The server sent less than the chunk size, so must be finishing sending this mod.
       if read_size < FILE_TRANSFER_CHUNK_SIZE then
-        M.downloading = false
-        kissui.show_download = false
-        kissmods.mount_mod(name)
-        M.downloads[name]:close()
-        M.downloads[name] = nil
-        M.downloads_status = {}
-        on_finished_download()
+        on_mod_downloaded(name)
       end
       M.connection.tcp:settimeout(0.0)
       break
@@ -390,7 +405,7 @@ end
 M.get_client_id = get_client_id
 M.connect = connect
 M.disconnect = disconnect
-M.cancel_download = cancel_download
+M.stop_downloading = stop_downloading
 M.send_data = send_data
 M.onUpdate = onUpdate
 M.send_messagepack = send_messagepack
