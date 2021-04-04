@@ -352,12 +352,12 @@ impl Server {
                 let mut stream = stream?;
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
-                let len = u32::from_le_bytes(buf).min(24576) as usize;
+                let len = u32::from_le_bytes(buf).min(65536) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
                 Ok::<_, Error>(buf)
             })
-            .buffered(512)
+            .buffered(256)
             .fuse();
 
         let mut datagrams = datagrams
@@ -365,7 +365,7 @@ impl Server {
                 let data: Vec<u8> = data?.to_vec();
                 Ok::<_, Error>(data)
             })
-            .buffered(512)
+            .buffered(256)
             .fuse();
 
         loop {
