@@ -48,7 +48,7 @@ Now you are ready to build server and bridge.
 ### Server
 ```sh
 cd kissmp-server
-cargo run -p kissmp-server --release
+cargo run --release
 ```
 or
 ```sh
