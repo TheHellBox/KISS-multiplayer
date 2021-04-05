@@ -38,7 +38,14 @@ pub fn run_vc_recording(
     receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
 ) -> Result<(), anyhow::Error> {
     std::thread::spawn(move || {
-        let device = cpal::default_host().default_input_device().unwrap();
+        let device = match cpal::default_host().default_input_device() {
+            Some(device) => device,
+            None => {
+                println!("No default audio input device available for voice chat.");
+                println!("Check your OS's settings and verify you have a device available.");
+                return
+            }
+        };
         println!("Using default audio input device: {}", device.name().unwrap());
         let mut config = None;
         let configs: Vec<cpal::SupportedStreamConfigRange> =
