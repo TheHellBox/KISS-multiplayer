@@ -84,7 +84,7 @@ impl Server {
                         let mut initial_message = initial_message.clone();
                         initial_message.truncate(128);
                         let mut message = initial_message.clone();
-                        println!("{}", message);
+                        println!("{}: {}", self.connections.get(&client_id).unwrap().client_info_public.name, message);
                         self.lua.context(|lua_ctx| {
                             let results = crate::lua::run_hook::<(u32, String), Option<String>>(
                                 lua_ctx,
