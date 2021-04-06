@@ -102,9 +102,9 @@ local function update_players(dt)
     if vehicle and (not blacklist[vehicle:getJBeamFilename()]) then
       local cam_node, _ = core_camera.getDriverData(vehicle)
       if cam_node and kisstransform.local_transforms[vehicle:getID()] then
-        local p = vec3(vehicle:getNodePosition(cam_node)) + vec3(vehicle:getPosition()) + vec3(vehicle:getVelocity()) * dt
+        local p = vec3(vehicle:getNodePosition(cam_node)) + vec3(vehicle:getPosition())
         local r = kisstransform.local_transforms[vehicle:getID()].rotation
-        local hide = be:getPlayerVehicle(0) and (be:getPlayerVehicle(0):getID() == vehicle:getID()) and (vec3(getCameraPosition()):distance(p) < 2)
+        local hide = be:getPlayerVehicle(0) and (be:getPlayerVehicle(0):getID() == vehicle:getID()) and (vec3(getCameraPosition()):distance(p) < 2.5)
         hide = hide or (not kissui.show_drivers[0])
         if (not M.players_in_cars[id]) and (not hide) then
           local player = createObject('TSStatic')
@@ -122,6 +122,7 @@ local function update_players(dt)
           M.players_in_cars[id] = nil
           M.player_heads_attachments[id] = nil
         end
+        p = p + vec3(vehicle:getVelocity()) * dt
         local player = M.players_in_cars[id]
         if player then
           player:setPosRot(
