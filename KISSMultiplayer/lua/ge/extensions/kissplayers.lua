@@ -120,10 +120,12 @@ local function update_players(dt)
           M.player_heads_attachments[id] = nil
         end
         local player = M.players_in_cars[id]
-        player:setPosRot(
-          p.x, p.y, p.z,
-          r[1], r[2], r[3], r[4]
-        )
+        if player then
+          player:setPosRot(
+            p.x, p.y, p.z,
+            r[1], r[2], r[3], r[4]
+          )
+        end
       end
     else
       if M.players_in_cars[id] then

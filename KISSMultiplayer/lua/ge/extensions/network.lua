@@ -370,6 +370,9 @@ local function onUpdate(dt)
         M.downloads[name]:close()
         M.downloads[name] = nil
         M.downloads_status = {}
+        M.connection.mods_left = M.connection.mods_left - 1
+      end
+      if M.connection.mods_left <= 0 then
         on_finished_download()
       end
       M.connection.tcp:settimeout(0.0)
