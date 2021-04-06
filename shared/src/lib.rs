@@ -85,7 +85,7 @@ pub enum ServerCommand {
     VehicleSpawn(VehicleData),
     RemoveVehicle(u32),
     ResetVehicle(u32),
-    Chat(String),
+    Chat(String, Option<u32>),
     TransferFile(String),
     SendLua(String),
     PlayerInfoUpdate(ClientInfoPublic),

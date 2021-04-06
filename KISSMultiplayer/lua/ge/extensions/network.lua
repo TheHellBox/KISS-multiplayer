@@ -126,12 +126,16 @@ local function handle_player_disconnected(data)
   M.players[id] = nil
 end
 
+local function handle_chat(data)
+  kissui.add_message(data[1], nil, data[2])
+end
+
 local function onExtensionLoaded()
   message_handlers.VehicleUpdate = vehiclemanager.update_vehicle
   message_handlers.VehicleSpawn = vehiclemanager.spawn_vehicle
   message_handlers.RemoveVehicle = vehiclemanager.remove_vehicle
   message_handlers.ResetVehicle = vehiclemanager.reset_vehicle
-  message_handlers.Chat = kissui.add_message
+  message_handlers.Chat = handle_chat
   message_handlers.SendLua = handle_lua
   message_handlers.PlayerInfoUpdate = handle_player_info
   message_handlers.VehicleMetaUpdate = vehiclemanager.update_vehicle_meta

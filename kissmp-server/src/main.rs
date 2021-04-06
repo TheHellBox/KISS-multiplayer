@@ -43,7 +43,13 @@ impl Connection {
     pub async fn send_chat_message(&mut self, message: String) {
         let _ = self
             .ordered
-            .send(ServerCommand::Chat(message.clone()))
+            .send(ServerCommand::Chat(message.clone(), None))
+            .await;
+    }
+    pub async fn send_player_chat_message(&mut self, message: String, player: u32) {
+        let _ = self
+            .ordered
+            .send(ServerCommand::Chat(message.clone(), Some(player)))
             .await;
     }
     pub async fn send_lua(&mut self, lua: String) {

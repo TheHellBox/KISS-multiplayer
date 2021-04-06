@@ -52,7 +52,12 @@ local blacklist = {
   unicycle = true
 }
 
-local current_camera_mode = ""
+local function get_player_color(id)
+  math.randomseed(id)
+  local r, g, b, a = 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 1
+  math.randomseed(os.time())
+  return r, g, b, a
+end
 
 local function spawn_player(data)
   local player = createObject('TSStatic')
@@ -64,9 +69,8 @@ local function spawn_player(data)
     data.position[1], data.position[2], data.position[3],
     data.rotation[1], data.rotation[2], data.rotation[3], data.rotation[4]
   )
-  math.randomseed(data.owner)
-  player:setField('instanceColor', 0, string.format("%g %g %g %g", 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 1))
-  math.randomseed(os.time())
+  local r, g, b, a = get_player_color(data.owner)
+  player:setField('instanceColor', 0, string.format("%g %g %g %g", r, g, b, a))
   vehiclemanager.id_map[data.server_id] = player:getID()
   vehiclemanager.server_ids[player:getID()] = data.server_id
   M.players[data.server_id] = player
@@ -100,16 +104,15 @@ local function update_players(dt)
       if cam_node and kisstransform.local_transforms[vehicle:getID()] then
         local p = vec3(vehicle:getNodePosition(cam_node)) + vec3(vehicle:getPosition()) + vec3(vehicle:getVelocity()) * dt
         local r = kisstransform.local_transforms[vehicle:getID()].rotation
-        local hide = be:getPlayerVehicle(0) and (be:getPlayerVehicle(0):getID() == vehicle:getID()) and (vec3(getCameraPosition()):distance(p) < 2) --and (current_camera_mode == "driver")
+        local hide = be:getPlayerVehicle(0) and (be:getPlayerVehicle(0):getID() == vehicle:getID()) and (vec3(getCameraPosition()):distance(p) < 2)
         hide = hide or (not kissui.show_drivers[0])
         if (not M.players_in_cars[id]) and (not hide) then
           local player = createObject('TSStatic')
           player:setField("shapeName", 0, "/art/shapes/kissmp_playermodels/base_nb_head.dae")
           player:setField("dynamic", 0, "true")
           player.scale = Point3F(1, 1, 1)
-          math.randomseed(id)
-          player:setField('instanceColor', 0, string.format("%g %g %g %g", 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 1))
-          math.randomseed(os.time())
+          local r, g, b, a = get_player_color(id)
+          player:setField('instanceColor', 0, string.format("%g %g %g %g", r, g, b, a))
           player:registerObject("player_head"..id)
           M.players_in_cars[id] = player
           M.player_heads_attachments[id] = vehicle:getID()
@@ -144,12 +147,8 @@ local function update_players(dt)
   end
 end
 
-local function onCameraModeChanged(v)
-  current_camera_mode = v
-end
-
 M.spawn_player = spawn_player
+M.get_player_color = get_player_color
 M.onUpdate = update_players
-M.onCameraModeChanged = onCameraModeChanged
 
 return M

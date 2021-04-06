@@ -560,6 +560,14 @@ local function draw_chat()
 
     for _, message in pairs(M.chat) do
       imgui.PushTextWrapPos(0)
+      if message.sent_by ~= nil then
+        if network.players[message.sent_by] then
+          local r,g,b,a = kissplayers.get_player_color(message.sent_by)
+          local color = imgui.ImVec4(r, g, b, a)
+          imgui.TextColored(color, "%s", network.players[message.sent_by].name..": ")
+          imgui.SameLine()
+        end
+      end
       if message.has_color then
         imgui.TextColored(imgui.ImVec4(message.color.r or 1, message.color.g or 1, message.color.b or 1, message.color.a or 1), "%s", message.text)
       else
@@ -742,14 +750,15 @@ local function onUpdate(dt)
   time_since_filters_change = time_since_filters_change + dt
 end
 
-local function add_message(message, color)
+local function add_message(message, color, sent_by)
   unread_message_count = unread_message_count + 1
   should_draw_unread_count = false
   
   local has_color = color ~= nil and type(color) == 'table'
   local message_table = {
     text = message,
-    has_color = has_color
+    has_color = has_color,
+    sent_by = sent_by
   }
   if has_color then
     message_table.color = color 
