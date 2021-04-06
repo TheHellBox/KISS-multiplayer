@@ -11,7 +11,7 @@
 - High overall performance which allows for more players to play on the same server
 - Low traffic usage
 - Lag compensation
-- In-game text
+- In-game text chat
 - In-game **voice chat**
 - Lua API for creating server-side addons
 - Cross platform bridge (less Wine applications for Linux users)
