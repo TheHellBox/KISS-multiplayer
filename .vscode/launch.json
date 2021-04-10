@@ -1,0 +1,55 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    //
+    // Additionally, to debug please install vadimcn.vscode-lldb
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Bridge",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/kissmp-bridge",
+            "windows":{
+                "program": "${workspaceFolder}/target/debug/kissmp-bridge.exe"
+            },
+            "args": [],
+            "stopOnEntry": false,
+            "cwd": "${workspaceFolder}",
+            "env": {},
+            "console": "integratedTerminal",
+            "preLaunchTask": "Build Bridge",
+            "sourceLanguages": [
+                "rust"
+            ]
+        },
+        {
+            "name": "Server",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/kissmp-server",
+            "windows":{
+                "program": "${workspaceFolder}/target/debug/kissmp-server.exe"
+            },
+            "args": [],
+            "stopOnEntry": false,
+            "cwd": "${workspaceFolder}",
+            "env": {},
+            "console": "integratedTerminal",
+            "preLaunchTask": "Build Server",
+            "sourceLanguages": [
+                "rust"
+            ]
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Bridge/Server",
+            "configurations": [
+                "Bridge",
+                "Server"
+            ]
+        }
+    ]
+}
