@@ -37,17 +37,17 @@ pub fn run_vc_recording(
     sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
     receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
 ) -> Result<(), anyhow::Error> {
+    let device = match cpal::default_host().default_input_device() {
+        Some(device) => {
+            device
+        },
+        None => {
+            println!("No default audio input device available for voice chat.");
+            println!("Check your OS's settings and verify you have a device available.");
+            return Ok(());
+        }
+    };
     std::thread::spawn(move || {
-        let device = match cpal::default_host().default_input_device() {
-            Some(device) => {
-                device
-            },
-            None => {
-                println!("No default audio input device available for voice chat.");
-                println!("Check your OS's settings and verify you have a device available.");
-                return;
-            }
-        };
         println!("Using default audio input device: {}", device.name().unwrap());
         let mut config = None;
         let configs: Vec<cpal::SupportedStreamConfigRange> =
@@ -244,15 +244,15 @@ pub fn encode_and_send_samples(
 
 pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEvent>) {
     use rodio::Source;
+    let (_stream, stream_handle) = match rodio::OutputStream::try_default() {
+        Ok(a) => a,
+        _ => {
+            println!("Could not find a output audio stream for voice chat.");
+            println!("Check your OS's settings and verify you have a device available.");
+            return
+        },
+    };
     std::thread::spawn(move || {
-        let (_stream, stream_handle) = match rodio::OutputStream::try_default() {
-            Ok(a) => a,
-            _ => {
-                println!("Could not find a output audio stream for voice chat.");
-                println!("Check your OS's settings and verify you have a device available.");
-                return
-            },
-        };
         let mut sinks = std::collections::HashMap::new();
         let mut decoder =
             audiopus::coder::Decoder::new(audiopus::SampleRate::Hz16000, audiopus::Channels::Mono)
