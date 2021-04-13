@@ -39,11 +39,13 @@ pub fn run_vc_recording(
 ) -> Result<(), anyhow::Error> {
     std::thread::spawn(move || {
         let device = match cpal::default_host().default_input_device() {
-            Some(device) => device,
+            Some(device) => {
+                device
+            },
             None => {
                 println!("No default audio input device available for voice chat.");
                 println!("Check your OS's settings and verify you have a device available.");
-                return
+                return;
             }
         };
         println!("Using default audio input device: {}", device.name().unwrap());
