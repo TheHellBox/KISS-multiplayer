@@ -245,7 +245,14 @@ pub fn encode_and_send_samples(
 pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEvent>) {
     use rodio::Source;
     std::thread::spawn(move || {
-        let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
+        let (_stream, stream_handle) = match rodio::OutputStream::try_default() {
+            Ok(a) => a,
+            _ => {
+                println!("Could not find a output audio stream for voice chat.");
+                println!("Check your OS's settings and verify you have a device available.");
+                return
+            },
+        };
         let mut sinks = std::collections::HashMap::new();
         let mut decoder =
             audiopus::coder::Decoder::new(audiopus::SampleRate::Hz16000, audiopus::Channels::Mono)
