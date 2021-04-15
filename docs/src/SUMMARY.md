@@ -2,6 +2,7 @@
 
 - [Introduction](introduction.md)
 - [Building](building.md)
+- [Server Hosting](hosting.md)
 - [Server side Lua API](srv_lua/lua_api.md)
   - [Hooks](srv_lua/hooks.md)
   - [Vehicles](srv_lua/vehicles.md)
