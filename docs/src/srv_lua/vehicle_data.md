@@ -1,0 +1,10 @@
+**List of methods avaiable for vehicle data:**
+- getInGameID()
+- getID()
+- getColor()
+- getPalete0()
+- getPalete1()
+- getPlate()
+- getName()
+- getOwner()
+- getPartsConfig()
