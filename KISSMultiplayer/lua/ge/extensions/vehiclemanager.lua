@@ -5,7 +5,6 @@ local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 local timer = 0
 local generation = 0
 local meta_timer = 0
-local vehicle_buffer = {}
 local colors_buffer = {}
 local plates_buffer = {}
 local first_vehicle = true
@@ -18,6 +17,7 @@ M.vehicle_updates_buffer = {}
 M.packet_gen_buffer = {}
 M.is_network_session = false
 M.delay_spawns = false
+M.vehicle_buffer = {}
 
 local function get_current_time()
   local date = os.date("*t", os.time() + network.connection.time_offset)
@@ -130,23 +130,22 @@ end
 local function send_vehicle_config(vehicle_id)
   local vehicle = be:getObjectByID(vehicle_id)
   if vehicle then
-    vehicle:queueLuaCommand("obj:queueGameEngineLua(\"vehiclemanager.send_vehicle_config_inner("..vehicle_id..", '\"..jsonEncode(v.config)..\"')\")")
+    vehicle:queueLuaCommand("kiss_vehicle.send_vehicle_config()")
   end
 end
 
-local function send_vehicle_config_inner(id, parts_config)
+local function send_vehicle_config_inner(id, parts_config, data)
   for k, v in pairs(M.id_map) do
     if v == id and not M.ownership[id] then return end
   end
+  local data = jsonDecode(data)
   local vehicle = be:getObjectByID(id)
-  local parts_config = parts_config
   local color = vehicle.color
   local palete_0 = vehicle.colorPalette0
   local palete_1 = vehicle.colorPalette1
   local plate = vehicle.licenseText
-  local position = vehicle:getPosition()
-  local rotation = vehicle:getRotation()
-
+  local position = vec3(data.position)
+  local rotation = quat(data.rotation)
   local vehicle_data = {}
   vehicle_data.parts_config = parts_config
   vehicle_data.in_game_id = id
@@ -168,8 +167,19 @@ local function send_vehicle_config_inner(id, parts_config)
 end
 
 local function spawn_vehicle(data)
+  local away = true
+  if kisstransform.raw_transforms[data.server_id] then
+    away = (vec3(kisstransform.raw_transforms[data.server_id].position):distance(vec3(getCameraPosition())) > kissui.view_distance[0])
+  else
+    away = (vec3(data.position):distance(vec3(getCameraPosition())) > kissui.view_distance[0])
+  end
   if M.loading_map or M.delay_spawns then
-    vehicle_buffer[data.server_id] = data
+    print("Buffering vehicle")
+    M.vehicle_buffer[data.server_id] = data
+    return
+  elseif away and kissui.enable_view_distance[0] then
+    print("Buffering vehicle")
+    M.vehicle_buffer[data.server_id] = data
     return
   end
   if data.owner == network.get_client_id() then
@@ -208,11 +218,15 @@ local function spawn_vehicle(data)
     false
   )
   if not spawned then return end
+  local p = data.position
+  local r = data.rotation
+  spawned:setPositionRotation(p[1], p[2], p[3], r[1], r[2], r[3], r[4])
   if plate ~= nil then
     extensions.core_vehicles.setPlateText(plate, spawned:getID())
   end
   M.id_map[data.server_id] = spawned:getID()
   M.server_ids[spawned:getID()] = data.server_id
+  kisstransform.inactive[spawned:getID()] = false
   --if current_vehicle then be:enterVehicle(0, current_vehicle) end
   spawned:queueLuaCommand("extensions.hook('kissUpdateOwnership', false)")
 end
@@ -236,7 +250,7 @@ local function onUpdate(dt)
     timer = timer - tick_time
     for i, v in pairs(vehiclemanager.ownership) do
       local vehicle = be:getObjectByID(i)
-      if vehicle then
+      if vehicle and (not kisstransform.inactive[i]) then
         send_vehicle_update(vehicle)
         vehicle:queueLuaCommand("kiss_electrics.send()")
       end
@@ -246,14 +260,28 @@ local function onUpdate(dt)
   for k, v in pairs(M.id_map) do
     if not M.ownership[v] then
       local vehicle = be:getObjectByID(v)
-      if vehicle then
+      if vehicle and (not kisstransform.inactive[v]) then
         vehicle:queueLuaCommand("kiss_vehicle.update_eligible_nodes()")
       end
+    end
+  end
+  if not (M.loading_map or M.delay_spawns) then
+    local to_remove = {}
+    for k, vehicle in pairs(M.vehicle_buffer) do
+      local t = kisstransform.raw_transforms[k]
+      if t and not ((vec3(t.position):distance(vec3(getCameraPosition())) > kissui.view_distance[0]) and kissui.enable_view_distance[0]) then
+        spawn_vehicle(vehicle)
+        table.insert(to_remove, k)
+      end
+    end
+    for _, v in pairs(to_remove) do
+      M.vehicle_buffer[v] = nil
     end
   end
 end
 
 local function update_vehicle(data)
+  kisstransform.raw_transforms[data.vehicle_id] = data.transform
     -- If vehicle is a unicycle(Walking mode character), sync it differently
   local character = kissplayers.players[data.vehicle_id]
   if character then
@@ -288,16 +316,15 @@ local function remove_vehicle(data)
   local local_id = M.id_map[id] or -1
   local vehicle = be:getObjectByID(local_id)
   if vehicle then
-    commands.setFreeCamera()
+    vehicle:setActive(1)
     vehicle:delete()
-    if commands.isFreeCamera(player) then commands.setGameCamera() end
     M.id_map[id] = nil
     M.ownership[local_id] = nil
     M.vehicle_updates_buffer[local_id] = nil
     kisstransform.received_transforms[local_id] = nil
     update_ownership_limits()
   else
-    vehicle_buffer[id] = nil
+    M.vehicle_buffer[id] = nil
   end
 end
 
@@ -429,6 +456,15 @@ local function onVehicleSpawned(id)
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.hook('kissInit')")
   send_vehicle_config(id)
+  -- Attempt to workaround a bug from latest beamng update. Also prevents unicycle cloning(Somewhat)
+  if vehicle:getJBeamFilename() == "unicycle" then
+    for i = 0, be:getObjectCount() do
+      local v = be:getObject(i)
+      if v and (v:getID() ~= vehicle:getID()) and (v:getJBeamFilename() == "unicycle") then
+        v:delete()
+      end
+    end
+  end
 end
 
 local function onVehicleDestroyed(id)
@@ -459,6 +495,12 @@ local function onVehicleResetted(id)
 end
 
 local function onVehicleSwitched(_id, new_id)
+  for i = 0, be:getObjectCount() do
+    local v = be:getObject(i)
+    if v and (v:getID() ~= new_id) and (v:getJBeamFilename() == "unicycle") then
+      v:delete()
+    end
+  end
   if M.ownership[new_id] then
     network.send_data(
       {
@@ -479,10 +521,6 @@ local function onMissionLoaded(mission)
   M.ownership = {}
   M.loading_map = false
   first_vehicle = true
-  for k, vehicle in pairs(vehicle_buffer) do
-    spawn_vehicle(vehicle)
-  end
-  vehicle_buffer = {}
 end
 
 M.onUpdate = onUpdate

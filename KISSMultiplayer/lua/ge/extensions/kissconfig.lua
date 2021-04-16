@@ -21,18 +21,20 @@ local function save_config()
     show_nametags = kissui.show_nametags[0],
     show_drivers = kissui.show_drivers[0],
     window_opacity = kissui.window_opacity[0],
+    enable_view_distance = kissui.enable_view_distance[0],
+    view_distance = kissui.view_distance[0],
     base_secret = secret
   }
-  local file = io.open("./kissmp_config.json", "w")
+  local file = io.open("./settings/kissmp_config.json", "w")
   file:write(jsonEncode(result))
   io.close(file)
 end
 
 local function load_config()
-  local file = io.open("./kissmp_config.json", "r")
+  local file = io.open("./settings/kissmp_config.json", "r")
   if not file then
     if Steam and Steam.isWorking and Steam.accountLoggedIn then
-      player_name = imgui.ArrayChar(32, Steam.playerName)
+      kissui.player_name = imgui.ArrayChar(32, Steam.playerName)
     end
     return
   end
@@ -54,6 +56,12 @@ local function load_config()
   end
   if config.window_opacity ~= nil then
     kissui.window_opacity[0] = config.window_opacity
+  end
+  if config.view_distance ~= nil then
+    kissui.view_distance[0] = config.view_distance
+  end
+  if config.enable_view_distance ~= nil then
+    kissui.enable_view_distance[0] = config.enable_view_distance
   end
   if config.base_secret ~= nil then
     network.base_secret = config.base_secret

@@ -54,7 +54,7 @@ local blacklist = {
 
 local function get_player_color(id)
   math.randomseed(id)
-  local r, g, b, a = 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 0.1 + math.random() * 0.9, 1
+  local r, g, b, a = 0.2 + math.random() * 0.8, 0.2 + math.random() * 0.8, 0.2 + math.random() * 0.8, 1
   math.randomseed(os.time())
   return r, g, b, a
 end
@@ -107,7 +107,7 @@ local function update_players(dt)
         local p = vec3(vehicle:getNodePosition(cam_node)) + vec3(vehicle:getPosition())
         local r = kisstransform.local_transforms[vehicle:getID()].rotation
         local hide = be:getPlayerVehicle(0) and (be:getPlayerVehicle(0):getID() == vehicle:getID()) and (vec3(getCameraPosition()):distance(p) < 2.5)
-        hide = hide or (not kissui.show_drivers[0])
+        hide = hide or (not kissui.show_drivers[0]) or kisstransform.inactive[vehicle:getID()]
         if (not M.players_in_cars[id]) and (not hide) then
           local player = createObject('TSStatic')
           player:setField("shapeName", 0, "/art/shapes/kissmp_playermodels/base_nb_head.dae")

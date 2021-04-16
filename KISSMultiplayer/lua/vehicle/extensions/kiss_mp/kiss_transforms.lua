@@ -28,7 +28,13 @@ M.lerp_factor = 20.0
 
 local function predict(dt)
   M.target_transform.velocity = M.received_transform.velocity + M.received_transform.acceleration * M.received_transform.time_past
-  M.target_transform.position = lerp(M.target_transform.position, M.received_transform.position + M.target_transform.velocity * M.received_transform.time_past, clamp(M.lerp_factor * dt, 0.00001, 1))
+  local distance =  M.target_transform.position:distance(vec3(obj:getPosition()))
+  local p = M.received_transform.position + M.target_transform.velocity * M.received_transform.time_past
+  if distance < 2 then
+    M.target_transform.position = lerp(M.target_transform.position, p, clamp(M.lerp_factor * dt, 0.00001, 1))
+  else
+    M.target_transform.position = p
+  end
 
   --M.target_transform.angular_velocity = M.received_transform.angular_velocity + M.received_transform.angular_acceleration * M.received_transform.time_past
   --local rotation_delta = M.target_transform.angular_velocity * M.received_transform.time_past
@@ -36,15 +42,19 @@ local function predict(dt)
 end
 
 local function try_rude()
-  if (M.target_transform.position - vec3(obj:getPosition())):length() > 3 then
-    local p = M.target_transform.position
-    obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPosition(Point3F("..p.x..", "..p.y..", "..p.z.."))")
-  end
-  if (M.target_transform.position - vec3(obj:getPosition())):length() > 15 then
+  local distance =  M.target_transform.position:distance(vec3(obj:getPosition()))
+  if distance > 15 then
     local p = M.target_transform.position
     local r = M.target_transform.rotation
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
+    return true
   end
+  if distance > 3 then
+    local p = M.target_transform.position
+    obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPosition(Point3F("..p.x..", "..p.y..", "..p.z.."))")
+    return true
+  end
+  return false
 end
 
 local function draw_debug()
@@ -60,7 +70,7 @@ local function update(dt)
   if dt > 0.1 then return end
   M.received_transform.time_past = clamp(M.received_transform.time_past + dt, 0, 0.5)
   predict(dt)
-  try_rude()
+  if try_rude() then return end
 
   if M.debug then
     draw_debug()

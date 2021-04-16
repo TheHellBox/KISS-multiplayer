@@ -1,4 +1,4 @@
-local VERSION = "0.4.2"
+local VERSION = "0.4.4"
 local M = {}
 local http = require("socket.http")
 
@@ -32,6 +32,8 @@ M.player_name = imgui.ArrayChar(32, "Unknown")
 M.show_nametags = imgui.BoolPtr(true)
 M.show_drivers = imgui.BoolPtr(true)
 M.window_opacity = imgui.FloatPtr(0.8)
+M.enable_view_distance = imgui.BoolPtr(true)
+M.view_distance = imgui.IntPtr(300)
 
 local add_favorite_addr = imgui.ArrayChar(128)
 local add_favorite_name = imgui.ArrayChar(64, "KissMP Server")
@@ -60,13 +62,13 @@ local filtered_favorite_servers = {}
 local next_bridge_status_update = 0
 
 local function save_favorites()
-  local file = io.open("./kissmp_favorites.json", "w")
+  local file = io.open("./settings/kissmp_favorites.json", "w")
   file:write(jsonEncode(favorite_servers))
   io.close(file)
 end
 
 local function load_favorites()
-  local file = io.open("./kissmp_favorites.json", "r")
+  local file = io.open("./settings/kissmp_favorites.json", "r")
   if file then
     local content = file:read("*a")
     favorite_servers = jsonDecode(content) or {}
@@ -379,6 +381,17 @@ local function draw_settings_tab()
   if imgui.SliderFloat("###window_opacity", M.window_opacity, 0, 1) then
     kissconfig.save_config()
   end
+  if imgui.Checkbox("Enable view distance (Experimental)", M.enable_view_distance) then
+    kissconfig.save_config()
+  end
+  if M.enable_view_distance[0] then
+    if imgui.SliderInt("###view_distance", M.view_distance, 50, 1000) then
+      kissconfig.save_config()
+    end
+    imgui.PushTextWrapPos(0)
+    imgui.Text("Warning. This feature is experimental. It can introduce a small, usually unnoticeable lag spike when approaching nearby vehicles. It'll also block the ability to switch to far away vehicles")
+    imgui.PopTextWrapPos()
+  end
 end
 
 -- The rest
@@ -468,8 +481,9 @@ local function draw_menu()
   if M.show_download then return end
 
   if not gui.isWindowVisible("KissMP") then return end
-  gui.setupWindow("KissMP")
   imgui.SetNextWindowBgAlpha(M.window_opacity[0])
+  imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
+  imgui.SetNextWindowViewport(imgui.GetMainViewport().ID)
   if imgui.Begin("KissMP") then
     imgui.Text("Player name:")
     imgui.InputText("##name", M.player_name)
@@ -533,7 +547,7 @@ end
 
 local function draw_chat()
   if not gui.isWindowVisible("Chat") then return end
-  imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 100))
+  imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
 
   local window_title = "Chat"
   if unread_message_count > 0 and should_draw_unread_count then
@@ -542,6 +556,7 @@ local function draw_chat()
   window_title = window_title .. "###chat"
   
   imgui.SetNextWindowBgAlpha(M.window_opacity[0])
+  imgui.SetNextWindowViewport(imgui.GetMainViewport().ID)
   if imgui.Begin(window_title) then
     local content_width = imgui.GetWindowContentRegionWidth()
     imgui.BeginChild1("ChatWindowUpperContent", imgui.ImVec2(0, -30), true)
@@ -562,7 +577,7 @@ local function draw_chat()
       imgui.PushTextWrapPos(0)
       if message.user_name ~= nil then
         local color = imgui.ImVec4(message.user_color[1], message.user_color[2], message.user_color[3], message.user_color[4])
-        imgui.TextColored(color, "%s", message.user_name..":")
+        imgui.TextColored(color, "%s", (message.user_name:sub(1, 16))..":")
         imgui.SameLine()
       end
       if message.has_color then
@@ -581,7 +596,7 @@ local function draw_chat()
     end
     prev_chat_scroll_max = imgui.GetScrollMaxY()
     imgui.EndChild()
-    
+
     -- Draw player list
     imgui.NextColumn()
     draw_player_list()
@@ -622,6 +637,8 @@ local function draw_download()
   
   if not gui.isWindowVisible("Downloads") then return end
   imgui.SetNextWindowBgAlpha(M.window_opacity[0])
+  imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
+  imgui.SetNextWindowViewport(imgui.GetMainViewport().ID)
   if imgui.Begin("Downloading Required Mods") then
     imgui.BeginChild1("DownloadsScrolling", imgui.ImVec2(0, -30), true)
     
@@ -680,13 +697,19 @@ end
 
 local function draw_names()
   for id, player in pairs(network.players) do
-    local vehicle_id = vehiclemanager.id_map[player.current_vehicle] or 0
+    local vehicle_id = vehiclemanager.id_map[player.current_vehicle] or -1
     local vehicle = be:getObjectByID(vehicle_id)
-    if not vehicle then
-      vehicle = kissplayers.players[player.current_vehicle]
+    local vehicle_position = vec3()
+    if (not vehicle) or (kisstransform.inactive[vehicle_id]) then
+      if kissplayers.players[player.current_vehicle] then
+        vehicle_position = vec3(kissplayers.players[player.current_vehicle]:getPosition())
+      elseif kisstransform.raw_transforms[player.current_vehicle] then
+        vehicle_position = vec3(kisstransform.raw_transforms[player.current_vehicle].position)
+      end
+    else
+      vehicle_position = vec3(vehicle:getPosition())
     end
-    if id ~= network.connection.client_id and vehicle then
-      local vehicle_position = vec3(vehicle:getPosition() or vec3())
+    if id ~= network.connection.client_id then
       if not be:getPlayerVehicle(0) then return end
       local local_position = be:getPlayerVehicle(0):getPosition() or vec3()
       local distance = vehicle_position:distance(vec3(local_position)) or 0

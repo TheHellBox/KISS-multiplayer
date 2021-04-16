@@ -3,7 +3,7 @@ use vehicle::*;
 use serde::{Serialize, Deserialize};
 
 pub const VERSION: (u32, u32) = (0, 4);
-pub const VERSION_STR: &str = "0.4.2";
+pub const VERSION_STR: &str = "0.4.4";
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientInfoPrivate {

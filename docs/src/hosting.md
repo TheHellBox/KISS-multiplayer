@@ -11,7 +11,7 @@ If your server is running on your own PC, connect using the address 127.0.0.1. O
 
 # How do others connect to my server?
 If your server is public, it will show in the server list, and others can just click the Connect button. Otherwise:
-- If you're not using any networking software like Hamachi, people connect to your server with your public IP address. ([https://www.whatismyip.com/]([https://www.whatismyip.com/)).
+- If you're not using any networking software like Hamachi, people connect to your server with your public IP address. ([https://www.whatismyip.com/](https://www.whatismyip.com/)).
 - If you're using networking software like Hamachi, use the IP assigned to you by that software.
 
 Note: You must have the port specified in config.json forwarded

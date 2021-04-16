@@ -119,6 +119,17 @@ local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw)
   end
 end
 
+local function send_vehicle_config()
+  local config = v.config
+  local r = quat(obj:getRotation())
+  local p = obj:getPosition()
+  local data = {
+    position = {p.x, p.y, p.z},
+    rotation = {r.x, r.y, r.z, r.w},
+  }
+  obj:queueGameEngineLua("vehiclemanager.send_vehicle_config_inner("..obj:getID()..", \'"..jsonEncode(config).."\', \'"..jsonEncode(data).."\')")
+end
+
 M.update_transform_info = update_transform_info
 M.apply_linear_velocity_ang_torque = apply_linear_velocity_ang_torque
 M.update_eligible_nodes = update_eligible_nodes
@@ -126,5 +137,5 @@ M.apply_linear_velocity = apply_linear_velocity
 M.kissInit = kissInit
 M.set_reference = set_reference
 M.save_state = save_state
-
+M.send_vehicle_config = send_vehicle_config
 return M
