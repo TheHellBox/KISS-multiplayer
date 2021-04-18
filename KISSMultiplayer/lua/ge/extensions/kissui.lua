@@ -235,10 +235,6 @@ local function remove_server_from_favorites(addr)
   save_favorites()
 end
 
-local function toUpper(str)
-  return (str:gsub("^%l", string.upper))    
-end
-
 local function draw_favorites_tab()
   draw_list_search_and_filters(true)
   
@@ -331,9 +327,7 @@ local function draw_servers_tab()
 
       local cleanMap = ''
 
-      for word in map:gsub('_', ' '):gmatch('%w+') do
-        cleanMap = cleanMap..toUpper(word)..' '
-      end
+      for word in map:gsub('_', ' '):gmatch('%w+') do cleanMap = cleanMap..word:gsub("^%l", string.upper)..' ' end
       imgui.Text("Map: "..cleanMap)
       draw_server_description(server.description)
       imgui.PopTextWrapPos()
