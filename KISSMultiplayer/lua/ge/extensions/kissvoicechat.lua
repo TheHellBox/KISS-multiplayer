@@ -1,4 +1,5 @@
 local M = {}
+M.dependencies = {"network"}
 M.el = vec3(0.08, 0, 0)
 M.er = vec3(-0.08, 0, 0)
 

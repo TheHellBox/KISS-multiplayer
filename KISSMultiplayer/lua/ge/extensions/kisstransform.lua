@@ -1,4 +1,6 @@
 local M = {}
+M.dependencies = {"vehiclemanager"}
+local config = require("kissmp.config")
 
 local generation = 0
 local timer = 0
@@ -32,7 +34,10 @@ local function update(dt)
     local vehicle = be:getObjectByID(id)
     local p = vec3(transform.position)
     if vehicle and apply_velocity and (not vehiclemanager.ownership[id]) then
-      if ((p:distance(vec3(getCameraPosition())) > kissui.view_distance[0])) and kissui.enable_view_distance[0] then
+      if 
+        config.config.enable_view_distance and
+        (p:distance(vec3(getCameraPosition())) > config.config.view_distance)
+      then
         if (not M.inactive[id]) then
           vehicle:setActive(0)
           M.inactive[id] = true

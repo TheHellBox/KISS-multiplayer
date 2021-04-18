@@ -1,3 +1,4 @@
+local config = require("kissmp.config")
 local M = {}
 
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
@@ -169,15 +170,15 @@ end
 local function spawn_vehicle(data)
   local away = true
   if kisstransform.raw_transforms[data.server_id] then
-    away = (vec3(kisstransform.raw_transforms[data.server_id].position):distance(vec3(getCameraPosition())) > kissui.view_distance[0])
+    away = (vec3(kisstransform.raw_transforms[data.server_id].position):distance(vec3(getCameraPosition())) > config.config.view_distance)
   else
-    away = (vec3(data.position):distance(vec3(getCameraPosition())) > kissui.view_distance[0])
+    away = (vec3(data.position):distance(vec3(getCameraPosition())) > config.config.view_distance)
   end
   if M.loading_map or M.delay_spawns then
     print("Buffering vehicle")
     M.vehicle_buffer[data.server_id] = data
     return
-  elseif away and kissui.enable_view_distance[0] then
+  elseif away and config.config.enable_view_distance then
     print("Buffering vehicle")
     M.vehicle_buffer[data.server_id] = data
     return
@@ -269,7 +270,7 @@ local function onUpdate(dt)
     local to_remove = {}
     for k, vehicle in pairs(M.vehicle_buffer) do
       local t = kisstransform.raw_transforms[k]
-      if t and not ((vec3(t.position):distance(vec3(getCameraPosition())) > kissui.view_distance[0]) and kissui.enable_view_distance[0]) then
+      if t and not ((vec3(t.position):distance(vec3(getCameraPosition())) > config.config.view_distance) and config.config.enable_view_distance) then
         spawn_vehicle(vehicle)
         table.insert(to_remove, k)
       end

@@ -1,4 +1,6 @@
+local chat = require("kissmp.chat")
 local M = {}
+M.dependencies = {"vehiclemanager"}
 M.downloads = {}
 M.downloading = false
 M.downloads_status = {}
@@ -54,7 +56,7 @@ local function disconnect(data)
   if data then
     text = text.." Reason: "..data
   end
-  kissui.add_message(text)
+  chat.message_recieved(text)
   M.connection.connected = false
   M.connection.tcp:close()
   M.players = {}
@@ -77,7 +79,6 @@ local function handle_disconnected(data)
 end
 
 local function handle_file_transfer(data)
-  kissui.show_download = true
   local file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data:sub(1, 4)))[0]
   local file_name = data:sub(5, #data)
   local chunks = math.floor(file_len / FILE_TRANSFER_CHUNK_SIZE)
@@ -127,7 +128,7 @@ local function handle_player_disconnected(data)
 end
 
 local function handle_chat(data)
-  kissui.add_message(data[1], nil, data[2])
+  chat.message_recieved(data[1], nil, data[2])
 end
 
 local function onExtensionLoaded()
@@ -195,7 +196,7 @@ local function connect(addr, player_name)
 
   print("Connecting...")
   addr = sanitize_addr(addr)
-  kissui.add_message("Connecting to "..addr.."...")
+  chat.message_recieved("Connecting to "..addr.."...")
   M.connection.tcp = socket.tcp()
   M.connection.tcp:settimeout(3.0)
   local connected, err = M.connection.tcp:connect("127.0.0.1", "7894")
@@ -208,11 +209,11 @@ local function connect(addr, player_name)
   local connection_confirmed = M.connection.tcp:receive(1)
   if connection_confirmed then
     if connection_confirmed ~= string.char(1) then
-      kissui.add_message("Connection failed.", kissui.COLOR_RED)
+      chat.message_recieved("Connection failed.", chat.COLORS.RED)
       return
     end
   else
-    kissui.add_message("Failed to confirm connection. Check if bridge is running.", kissui.COLOR_RED)
+    chat.message_recieved("Failed to confirm connection. Check if bridge is running.", chat.COLORS.RED)
     return
   end
 
@@ -281,7 +282,7 @@ local function connect(addr, player_name)
     freeroam_freeroam.startFreeroam(server_info.map)
   end
   kissrichpresence.update()
-  kissui.add_message("Connected!")
+  chat.message_recieved("Connected!")
 end
 
 local function send_messagepack(data_type, reliable, data)
@@ -346,7 +347,6 @@ local function onUpdate(dt)
       end
     elseif string.byte(msg_type) == 0 then -- Binary data
       M.downloading = true
-      kissui.show_download = true
       local name_b = M.connection.tcp:receive(4)
       local len_n = ffi.cast("uint32_t*", ffi.new("char[?]", 5, name_b))
       local name, _, _ = M.connection.tcp:receive(len_n[0])
@@ -369,7 +369,6 @@ local function onUpdate(dt)
       M.downloads[name]:write(file_data)
       if read_size < FILE_TRANSFER_CHUNK_SIZE then
         M.downloading = false
-        kissui.show_download = false
         kissmods.mount_mod(name)
         M.downloads[name]:close()
         M.downloads[name] = nil
