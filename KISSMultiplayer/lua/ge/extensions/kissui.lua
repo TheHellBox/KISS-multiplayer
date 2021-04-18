@@ -261,7 +261,7 @@ local function draw_favorites_tab()
       imgui.Text("Address: "..addr)
       
       if server_found_in_list then
-        imgui.Text("Map: "..server_found_in_list.map)
+        imgui.Text("Map: "..server_from_list.map)
       end
       
       if server.description and server.description:len() > 0 then
@@ -494,7 +494,7 @@ local function draw_menu()
   imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
   imgui.SetNextWindowViewport(imgui.GetMainViewport().ID)
   if imgui.Begin("KissMP") then
-    imgui.Text("Player Name:")
+    imgui.Text("Player name:")
     imgui.InputText("##name", M.player_name)
     if network.connection.connected then
       if imgui.Button("Disconnect") then
