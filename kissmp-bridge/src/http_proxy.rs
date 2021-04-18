@@ -1,7 +1,7 @@
 use percent_encoding::percent_decode_str;
 use std::net::Ipv4Addr;
 
-pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::DiscordState>) {
+pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::DiscordState>) {
     // Master server proxy
     //println!("start");
     let server = tiny_http::Server::http("0.0.0.0:3693").unwrap();
