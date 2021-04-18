@@ -235,6 +235,10 @@ local function remove_server_from_favorites(addr)
   save_favorites()
 end
 
+local function toUpper(str)
+  return (str:gsub("^%l", string.upper))    
+end
+
 local function draw_favorites_tab()
   draw_list_search_and_filters(true)
   
@@ -261,7 +265,7 @@ local function draw_favorites_tab()
       imgui.Text("Address: "..addr)
       
       if server_found_in_list then
-        imgui.Text("Map: "..server_from_list.map)
+        imgui.Text("Map: "..server_found_in_list.map)
       end
       
       if server.description and server.description:len() > 0 then
@@ -319,7 +323,18 @@ local function draw_servers_tab()
     if imgui.CollapsingHeader1(header) then
       imgui.PushTextWrapPos(0)
       imgui.Text("Address: "..addr)
-      imgui.Text("Map: "..server.map)
+
+      local map = server.map
+
+      map = map:gsub('/levels/', '')
+      map = map:gsub('/info.json', '')
+
+      local cleanMap = ''
+
+      for word in map:gsub('_', ' '):gmatch('%w+') do
+        cleanMap = cleanMap..toUpper(word)..' '
+      end
+      imgui.Text("Map: "..cleanMap)
       draw_server_description(server.description)
       imgui.PopTextWrapPos()
       if imgui.Button("Connect###connect_button_" .. tostring(server_count)) then
@@ -485,7 +500,7 @@ local function draw_menu()
   imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
   imgui.SetNextWindowViewport(imgui.GetMainViewport().ID)
   if imgui.Begin("KissMP") then
-    imgui.Text("Player name:")
+    imgui.Text("Player Name:")
     imgui.InputText("##name", M.player_name)
     if network.connection.connected then
       if imgui.Button("Disconnect") then
