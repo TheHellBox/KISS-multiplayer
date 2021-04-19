@@ -106,7 +106,7 @@ local function draw_server_description(description)
   imgui.Spacing(2)
 end
 
-
+-- indicate_favorite shows a star for favorite servers, primarily for online server listings
 local function draw_server_row(index, address, server, indicate_favorite)
   local online_server = servers.server_list[address]
   local header = server.name.." ["
@@ -165,10 +165,7 @@ local function draw_server_row(index, address, server, indicate_favorite)
   end
 end
 
--- Draw a list of servers, either online or favorites, and populate each item
--- with a header indicating if it was user added, favorited, and player counts.
--- Should have the bonus effect of a new favorite dynamically change the UI to
--- indicate it.
+-- Show favorites changes if it should be drawing favorites, or just online servers
 local function draw_servers(show_favorites)
   imgui.Text("Search:")
   imgui.SameLine()
