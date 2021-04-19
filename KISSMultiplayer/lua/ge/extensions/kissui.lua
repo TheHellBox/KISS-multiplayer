@@ -319,7 +319,16 @@ local function draw_servers_tab()
     if imgui.CollapsingHeader1(header) then
       imgui.PushTextWrapPos(0)
       imgui.Text("Address: "..addr)
-      imgui.Text("Map: "..server.map)
+
+      local map = server.map
+
+      map = map:gsub('/levels/', '')
+      map = map:gsub('/info.json', '')
+
+      local cleanMap = ''
+
+      for word in map:gsub('_', ' '):gmatch('%w+') do cleanMap = cleanMap..word:gsub("^%l", string.upper)..' ' end
+      imgui.Text("Map: "..cleanMap)
       draw_server_description(server.description)
       imgui.PopTextWrapPos()
       if imgui.Button("Connect###connect_button_" .. tostring(server_count)) then
