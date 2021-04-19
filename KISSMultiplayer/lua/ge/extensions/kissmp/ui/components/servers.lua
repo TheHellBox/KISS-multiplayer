@@ -165,8 +165,7 @@ local function draw_server_row(index, address, server, indicate_favorite)
   end
 end
 
--- Show favorites changes if it should be drawing favorites, or just online servers
-local function draw_servers(show_favorites)
+local function draw_servers(favorites_only)
   imgui.Text("Search:")
   imgui.SameLine()
   imgui.PushItemWidth(-1)
@@ -178,7 +177,7 @@ local function draw_servers(show_favorites)
   
   imgui.Checkbox("Not Full", filter_servers_notfull)
   local server_list = false
-  if show_favorites then
+  if favorites_only then
     imgui.SameLine()
     imgui.Checkbox("Online", filter_servers_online)
     server_list = filtered_sorted_servers.favorited
@@ -191,7 +190,7 @@ local function draw_servers(show_favorites)
   imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
   for index, obj in ipairs(server_list) do
     server_count = server_count + 1
-    draw_server_row(index, obj.address, obj.server, not show_favorites)
+    draw_server_row(index, obj.address, obj.server, not favorites_only)
   end
 
   imgui.PushTextWrapPos(0)
