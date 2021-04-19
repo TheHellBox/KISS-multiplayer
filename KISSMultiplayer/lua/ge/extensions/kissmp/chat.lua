@@ -1,23 +1,12 @@
 -- Chat Messages Management
 local M = {}
 
---- @class color
---- @param r number Red
---- @param g number Green
---- @param b number Blue 
 
---- Color constants.
 local COLORS = {
-  YELLOW = {r = 1, g = 1, b = 0}, ---@type color
-  RED = {r = 1, g = 0, b = 0} ---@type color
+  YELLOW = {r = 1, g = 1, b = 0},
+  RED = {r = 1, g = 0, b = 0}
 }
 
---- @class chat_message
---- @field text string Message text
---- @field color color Text color
---- @field user_color color Username color
-
---- Contains chat messages.
 local chat_messages = {
   {text = "KissMP chat", user_color = nil}
 }
@@ -26,10 +15,6 @@ local chat_messages = {
 M.unread_message_count = 0
 
 -- FIXME: USE HOOKS AAAAAAAA
---- Adds a message to the chat table.
---- @param message string
---- @param color color
---- @param sent_by string
 local function message_recieved(message, color, sent_by)
   -- TODO: Remove this once hooks are set up.
   M.unread_message_count = M.unread_message_count + 1
@@ -52,8 +37,6 @@ local function message_recieved(message, color, sent_by)
   table.insert(chat_messages, message_table)
 end
 
---- Send a chat message
---- @param message string
 local function send_message(message)
   local message_trimmed = message:gsub("^%s*(.-)%s*$", "%1")
   if message_trimmed:len() == 0 then return end

@@ -50,11 +50,6 @@ local function update_favorites()
 end
  ]]
 
---- Add a server to favorites
----@param addr string
----@param name string
----@param description string
----@param manual boolean Was manually inputted instead of through the server browser
 local function add_server_to_favorites(addr, name, description, manual)
   favorite_servers[addr] = {
     name = name,
@@ -64,16 +59,13 @@ local function add_server_to_favorites(addr, name, description, manual)
   save_favorites()
 end
 
----Remove server from favorites
----@param addr string
+
 local function remove_server_from_favorites(addr)
   favorite_servers[addr] = nil
   save_favorites()
 end
 
----Refresh the server listing.
----@return boolean Success If refreshing was successful
----@return string ErrorString Message explaining what happened if failed
+-- Returns true on success, or false with a string explaining why
 local function refresh_server_list()
   local b, _, _  = http.request("http://127.0.0.1:3693/check")
   if not b or b ~= "ok" then

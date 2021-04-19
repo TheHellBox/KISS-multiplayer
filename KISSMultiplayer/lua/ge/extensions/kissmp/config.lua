@@ -1,14 +1,6 @@
 local M = {}
 local imgui = ui_imgui
 
---- @class config
---- @field name string Player name
---- @field addr string Last address input
---- @field show_nametags boolean Show names above players
---- @field show_drivers boolean Show drivers inside player vehicles
---- @field window_opacity number Window opacity from 1-0
---- @field enable_view_distance boolean Vehicles outside `view_distance` are buffered
---- @field view_distance number Distance before vehicles outside the range are loaded in
 local default_config = {
   name = "Unknown",
   addr = "",
@@ -19,7 +11,6 @@ local default_config = {
   view_distance = 300
 }
 
---- @type config
 local config = deepcopy(default_config)
 
 local known_config_values = {}

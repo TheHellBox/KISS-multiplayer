@@ -42,7 +42,7 @@ local function draw_direct_favorite_add()
     end
 end
 
--- Blank component for example
+-- Direct add to favorites Component
 local M = {}
 
 local function onExtensionLoaded()
