@@ -27,7 +27,7 @@ local function load_favorites()
   end
 end
 
---[[ This function does seem to have a purpose at the moment
+--[[ This function does not seem to have a purpose at the moment
 
 local function update_favorites()
   local update_count = 0
