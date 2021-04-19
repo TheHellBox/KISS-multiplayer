@@ -112,7 +112,7 @@ local function draw_server_row(index, address, server, indicate_favorite)
   local header = server.name.." ["
 
   if indicate_favorite and servers.favorite_servers[address] then
-    header = header.." ★ "
+    header = header.." * "
   end
 
   if server.added_manually then
