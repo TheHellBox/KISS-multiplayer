@@ -31,7 +31,6 @@ local window_flags = {
   auto_size = imgui.WindowFlags_AlwaysAutoResize
 }
 
--- Configures the UI to start running.
 local function setup_ui()
   for _, ui in ipairs(all_ui) do
     ui.onExtensionLoaded()
@@ -44,7 +43,6 @@ local function setup_ui()
   gm.hideWindow("Add Favorite")
 end
 
--- Shows the UI.
 local function show_ui()
   -- TODO: Window registeration
   for _, window in ipairs({"KissMP", "Chat", "Downloads"}) do
@@ -53,7 +51,6 @@ local function show_ui()
   ui_showing = true
 end
 
--- Hides the UI.
 local function hide_ui()
   -- TODO: Window registeration
   for _, window in ipairs({"KissMP", "Chat", "Downloads", "Add Favorite"}) do
@@ -62,7 +59,6 @@ local function hide_ui()
   ui_showing = false
 end
 
--- Toggle the UI.
 local function toggle_ui()
   if ui_showing then
     hide_ui()
@@ -71,7 +67,6 @@ local function toggle_ui()
   end
 end
 
--- Draw the main window containing the server, direct, favorite, and settings tabs.
 local function draw_main_window(dt)
   if network.downloading then return end
   if not gm.isWindowVisible("KissMP") then return end
@@ -113,7 +108,6 @@ local function draw_main_window(dt)
   imgui.End()
 end
 
--- Draw the chat window.
 local function draw_chat_window(dt)
   if not gm.isWindowVisible("Chat") then return end
   imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
@@ -131,7 +125,6 @@ local function draw_chat_window(dt)
   imgui.End()
 end
 
--- Draw the download window.
 local function draw_download_window(dt)
   if not network.downloading then return end
   if not gm.isWindowVisible("Downloads") then return end
@@ -146,7 +139,6 @@ local function draw_download_window(dt)
   imgui.End()
 end
 
--- Draw the direct favorite add window.
 local function draw_add_favorite_window(dt)
   if not gm.isWindowVisible("Add Favorite") then return end
   local display_size = imgui.GetIO().DisplaySize
@@ -171,7 +163,6 @@ local function draw_add_favorite_window(dt)
   imgui.End()
 end
 
--- Draw the incorrect install window.
 local function draw_incorrect_install_window(dt)
   if install_check and false then return end -- TODO: Remove this
   if imgui.Begin("Incorrect install detected") then
