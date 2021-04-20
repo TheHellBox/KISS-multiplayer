@@ -57,6 +57,9 @@ local message_buffer = imgui.ArrayChar(128)
 
 local favorite_servers = {}
 
+local server_histroy = {}
+local filtered_server_history = {}
+
 local filtered_servers = {}
 local filtered_favorite_servers = {}
 local next_bridge_status_update = 0
@@ -93,6 +96,21 @@ local function update_favorites()
   
   if update_count > 0 then 
     save_favorites()
+  end
+end
+
+local function save_history()
+  local file = io.open("./settings/kissmp_history.json", "w")
+  file:write(jsonEncode(server_histroy))
+  io.close(file)
+end
+
+local function load_history()
+  local file = io.open("./settings/kissmp_history.json", "r")
+  if file then
+    local content = file:read("*a")
+    server_histroy = jsonDecode(content) or {}
+    io.close(file)
   end
 end
 
@@ -159,6 +177,7 @@ local function update_filtered_servers()
   
     filtered_servers = filter_server_list(M.server_list, term, filter_notfull, filter_online)
     filtered_favorite_servers = filter_server_list(favorite_servers, term, filter_notfull, filter_online)
+    filtered_server_history = filter_server_list(server_histroy, term, filter_notfull, filter_online)
 end
 
 local function refresh_server_list()
@@ -210,6 +229,83 @@ local function draw_server_description(description)
   imgui.Text(description)
   imgui.SetCursorPos(cursor_pos_after)
   imgui.Spacing(2)
+end
+
+-- History tab things
+local function add_server_to_history(addr, server)
+  server_histroy[addr] = {
+    name = server.name,
+    description = server.description
+  }
+  save_history()
+end
+
+local function remove_server_from_history(addr)
+  server_histroy[addr] = nil
+  save_history()
+end
+
+local function draw_histroy_tab()
+  draw_list_search_and_filters(true)
+  
+  local history_count = 0
+  
+  imgui.BeginChild1("Scrolling", imgui.ImVec2(0, -30), true)
+  for addr, server in spairs(filtered_server_history, function(t,a,b) return t[b].name:lower() > t[a].name:lower() end) do
+    local server_from_list = M.server_list[addr]
+    local server_found_in_list = server_from_list ~= nil
+    history_count = history_count + 1
+    
+    local header = server.name
+    if server_found_in_list then
+      header = header.." ["..server_from_list.player_count.."/"..server_from_list.max_players.."]"
+    else
+      header = header.." [OFFLINE]"
+    end
+    header = header .. "###server_header_"  .. tostring(history_count)
+    
+    if imgui.CollapsingHeader1(header) then
+      imgui.PushTextWrapPos(0)
+      imgui.Text("Address: "..addr)
+      
+      if server_found_in_list then
+        imgui.Text("Map: "..server_from_list.map)
+      end
+      
+      if server.description and server.description:len() > 0 then
+        draw_server_description(server.description)
+      end
+      
+      imgui.PopTextWrapPos()
+      if imgui.Button("Connect###connect_button_" .. tostring(history_count)) then
+        kissconfig.save_config()
+        local player_name = ffi.string(M.player_name)
+        network.connect(addr, player_name)
+        refresh_server_list()
+      end
+      imgui.SameLine()
+      if imgui.Button("Remove from History###remove_history_button_" .. tostring(history_count)) then
+        remove_server_from_history(addr)
+        update_filtered_servers()
+      end
+    end
+  end
+
+  imgui.PushTextWrapPos(0)
+  if history_count == 0 then
+    imgui.Text("History list is empty")
+  end
+  imgui.PopTextWrapPos()
+  
+  imgui.EndChild()
+  
+  local content_width = imgui.GetWindowContentRegionWidth()
+  local button_width = content_width * 0.495
+  
+  if imgui.Button("Refresh list", imgui.ImVec2(button_width, 0)) then
+    refresh_server_list()
+    update_filtered_servers()
+  end
 end
 
 -- Favorites tab things
@@ -320,14 +416,12 @@ local function draw_servers_tab()
       imgui.PushTextWrapPos(0)
       imgui.Text("Address: "..addr)
 
-      local map = server.map
-
-      map = map:gsub('/levels/', '')
-      map = map:gsub('/info.json', '')
+      server.map = server.map:gsub('/levels/', '')
+      server.map = server.map:gsub('/info.json', '')
 
       local cleanMap = ''
 
-      for word in map:gsub('_', ' '):gmatch('%w+') do cleanMap = cleanMap..word:gsub("^%l", string.upper)..' ' end
+      for word in server.map:gsub('_', ' '):gmatch('%w+') do cleanMap = cleanMap..word:gsub("^%l", string.upper)..' ' end
       imgui.Text("Map: "..cleanMap)
       draw_server_description(server.description)
       imgui.PopTextWrapPos()
@@ -335,6 +429,7 @@ local function draw_servers_tab()
         kissconfig.save_config()
         local player_name = ffi.string(M.player_name)
         network.connect(addr, player_name)
+        add_server_to_history(addr, server)
       end
       
       local in_favorites_list = favorite_servers[addr] ~= nil
@@ -429,6 +524,7 @@ end
 
 local function open_ui()
   load_favorites()
+  load_history()
   refresh_server_list()
   update_filtered_servers()
   update_favorites()
@@ -515,6 +611,10 @@ local function draw_menu()
       end
       if imgui.BeginTabItem("Favorites") then
         draw_favorites_tab()
+        imgui.EndTabItem()
+      end
+      if imgui.BeginTabItem("History") then
+        draw_histroy_tab()
         imgui.EndTabItem()
       end
       if imgui.BeginTabItem("Settings") then
