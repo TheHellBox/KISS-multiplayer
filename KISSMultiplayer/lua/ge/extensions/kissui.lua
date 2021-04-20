@@ -57,7 +57,7 @@ local message_buffer = imgui.ArrayChar(128)
 
 local favorite_servers = {}
 
-local server_histroy = {}
+local server_history = {}
 local filtered_server_history = {}
 
 local filtered_servers = {}
@@ -101,7 +101,7 @@ end
 
 local function save_history()
   local file = io.open("./settings/kissmp_history.json", "w")
-  file:write(jsonEncode(server_histroy))
+  file:write(jsonEncode(server_history))
   io.close(file)
 end
 
@@ -109,7 +109,7 @@ local function load_history()
   local file = io.open("./settings/kissmp_history.json", "r")
   if file then
     local content = file:read("*a")
-    server_histroy = jsonDecode(content) or {}
+    server_history = jsonDecode(content) or {}
     io.close(file)
   end
 end
@@ -177,7 +177,7 @@ local function update_filtered_servers()
   
     filtered_servers = filter_server_list(M.server_list, term, filter_notfull, filter_online)
     filtered_favorite_servers = filter_server_list(favorite_servers, term, filter_notfull, filter_online)
-    filtered_server_history = filter_server_list(server_histroy, term, filter_notfull, filter_online)
+    filtered_server_history = filter_server_list(server_history, term, filter_notfull, filter_online)
 end
 
 local function refresh_server_list()
@@ -233,7 +233,7 @@ end
 
 -- History tab things
 local function add_server_to_history(addr, server)
-  server_histroy[addr] = {
+  server_history[addr] = {
     name = server.name,
     description = server.description
   }
@@ -241,11 +241,11 @@ local function add_server_to_history(addr, server)
 end
 
 local function remove_server_from_history(addr)
-  server_histroy[addr] = nil
+  server_history[addr] = nil
   save_history()
 end
 
-local function draw_histroy_tab()
+local function draw_history_tab()
   draw_list_search_and_filters(true)
   
   local history_count = 0
@@ -614,7 +614,7 @@ local function draw_menu()
         imgui.EndTabItem()
       end
       if imgui.BeginTabItem("History") then
-        draw_histroy_tab()
+        draw_history_tab()
         imgui.EndTabItem()
       end
       if imgui.BeginTabItem("Settings") then
