@@ -415,13 +415,7 @@ local function draw_servers_tab()
     if imgui.CollapsingHeader1(header) then
       imgui.PushTextWrapPos(0)
       imgui.Text("Address: "..addr)
-
-      server.map = server.map:gsub('/levels/', '')
-      server.map = server.map:gsub('/info.json', '')
-
-      local cleanMap = ''
-
-      for word in server.map:gsub('_', ' '):gmatch('%w+') do cleanMap = cleanMap..word:gsub("^%l", string.upper)..' ' end
+      
       imgui.Text("Map: "..cleanMap)
       draw_server_description(server.description)
       imgui.PopTextWrapPos()
