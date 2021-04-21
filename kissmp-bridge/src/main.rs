@@ -5,6 +5,7 @@ pub mod http_proxy;
 pub mod voice_chat;
 
 use futures::{StreamExt, TryStreamExt};
+use serde_json::Value;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -18,6 +19,9 @@ pub struct DiscordState {
 async fn main() {
     let (discord_tx, discord_rx) = std::sync::mpsc::channel();
     let discord_tx_clone = discord_tx.clone();
+    tokio::spawn(async {
+        println!("{}", check_updates().await);
+    });
     discord::spawn_discord_rpc(discord_rx).await;
     tokio::spawn(async move {
         http_proxy::spawn_http_proxy(discord_tx).await;
@@ -225,5 +229,41 @@ impl rustls::ServerCertVerifier for AcceptAnyCertificate {
         _ocsp_response: &[u8],
     ) -> Result<rustls::ServerCertVerified, rustls::TLSError> {
         Ok(rustls::ServerCertVerified::assertion())
+    }
+}
+
+async fn check_updates() -> String {
+    let err_msg = "Error checking for updates".to_string();
+    let client = reqwest::Client::builder()
+        .user_agent("kissmp-bridge")
+        .build()
+        .unwrap();
+
+    let request = match client
+        .get("https://api.github.com/repos/TheHellBox/KISS-multiplayer/releases/latest")
+        .send()
+        .await
+    {
+        Ok(data) => data,
+        Err(_) => return err_msg,
+    };
+    let text = &request.text().await.unwrap();
+    let value: Value = match serde_json::from_str(text) {
+        Ok(value) => value,
+        Err(_) => return err_msg,
+    };
+    let latest_version = &value["tag_name"];
+    if latest_version == &Value::Null {
+        return err_msg;
+    }
+
+    let current_version = env!("CARGO_PKG_VERSION");
+    if current_version == latest_version {
+        return format!("Up to date (version {})", current_version);
+    } else {
+        return format!(
+            "New version avaliable ({} current, {} latest)",
+            current_version, latest_version
+        );
     }
 }
