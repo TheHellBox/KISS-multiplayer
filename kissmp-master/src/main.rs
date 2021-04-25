@@ -27,6 +27,8 @@ pub struct ServerList(HashMap<SocketAddr, ServerInfo>);
 
 #[tokio::main]
 async fn main() {
+    p2p_server().await;
+
     let server_list_r = Arc::new(Mutex::new(ServerList(HashMap::new())));
     let addresses_r: Arc<Mutex<HashMap<std::net::IpAddr, HashMap<u16, bool>>>>= Arc::new(Mutex::new(HashMap::new()));
 
