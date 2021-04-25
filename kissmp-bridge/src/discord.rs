@@ -1,4 +1,4 @@
-pub async fn spawn_discord_rpc(discord_rx: std::sync::mpsc::Receiver<crate::DiscordState>) {
+pub async fn spawn_discord_rpc(mut discord_rx: std::sync::mpsc::Receiver<crate::DiscordState>) {
     //let discord_rx = tokio_stream::wrappers::ReceiverStream::new(discord_rx);
     std::thread::spawn(move || {
         let mut drpc_client = discord_rpc_client::Client::new(771278096627662928);

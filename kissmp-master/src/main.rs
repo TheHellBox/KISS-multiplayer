@@ -27,6 +27,8 @@ pub struct ServerList(HashMap<SocketAddr, ServerInfo>);
 
 #[tokio::main]
 async fn main() {
+    p2p_server().await;
+
     let server_list_r = Arc::new(Mutex::new(ServerList(HashMap::new())));
     let addresses_r: Arc<Mutex<HashMap<std::net::IpAddr, HashMap<u16, bool>>>>= Arc::new(Mutex::new(HashMap::new()));
 
@@ -108,6 +110,19 @@ async fn main() {
     });
     let routes = post.or(ver).or(outdated);
     warp::serve(routes).run(([0, 0, 0, 0], 3692)).await;
+}
+
+async fn p2p_server() {
+    tokio::spawn(async {
+        let mut socket = tokio::net::UdpSocket::bind((std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)), 3691)).await.unwrap();
+        loop {
+            let mut buf = [0; 16];
+            let result = socket.recv_from(&mut buf).await;
+            if let Ok((_, src_addr)) = result {
+                let _ = socket.send_to(src_addr.to_string().as_bytes(), src_addr).await;
+            }
+        }
+    });
 }
 
 fn outdated_ver() -> String {

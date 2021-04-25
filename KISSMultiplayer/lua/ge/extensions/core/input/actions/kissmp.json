@@ -1,3 +1,5 @@
 {
-    "voicechat":{"cat":"general", "order":  0, "ctx": "tlua", "onDown"  :"kissvoicechat.start_vc()", "onUp": "kissvoicechat.end_vc()", "isBasic":true, "title": "Voice Chat", "desc": "KissMP Voice qChat" }
+    "voicechat":{"cat":"general", "order":  0, "ctx": "tlua", "onDown"  :"kissvoicechat.start_vc()", "onUp": "kissvoicechat.end_vc()", "isBasic":true, "title": "KissMP Voice Chat", "desc": "KissMP Voice Chat" },
+    "kmp_focus_chat":{"cat":"general", "order":  0, "ctx": "tlua", "onDown"  :"kissui.chat.focus_chat = true", "isBasic":true, "title": "KissMP Chat", "desc": "Focus chat text entry" },
+    "kmp_ui":{"cat":"general", "order":  0, "ctx": "tlua", "onDown"  :"kissui.toggle_ui()", "isBasic":true, "title": "Toggle KissMP UI", "desc": "Toggle KissMP UI" },
 }

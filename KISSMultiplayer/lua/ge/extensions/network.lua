@@ -1,4 +1,7 @@
 local M = {}
+
+M.VERSION_STR = "0.4.5"
+
 M.downloads = {}
 M.downloading = false
 M.downloads_status = {}
@@ -54,7 +57,7 @@ local function disconnect(data)
   if data then
     text = text.." Reason: "..data
   end
-  kissui.add_message(text)
+  kissui.chat.add_message(text)
   M.connection.connected = false
   M.connection.tcp:close()
   M.players = {}
@@ -104,7 +107,7 @@ end
 local function handle_vehicle_lua(data)
   local id = data[1]
   local lua = data[2]
-  local id = vehiclemanager.id_map[id]
+  local id = vehiclemanager.id_map[id or -1] or 0
   local vehicle = be:getObjectByID(id)
   if vehicle then
     vehicle:queueLuaCommand(lua)
@@ -127,7 +130,7 @@ local function handle_player_disconnected(data)
 end
 
 local function handle_chat(data)
-  kissui.add_message(data[1], nil, data[2])
+  kissui.chat.add_message(data[1], nil, data[2])
 end
 
 local function onExtensionLoaded()
@@ -195,7 +198,7 @@ local function connect(addr, player_name)
 
   print("Connecting...")
   addr = sanitize_addr(addr)
-  kissui.add_message("Connecting to "..addr.."...")
+  kissui.chat.add_message("Connecting to "..addr.."...")
   M.connection.tcp = socket.tcp()
   M.connection.tcp:settimeout(3.0)
   local connected, err = M.connection.tcp:connect("127.0.0.1", "7894")
@@ -208,11 +211,11 @@ local function connect(addr, player_name)
   local connection_confirmed = M.connection.tcp:receive(1)
   if connection_confirmed then
     if connection_confirmed ~= string.char(1) then
-      kissui.add_message("Connection failed.", kissui.COLOR_RED)
+      kissui.chat.add_message("Connection failed.", kissui.COLOR_RED)
       return
     end
   else
-    kissui.add_message("Failed to confirm connection. Check if bridge is running.", kissui.COLOR_RED)
+    kissui.chat.add_message("Failed to confirm connection. Check if bridge is running.", kissui.COLOR_RED)
     return
   end
 
@@ -281,7 +284,7 @@ local function connect(addr, player_name)
     freeroam_freeroam.startFreeroam(server_info.map)
   end
   kissrichpresence.update()
-  kissui.add_message("Connected!")
+  kissui.chat.add_message("Connected!")
 end
 
 local function send_messagepack(data_type, reliable, data)

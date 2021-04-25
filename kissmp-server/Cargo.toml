@@ -1,6 +1,6 @@
 [package]
 name = "kissmp-server"
-version = "0.4.2"
+version = "0.4.5"
 authors = ["hellbox"]
 edition = "2018"
 
