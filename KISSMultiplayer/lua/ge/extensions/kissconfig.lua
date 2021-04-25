@@ -74,10 +74,6 @@ local function init()
   if #FS:findFiles("/mods/", "KISSMultiplayer.zip", 1000) == 0 then
     kissui.incorrect_install = true
   end
-    -- Hack to reload input actions
-  local actions = require("lua/ge/extensions/core/input/actions")
-  extensions.core_input_actions = actions
-  core_input_bindings.onFirstUpdate()
 end
 
 M.save_config = save_config

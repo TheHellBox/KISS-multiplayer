@@ -301,8 +301,10 @@ local function update_vehicle(data)
   if not vehicle then return end
 
   kisstransform.update_vehicle_transform(data)
-  vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(data.electrics).."\')")
-  vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(data.gearbox).."\')")
+  if not kisstransform.inactive[id] then
+    vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(data.electrics).."\')")
+    vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(data.gearbox).."\')")
+  end
 end
 
 local function remove_vehicle(data)

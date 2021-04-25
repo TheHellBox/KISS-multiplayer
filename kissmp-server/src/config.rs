@@ -11,6 +11,7 @@ pub struct Config {
     pub port: u16,
     pub max_vehicles_per_client: u8,
     pub show_in_server_list: bool,
+    pub p2p_enabled: bool,
     pub server_identifier: String,
 }
 
@@ -25,6 +26,7 @@ impl Default for Config {
             max_vehicles_per_client: 3,
             port: 3698,
             show_in_server_list: false,
+            p2p_enabled: false,
             server_identifier: rand_string(),
         }
     }

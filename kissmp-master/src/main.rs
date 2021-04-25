@@ -110,6 +110,19 @@ async fn main() {
     warp::serve(routes).run(([0, 0, 0, 0], 3692)).await;
 }
 
+async fn p2p_server() {
+    tokio::spawn(async {
+        let mut socket = tokio::net::UdpSocket::bind((std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)), 3691)).await.unwrap();
+        loop {
+            let mut buf = [0; 16];
+            let result = socket.recv_from(&mut buf).await;
+            if let Ok((_, src_addr)) = result {
+                let _ = socket.send_to(src_addr.to_string().as_bytes(), src_addr).await;
+            }
+        }
+    });
+}
+
 fn outdated_ver() -> String {
     let mut server_list = ServerList(HashMap::with_capacity(5));
     for k in 0..5 {

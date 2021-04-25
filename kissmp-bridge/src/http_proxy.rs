@@ -1,10 +1,21 @@
 use percent_encoding::percent_decode_str;
 use std::net::Ipv4Addr;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct ServerHostData {
+    name: String,
+    max_players: u8,
+    map: String,
+    mods: Vec<String>,
+    port: u16,
+}
 
 pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::DiscordState>) {
     // Master server proxy
     //println!("start");
     let server = tiny_http::Server::http("0.0.0.0:3693").unwrap();
+    let (stop_tx, stop_rx) = std::sync::mpsc::channel();
     loop {
         for request in server.incoming_requests() {
             let addr = request.remote_addr();
@@ -33,6 +44,31 @@ pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::Dis
                 };
                 let state = crate::DiscordState { server_name };
                 let _ = discord_tx.send(state);
+                let response = tiny_http::Response::from_string("ok");
+                request.respond(response).unwrap();
+                continue;
+            }
+            if url.starts_with("host") {
+                let data = url.replace("host/", "");
+                let data = percent_decode_str(&data)
+                    .decode_utf8_lossy()
+                    .into_owned();
+                stop_tx.send(());
+                std::thread::spawn(move || {
+                    let data: ServerHostData = serde_json::from_str(&data).unwrap();
+                    let config = kissmp_server::config::Config{
+                        server_name: data.name,
+                        max_players: data.max_players,
+                        map: data.map,
+                        port: data.port,
+                        ..Default::default()
+                    };
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    rt.block_on(async move {
+                        let server = kissmp_server::Server::from_config(config);
+                        server.run(false).await;
+                    });
+                });
                 let response = tiny_http::Response::from_string("ok");
                 request.respond(response).unwrap();
                 continue;
