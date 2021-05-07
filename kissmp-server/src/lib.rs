@@ -16,6 +16,7 @@ use shared::{ClientInfoPrivate, ClientInfoPublic, ServerCommand};
 use vehicle::*;
 
 use anyhow::Error;
+use futures::FutureExt;
 use futures::{select, StreamExt, TryStreamExt};
 use quinn::{Certificate, CertificateChain, PrivateKey};
 use std::collections::HashMap;
@@ -77,6 +78,7 @@ pub struct Server {
     lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
     server_identifier: String,
     p2p_enabled: bool,
+    mods: Option<Vec<String>>,
     tick: u64,
 }
 
@@ -84,7 +86,8 @@ impl Server {
     pub fn from_config(config: config::Config) -> Self {
         let (lua, receiver) = lua::setup_lua();
         let (watcher_tx, watcher_rx) = std::sync::mpsc::channel();
-        let lua_watcher = notify::Watcher::new(watcher_tx, std::time::Duration::from_secs(2)).unwrap();
+        let lua_watcher =
+            notify::Watcher::new(watcher_tx, std::time::Duration::from_secs(2)).unwrap();
         Self {
             connections: HashMap::with_capacity(8),
             reqwest_client: reqwest::Client::new(),
@@ -104,10 +107,11 @@ impl Server {
             lua_commands: receiver,
             server_identifier: config.server_identifier,
             p2p_enabled: config.p2p_enabled,
+            mods: config.mods,
             tick: 0,
         }
     }
-    pub async fn run(mut self, enable_lua: bool) {
+    pub async fn run(mut self, enable_lua: bool, destroyer: tokio::sync::oneshot::Receiver<()>) {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
         let socket = UdpSocket::bind(&addr).unwrap();
         let _ = socket.set_read_timeout(Some(std::time::Duration::from_secs(3)));
@@ -118,10 +122,10 @@ impl Server {
                 let mut buf = [0; 1024];
                 let r = socket.recv_from(&mut buf);
                 if let Ok((n, _)) = r {
-                    let addr = String::from_utf8(buf[0..n].to_vec()).unwrap().parse::<IpAddr>();
-                    println!("P2P IP: {}", addr.unwrap());
-                }
-                else{
+                    let addr = String::from_utf8(buf[0..n].to_vec()).unwrap();
+                    println!("P2P IP: {}", addr);
+                    break;
+                } else {
                     println!("Failed to receive P2P IP, retrying...");
                 }
                 i += 1;
@@ -149,9 +153,7 @@ impl Server {
 
         let mut endpoint = quinn::Endpoint::builder();
         endpoint.listen(server_config);
-        let (_, incoming) = endpoint
-            .with_socket(socket)
-            .unwrap();
+        let (_, incoming) = endpoint.with_socket(socket).unwrap();
 
         let (client_events_tx, client_events_rx) = mpsc::channel(128);
         let mut client_events_rx = ReceiverStream::new(client_events_rx).fuse();
@@ -162,6 +164,7 @@ impl Server {
         let stdin = tokio::io::stdin();
         let reader =
             tokio_util::codec::FramedRead::new(stdin, tokio_util::codec::LinesCodec::new());
+        let mut destroyer = destroyer.fuse();
         let mut reader = reader.fuse();
         if enable_lua {
             self.load_lua_addons();
@@ -192,6 +195,10 @@ impl Server {
                 },
                 e = client_events_rx.select_next_some() => {
                     self.on_client_event(e.0, e.1).await;
+                },
+                _ = destroyer => {
+                    println!("Server shutdown requested. Shutting down");
+                    break;
                 }
             }
         }
@@ -341,7 +348,7 @@ impl Server {
                 map: self.map.clone(),
                 tickrate: self.tickrate,
                 max_vehicles_per_client: self.max_vehicles_per_client,
-                mods: list_mods().unwrap_or(vec![]),
+                mods: list_mods(self.mods.clone()).unwrap_or(vec![]),
                 server_identifier: self.server_identifier.clone(),
             }))
             .unwrap();
@@ -497,18 +504,49 @@ async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<
     Ok(())
 }
 
-pub fn list_mods() -> anyhow::Result<Vec<(String, u32)>> {
-    let path = std::path::Path::new("./mods/");
-    if !path.exists() {
-        std::fs::create_dir(path).unwrap();
-    }
+pub fn list_mods(mods: Option<Vec<String>>) -> anyhow::Result<Vec<(String, u32)>> {
+    let paths = {
+        if let Some(mods) = mods {
+            let mut paths = vec![];
+            for path in mods {
+                paths.push(std::path::PathBuf::from(&path));
+            }
+            paths
+        } else {
+            let path = std::path::Path::new("./mods/");
+            if !path.exists() {
+                std::fs::create_dir(path).unwrap();
+            }
+            std::fs::read_dir(path)?
+                .map(|x| x.unwrap().path())
+                .collect()
+        }
+    };
     let mut result = vec![];
-    let paths = std::fs::read_dir(path)?;
     for path in paths {
-        let path = path?.path();
+        let mut path = path.clone();
         if path.is_dir() {
             continue;
         }
+        if !path.exists() {
+            println!("File {:?} doesn't exists, attempting to replace windows path with most common proton prefix", path);
+            // Somewhat working fix for game returning mods with windows path
+            path = dirs::home_dir()
+                .unwrap()
+                .join(".steam/steam/steamapps/compatdata/284160/pfx/drive_c/")
+                .join(
+                    path.to_str()
+                        .unwrap()
+                        .to_string()
+                        .replace(r#"C:\"#, "")
+                        .replace(r#"\"#, "/"),
+                );
+            if !path.exists() {
+                println!("Mod file {:?} not found", path);
+                continue;
+            }
+        }
+        println!("{:?}", path);
         let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
         let file = std::fs::File::open(path)?;
         let metadata = file.metadata()?;

@@ -6,7 +6,7 @@ async fn main() {
     let _ = list_mods(); // Dirty hack to create /mods/ folder
     let config = config::Config::load(std::path::Path::new("./config.json"));
     let server = Server::from_config(config);
-    server.run(true).await;
+    server.run(true, tokio::sync::oneshot::channel().1).await;
 }
 
 fn list_mods() -> anyhow::Result<Vec<(String, u32)>> {

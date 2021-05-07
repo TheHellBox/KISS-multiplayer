@@ -190,6 +190,16 @@ local function generate_secret(server_identifier)
   return hashStringSHA1(secret)
 end
 
+local function change_map(map)
+  if FS:fileExists(map) or FS:directoryExists(map) then
+    vehiclemanager.loading_map = true
+    freeroam_freeroam.startFreeroam(map)
+  else
+    kissui.chat.add_message("Map file doesn't exist. Check if mod containing map is enabled", kissui.COLOR_RED)
+    disconnect()
+  end
+end
+
 local function connect(addr, player_name)
   if M.connection.connected then
     disconnect()
@@ -281,7 +291,7 @@ local function connect(addr, player_name)
   end
   vehiclemanager.loading_map = true
   if #missing_mods == 0 then
-    freeroam_freeroam.startFreeroam(server_info.map)
+    change_map(server_info.map)
   end
   kissrichpresence.update()
   kissui.chat.add_message("Connected!")
@@ -298,7 +308,7 @@ end
 
 local function on_finished_download()
   vehiclemanager.loading_map = true
-  freeroam_freeroam.startFreeroam(M.connection.server_info.map)
+  change_map(M.connection.server_info.map)
 end
 
 local function send_ping()

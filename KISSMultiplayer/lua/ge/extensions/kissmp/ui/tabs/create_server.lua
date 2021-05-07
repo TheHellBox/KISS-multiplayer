@@ -4,10 +4,21 @@ local http = require("socket.http")
 
 M.map = "/levels/industrial/info.json"
 M.map_name = "industrial"
-M.mods = {""}
+M.mods = {}
 M.server_name = imgui.ArrayChar(128, "Private KissMP server")
 M.max_players = imgui.IntPtr(8)
 M.port = imgui.IntPtr(3698)
+M.is_proton = imgui.BoolPtr(false)
+M.proton_path = imgui.ArrayChar(1024, "/home/")
+
+local function to_non_lowered(path)
+  local mods = FS:findFiles("/mods/", "*.zip", 1000)
+  for k, v in pairs(mods) do
+    if string.lower(v) == path then
+      return v
+    end
+  end
+end
 
 local function host_server()
   local port = M.port[0]
@@ -38,9 +49,17 @@ local function draw()
   if imgui.BeginCombo("###host_map", M.map_name) then
     for k, v in pairs(core_levels.getList()) do
       if imgui.Selectable1(v.levelName.."###host_map_s_"..k) then
-        local map_path = v.misFilePath.."info.json"
+        local map_path = v.misFilePath
         M.map = map_path
         M.map_name = v.levelName
+        local native = FS:virtual2Native(map_path)
+        local _, zip_end = string.find(native, ".zip")
+        if zip_end then
+          local mod_file = string.sub(native, 1, zip_end)
+          print(mod_file)
+          local virtual = to_non_lowered(FS:native2Virtual(mod_file))
+          M.mods[virtual] = FS:virtual2Native(virtual)
+        end
       end
     end
     imgui.EndCombo()
@@ -52,12 +71,14 @@ local function draw()
   imgui.Text("Mods:")
   imgui.BeginChild1("###Mods", imgui.ImVec2(0, -30), true)
   for k, v in pairs(mods) do
-    local enabled = imgui.BoolPtr(M.mods[v] ~= nil)
-    if imgui.Checkbox(v.."###host_mod", enabled) then
-      if enabled then
-        M.mods[v] = v
-      else
-        M.mods[v] = nil
+    if not v:find("KISSMultiplayer") then
+      local enabled = imgui.BoolPtr(M.mods[v] ~= nil)
+      if imgui.Checkbox(v.."###host_mod"..k, enabled) then
+        if not M.mods[v] then
+          M.mods[v] = FS:virtual2Native(v)
+        else
+          M.mods[v] = nil
+        end
       end
     end
   end

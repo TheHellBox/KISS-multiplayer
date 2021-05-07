@@ -233,7 +233,7 @@ end
 
 local function onUpdate(dt)
   if not network.connection.connected then return end
-  if (getMissionFilename():lower() ~= network.connection.server_info.map:lower()) and not M.loading_map then
+  if (getMissionFilename():lower() ~= network.connection.server_info.map:lower()) and (getMissionPath():lower() ~= network.connection.server_info.map:lower()) and not M.loading_map then
     network.disconnect()
   end
   -- Track color and plate changes
@@ -354,15 +354,15 @@ local function reset_vehicle(data)
 end
 
 local function update_vehicle_meta(data)
-  local id = M.id_map[data[1] or -1] or -1
+  local id = M.id_map[data.vehicle_id or -1] or -1
   if M.ownership[id] then return end
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
-  local plate = data[2]
+  local plate = data.plate
   local colors = {
-    data[3][1],
-    data[3][2],
-    data[3][3]
+    data.colors_table[1],
+    data.colors_table[2],
+    data.colors_table[3]
   }
 
   -- Apply plate
@@ -516,9 +516,9 @@ end
 local function onMissionLoaded(mission)
   M.is_network_session = network.connection.connected
   if not network.connection.connected then return end
-  if mission:lower() ~= network.connection.server_info.map:lower() then
-    network.disconnect()
-  end
+  --if mission:lower() ~= network.connection.server_info.map:lower() then
+  --  network.disconnect()
+  --end
   M.id_map = {}
   M.ownership = {}
   M.loading_map = false

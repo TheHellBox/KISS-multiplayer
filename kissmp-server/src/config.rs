@@ -13,6 +13,7 @@ pub struct Config {
     pub show_in_server_list: bool,
     pub p2p_enabled: bool,
     pub server_identifier: String,
+    pub mods: Option<Vec<String>>,
 }
 
 impl Default for Config {
@@ -28,6 +29,7 @@ impl Default for Config {
             show_in_server_list: false,
             p2p_enabled: false,
             server_identifier: rand_string(),
+            mods: None,
         }
     }
 }

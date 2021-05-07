@@ -4,6 +4,8 @@ local imgui = ui_imgui
 local add_favorite_addr = imgui.ArrayChar(128)
 local add_favorite_name = imgui.ArrayChar(64, "KissMP Server")
 
+M.favorite_servers = {}
+
 -- Server list update and search
 -- spairs from https://stackoverflow.com/a/15706820
 local function spairs(t, order)

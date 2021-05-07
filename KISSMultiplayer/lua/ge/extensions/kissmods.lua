@@ -33,7 +33,13 @@ end
 local function mount_mod(name)
   --local mode = mode or "added"
   --extensions.core_modmanager.workOffChangedMod("/kissmp_mods/"..name, mode)
-  FS:mount("/kissmp_mods/"..name)
+  if FS:fileExists("/kissmp_mods"..name) then
+    FS:mount("/kissmp_mods/"..name)
+  elseif FS:fileExists("/mods/"..name) then
+    FS:mount("/mods/"..name)
+  else
+    kissui.chat.add_message("Failed to mount mod "..name..", file not found", kissui.COLOR_RED)
+  end
   core_vehicles.clearCache()
 end
 
@@ -48,11 +54,17 @@ local function mount_mods(list)
 end
 
 local function update_status(mod)
-  local search_result = FS:findFiles("/kissmp_mods/", mod.name, 1)
-  if not search_result[1] then
+  local search_results = FS:findFiles("/kissmp_mods/", mod.name, 1)
+  local search_results2 = FS:findFiles("/mods/", mod.name, 99)
+
+  for _, v in pairs(search_results2) do
+    table.insert(search_results, v)
+  end
+  
+  if not search_results[1] then
     mod.status = "missing"
   else
-    local file = io.open(search_result[1])
+    local file = io.open(search_results[1])
     local len = file:seek("end")
     if len ~= mod.size then
       mod.status = "different"

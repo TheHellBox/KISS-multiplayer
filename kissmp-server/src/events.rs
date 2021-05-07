@@ -84,7 +84,15 @@ impl Server {
                         let mut initial_message = initial_message.clone();
                         initial_message.truncate(128);
                         let mut message = initial_message.clone();
-                        println!("{}: {}", self.connections.get(&client_id).unwrap().client_info_public.name, message);
+                        println!(
+                            "{}: {}",
+                            self.connections
+                                .get(&client_id)
+                                .unwrap()
+                                .client_info_public
+                                .name,
+                            message
+                        );
                         self.lua.context(|lua_ctx| {
                             let results = crate::lua::run_hook::<(u32, String), Option<String>>(
                                 lua_ctx,
@@ -100,7 +108,9 @@ impl Server {
                         });
                         if message.len() > 0 {
                             for (_, client) in &mut self.connections {
-                                client.send_player_chat_message(message.clone(), client_id).await;
+                                client
+                                    .send_player_chat_message(message.clone(), client_id)
+                                    .await;
                             }
                         }
                     }
