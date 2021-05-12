@@ -1,13 +1,9 @@
-// It used to be 50 loc, written with tinyhttp.
-// At some point...
-// Now it's what you're seeing, I hate it
-
 use serde::{Deserialize, Serialize};
+use shared::{VERSION, VERSION_STR};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use warp::Filter;
-use shared::{VERSION_STR, VERSION};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServerInfo {
@@ -30,7 +26,8 @@ async fn main() {
     p2p_server().await;
 
     let server_list_r = Arc::new(Mutex::new(ServerList(HashMap::new())));
-    let addresses_r: Arc<Mutex<HashMap<std::net::IpAddr, HashMap<u16, bool>>>>= Arc::new(Mutex::new(HashMap::new()));
+    let addresses_r: Arc<Mutex<HashMap<std::net::IpAddr, HashMap<u16, bool>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     let server_list = server_list_r.clone();
     let addresses = addresses_r.clone();
@@ -42,9 +39,8 @@ async fn main() {
             let addr = {
                 if let Some(addr) = addr {
                     addr
-                }
-                else{
-                    return "err"
+                } else {
+                    return "err";
                 }
             };
             let censor_standart = censor::Censor::Standard;
@@ -68,10 +64,12 @@ async fn main() {
                     if ports.len() > 10 {
                         return "Too many servers!";
                     }
-                }
-                else{
+                } else {
                     addresses.insert(addr.ip(), HashMap::new());
-                    addresses.get_mut(&addr.ip()).unwrap().insert(server_info.port, true);
+                    addresses
+                        .get_mut(&addr.ip())
+                        .unwrap()
+                        .insert(server_info.port, true);
                 }
                 let addr = SocketAddr::new(addr.ip(), server_info.port);
                 server_info.update_time = Some(std::time::Instant::now());
@@ -83,7 +81,7 @@ async fn main() {
     let addresses = addresses_r.clone();
     let ver = warp::path::param().map(move |ver: String| {
         if ver != VERSION_STR && ver != "latest" {
-            return outdated_ver()
+            return outdated_ver();
         }
         let server_list = server_list.clone();
         let addresses = addresses.clone();
@@ -105,21 +103,26 @@ async fn main() {
         };
         response
     });
-    let outdated = warp::get().map(move || {
-        return outdated_ver()
-    });
+    let outdated = warp::get().map(move || return outdated_ver());
     let routes = post.or(ver).or(outdated);
     warp::serve(routes).run(([0, 0, 0, 0], 3692)).await;
 }
 
 async fn p2p_server() {
     tokio::spawn(async {
-        let mut socket = tokio::net::UdpSocket::bind((std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)), 3691)).await.unwrap();
+        let mut socket = tokio::net::UdpSocket::bind((
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)),
+            3691,
+        ))
+        .await
+        .unwrap();
         loop {
             let mut buf = [0; 16];
             let result = socket.recv_from(&mut buf).await;
             if let Ok((_, src_addr)) = result {
-                let _ = socket.send_to(src_addr.to_string().as_bytes(), src_addr).await;
+                let _ = socket
+                    .send_to(src_addr.to_string().as_bytes(), src_addr)
+                    .await;
             }
         }
     });

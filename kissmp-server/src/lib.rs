@@ -40,6 +40,7 @@ impl std::fmt::Debug for Connection {
             .finish()
     }
 }
+
 impl Connection {
     pub async fn send_chat_message(&mut self, message: String) {
         let _ = self
@@ -77,7 +78,8 @@ pub struct Server {
     lua_watcher_rx: std::sync::mpsc::Receiver<notify::DebouncedEvent>,
     lua_commands: std::sync::mpsc::Receiver<lua::LuaCommand>,
     server_identifier: String,
-    p2p_enabled: bool,
+    upnp_enabled: bool,
+    upnp_port: Option<u16>,
     mods: Option<Vec<String>>,
     tick: u64,
 }
@@ -98,6 +100,7 @@ impl Server {
             map: config.map,
             tickrate: config.tickrate,
             port: config.port,
+            upnp_port: None,
             max_players: config.max_players,
             max_vehicles_per_client: config.max_vehicles_per_client,
             show_in_list: config.show_in_server_list,
@@ -106,7 +109,7 @@ impl Server {
             lua_watcher_rx: watcher_rx,
             lua_commands: receiver,
             server_identifier: config.server_identifier,
-            p2p_enabled: config.p2p_enabled,
+            upnp_enabled: config.upnp_enabled,
             mods: config.mods,
             tick: 0,
         }
@@ -115,20 +118,26 @@ impl Server {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
         let socket = UdpSocket::bind(&addr).unwrap();
         let _ = socket.set_read_timeout(Some(std::time::Duration::from_secs(3)));
-        if self.p2p_enabled {
-            let mut i = 0;
-            while i < 5 {
-                let _ = socket.send_to(b"hi", "kissmp.online:3691");
-                let mut buf = [0; 1024];
-                let r = socket.recv_from(&mut buf);
-                if let Ok((n, _)) = r {
-                    let addr = String::from_utf8(buf[0..n].to_vec()).unwrap();
-                    println!("P2P IP: {}", addr);
-                    break;
-                } else {
-                    println!("Failed to receive P2P IP, retrying...");
+        if self.upnp_enabled {
+            if let Some(port) = upnp_pf(self.port) {
+                println!("uPnP mapping succeed. Port: {}", port);
+                self.upnp_port = Some(port);
+            } else {
+                println!("uPnP mapping failed, falling back to NAT Punching");
+                let mut i = 0;
+                while i < 5 {
+                    let _ = socket.send_to(b"hi", "kissmp.online:3691");
+                    let mut buf = [0; 1024];
+                    let r = socket.recv_from(&mut buf);
+                    if let Ok((n, _)) = r {
+                        let addr = String::from_utf8(buf[0..n].to_vec()).unwrap();
+                        println!("P2P IP: {}", addr);
+                        break;
+                    } else {
+                        println!("Failed to receive P2P IP, retrying...");
+                    }
+                    i += 1;
                 }
-                i += 1;
             }
         }
 
@@ -165,11 +174,12 @@ impl Server {
         let reader =
             tokio_util::codec::FramedRead::new(stdin, tokio_util::codec::LinesCodec::new());
         let mut destroyer = destroyer.fuse();
+        let mut ctrl_c = async_ctrlc::CtrlC::new().unwrap().fuse();
         let mut reader = reader.fuse();
         if enable_lua {
             self.load_lua_addons();
+            let _ = self.update_lua_connections();
         }
-        let _ = self.update_lua_connections();
         println!("Server is running!");
 
         loop {
@@ -198,6 +208,9 @@ impl Server {
                 },
                 _ = destroyer => {
                     println!("Server shutdown requested. Shutting down");
+                    break;
+                },
+                _ = ctrl_c => {
                     break;
                 }
             }
@@ -333,10 +346,9 @@ impl Server {
             )
             .await
             {
-                client_events_tx
+                let _ = client_events_tx
                     .send((id, IncomingEvent::ConnectionLost))
-                    .await
-                    .unwrap();
+                    .await;
             }
         });
 
@@ -483,6 +495,20 @@ impl Server {
             let _ = lua::run_hook::<String, ()>(lua_ctx, String::from("OnStdIn"), input);
         });
     }
+
+    fn cleanup(&mut self) {
+        println!("Server is shutting down");
+        let gateway = igd::search_gateway(Default::default()).unwrap();
+        if let Some(port) = self.upnp_port {
+            let _ = gateway.remove_port(igd::PortMappingProtocol::UDP, port);
+        }
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        self.cleanup();
+    }
 }
 
 fn generate_certificate() -> (CertificateChain, PrivateKey) {
@@ -529,6 +555,9 @@ pub fn list_mods(mods: Option<Vec<String>>) -> anyhow::Result<Vec<(String, u32)>
             continue;
         }
         if !path.exists() {
+            if !cfg!(unix) {
+                continue;
+            }
             println!("File {:?} doesn't exists, attempting to replace windows path with most common proton prefix", path);
             // Somewhat working fix for game returning mods with windows path
             path = dirs::home_dir()
@@ -541,16 +570,49 @@ pub fn list_mods(mods: Option<Vec<String>>) -> anyhow::Result<Vec<(String, u32)>
                         .replace(r#"C:\"#, "")
                         .replace(r#"\"#, "/"),
                 );
+            println!("{:?}", path);
             if !path.exists() {
                 println!("Mod file {:?} not found", path);
                 continue;
             }
         }
-        println!("{:?}", path);
         let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
         let file = std::fs::File::open(path)?;
         let metadata = file.metadata()?;
         result.push((file_name, metadata.len() as u32))
     }
     Ok(result)
+}
+
+pub fn upnp_pf(port: u16) -> Option<u16> {
+    let gateway = igd::search_gateway(Default::default()).unwrap();
+    let ip = {
+        let ifs = interfaces::Interface::get_all().expect("could not get interfaces");
+        let mut ip = None;
+        for addr in ifs[0].addresses.iter() {
+            if addr.addr.is_none() {
+                continue;
+            };
+            let addr = match addr.addr.unwrap() {
+                SocketAddr::V4(v4) => v4,
+                _ => continue,
+            };
+            ip = Some(addr.ip().clone());
+            break;
+        }
+        if ip.is_none() {
+            return None;
+        }
+        std::net::SocketAddrV4::new(ip.unwrap(), port)
+    };
+    match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, "KissMP Server") {
+        Ok(()) => Some(port),
+        Err(e) => match e {
+            igd::AddPortError::PortInUse => Some(port),
+            _ => {
+                println!("uPnP Error: {:?}", e);
+                None
+            }
+        },
+    }
 }

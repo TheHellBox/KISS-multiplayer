@@ -18,6 +18,7 @@ local function to_non_lowered(path)
       return v
     end
   end
+  return path
 end
 
 local function host_server()

@@ -100,11 +100,25 @@ local function handle_player_info(player_info)
   M.players[player_info.id] = player_info
 end
 
+local function check_lua(l)
+  local filters = ["FS", "check_lua", "handle_lua", "handle_vehicle_lua", "network =", "network=", "message_handlers"]
+  for k, v in filters do
+    if string.find(l, v) ~= nil then
+      kissui.chat.add_message("Possibly malicious lua command has been send, rejecting. Found: "..v)
+      return false
+    end
+  end
+  return true
+end
+
 local function handle_lua(data)
-  Lua:queueLuaCommand(data)
+  if check_lua(data) then
+    Lua:queueLuaCommand(data)
+  end
 end
 
 local function handle_vehicle_lua(data)
+  if not check_lua(data) then return end
   local id = data[1]
   local lua = data[2]
   local id = vehiclemanager.id_map[id or -1] or 0

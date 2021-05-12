@@ -25,3 +25,6 @@ rcgen = { version = "0.8.2", default-features = false }
 tokio = { version = "1.4", features = ["rt-multi-thread", "time", "macros", "sync", "io-util", "io-std", "fs"] }
 tokio-stream = "0.1.5"
 dirs = "3.0"
+igd = "0.12.0"
+interfaces = "0.0.7"
+async-ctrlc = "1.2"

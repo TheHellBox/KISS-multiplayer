@@ -1,6 +1,6 @@
 pub mod vehicle;
+use serde::{Deserialize, Serialize};
 use vehicle::*;
-use serde::{Serialize, Deserialize};
 
 pub const VERSION: (u32, u32) = (0, 4);
 pub const VERSION_STR: &str = "0.4.4";
@@ -18,7 +18,7 @@ pub struct ClientInfoPublic {
     pub id: u32,
     pub current_vehicle: u32,
     pub ping: u32,
-    pub hide_nametag: bool
+    pub hide_nametag: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -30,7 +30,7 @@ pub struct ServerInfo {
     pub tickrate: u8,
     pub max_vehicles_per_client: u8,
     pub mods: Vec<(String, u32)>,
-    pub server_identifier: String
+    pub server_identifier: String,
 }
 
 impl ClientInfoPublic {
@@ -49,7 +49,7 @@ impl Default for ClientInfoPublic {
             id: 0,
             current_vehicle: 0,
             ping: 0,
-            hide_nametag: false
+            hide_nametag: false,
         }
     }
 }
@@ -76,7 +76,7 @@ pub enum ClientCommand {
     StartTalking,
     // Only used by bridge
     EndTalking,
-    Ping(u16)
+    Ping(u16),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -98,5 +98,5 @@ pub enum ServerCommand {
     ServerInfo(ServerInfo),
     FilePart(String, Vec<u8>, u32, u32, u32),
     VoiceChatPacket(u32, [f32; 3], Vec<u8>),
-    Pong(f64)
+    Pong(f64),
 }

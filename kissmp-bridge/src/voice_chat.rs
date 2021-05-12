@@ -7,7 +7,7 @@ const BUFFER_LEN: usize = 1920;
 const SAMPLE_FORMATS: &[cpal::SampleFormat] = &[
     cpal::SampleFormat::I16,
     cpal::SampleFormat::U16,
-    cpal::SampleFormat::F32
+    cpal::SampleFormat::F32,
 ];
 
 pub enum VoiceChatPlaybackEvent {
@@ -38,9 +38,7 @@ pub fn run_vc_recording(
     receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
 ) -> Result<(), anyhow::Error> {
     let device = match cpal::default_host().default_input_device() {
-        Some(device) => {
-            device
-        },
+        Some(device) => device,
         None => {
             println!("No default audio input device available for voice chat.");
             println!("Check your OS's settings and verify you have a device available.");
@@ -48,7 +46,10 @@ pub fn run_vc_recording(
         }
     };
     std::thread::spawn(move || {
-        println!("Using default audio input device: {}", device.name().unwrap());
+        println!(
+            "Using default audio input device: {}",
+            device.name().unwrap()
+        );
         let mut config = None;
         let configs: Vec<cpal::SupportedStreamConfigRange> =
             device.supported_input_configs().unwrap().collect();
@@ -64,19 +65,19 @@ pub fn run_vc_recording(
                     }
                 }
             }
-            break false
+            break false;
         };
         if !found_config {
             println!("Device incompatible due to the parameters it offered:");
             for cfg in device.supported_input_configs().unwrap() {
                 // Not showing every field of SupportedStreamConfigRange since they are not important at this time.
-                // Only printing fields we currently care about. 
-                println!("\tChannels: {:?}",        cfg.channels());
-                println!("\tSample Format: {:?}",   cfg.sample_format());
+                // Only printing fields we currently care about.
+                println!("\tChannels: {:?}", cfg.channels());
+                println!("\tSample Format: {:?}", cfg.sample_format());
                 println!("---");
             }
             println!("Try a different default audio input in your OS's settings.");
-            return
+            return;
         }
         let (config, buffer_size) = {
             let config = config.unwrap();
@@ -91,10 +92,10 @@ pub fn run_vc_recording(
                 _ => cpal::BufferSize::Default,
             };
             if config.max_sample_rate() >= SAMPLE_RATE && config.min_sample_rate() <= SAMPLE_RATE {
-                (config.with_sample_rate(SAMPLE_RATE),  buffer_size)
+                (config.with_sample_rate(SAMPLE_RATE), buffer_size)
             } else {
                 let sr = config.max_sample_rate();
-                (config.with_sample_rate(sr),           buffer_size)
+                (config.with_sample_rate(sr), buffer_size)
             }
         };
         let stream_config = config.config();
@@ -249,8 +250,8 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
         _ => {
             println!("Could not find a output audio stream for voice chat.");
             println!("Check your OS's settings and verify you have a device available.");
-            return
-        },
+            return;
+        }
     };
     std::thread::spawn(move || {
         let mut sinks = std::collections::HashMap::new();

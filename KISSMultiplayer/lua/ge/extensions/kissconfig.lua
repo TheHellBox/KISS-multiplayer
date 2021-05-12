@@ -2,6 +2,7 @@ local M = {}
 local imgui = ui_imgui
 
 local function generate_base_secret()
+  math.randomseed(os.time() + os.clock())
   local result = ""
   for i=0,64 do
     local char = string.char(32 + math.random() * 96)
@@ -11,7 +12,7 @@ local function generate_base_secret()
 end
 
 local function save_config()
-  local secret = network.base_secret
+  local secret = network.base_secret or "None"
   if secret == "None" then
     secret = generate_base_secret()
   end
@@ -23,7 +24,7 @@ local function save_config()
     window_opacity = kissui.window_opacity[0],
     enable_view_distance = kissui.enable_view_distance[0],
     view_distance = kissui.view_distance[0],
-    base_secret = secret
+    base_secret_v2 = secret
   }
   local file = io.open("./settings/kissmp_config.json", "w")
   file:write(jsonEncode(result))
@@ -63,8 +64,8 @@ local function load_config()
   if config.enable_view_distance ~= nil then
     kissui.enable_view_distance[0] = config.enable_view_distance
   end
-  if config.base_secret ~= nil then
-    network.base_secret = config.base_secret
+  if config.base_secret_v2 ~= nil then
+    network.base_secret = config.base_secret_v2
   end
   io.close(file)
 end

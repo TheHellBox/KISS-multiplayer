@@ -1,6 +1,6 @@
 use percent_encoding::percent_decode_str;
-use std::net::Ipv4Addr;
 use serde::Deserialize;
+use std::net::Ipv4Addr;
 
 #[derive(Deserialize)]
 struct ServerHostData {
@@ -50,9 +50,7 @@ pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::Dis
             }
             if url.starts_with("host") {
                 let data = url.replace("host/", "");
-                let data = percent_decode_str(&data)
-                    .decode_utf8_lossy()
-                    .into_owned();
+                let data = percent_decode_str(&data).decode_utf8_lossy().into_owned();
                 if let Some(destroyer) = destroyer {
                     let _ = destroyer.send(());
                 }
@@ -60,7 +58,7 @@ pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::Dis
                 destroyer = Some(destroyer_tx);
                 std::thread::spawn(move || {
                     let data: ServerHostData = serde_json::from_str(&data).unwrap();
-                    let config = kissmp_server::config::Config{
+                    let config = kissmp_server::config::Config {
                         server_name: data.name,
                         max_players: data.max_players,
                         map: data.map,
