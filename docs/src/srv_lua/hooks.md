@@ -5,7 +5,7 @@ hooks.register("HookName", "Subname", function(arguments)
     return value
 end)
 ```
-Keep in mind that subname has to be unique.
+Keep in mind that the subname has to be unique.
 
 **Default hooks include:**
 - OnChat(int client_id, string message)

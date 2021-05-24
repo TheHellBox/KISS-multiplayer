@@ -33,7 +33,7 @@ and hit the connect button.
 
 ## Server installation
 Just launch the kissmp-server for your platform and you're ready to go.
-More detailed guide on server configuration can be found on this [wiki page](https://github.com/TheHellBox/KISS-multiplayer/wiki/Server-installation).
+More detailed guide on server configuration can be found on this [wiki page](https://kissmp.online/docs/srv_hosting/hosting.html).
 
 
 ## Building

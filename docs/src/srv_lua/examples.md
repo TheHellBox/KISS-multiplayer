@@ -1,3 +1,5 @@
+# Examples
+## Basic example of commands
 ```lua
 function string.startswith(input, start)
    return string.sub(input,1,string.len(start))==start
@@ -29,7 +31,7 @@ hooks.register("OnChat", "HomeCommand", function(client_id, message)
     end
 end)
 ```
-
+## Vote-kick system
 ```lua
 local vote = {
   victim = nil,
@@ -99,7 +101,7 @@ hooks.register("Tick", "VoteTimer", function(client_id, message)
     end
 end)
 ```
-
+## Vehicle list
 ```lua
 hooks.register("OnStdIn", "ListVehiclesCommand", function(input)
     if input == "/list_vehicles" then
