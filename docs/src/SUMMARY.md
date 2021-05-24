@@ -2,7 +2,9 @@
 
 - [Introduction](introduction.md)
 - [Building](building.md)
-- [Server Hosting](hosting.md)
+- [Server Hosting](srv_hosting/hosting.md)
+  - [Installing Mods and Addons](srv_hosting/mods_and_addons.md) 
+  - [Troubleshooting](srv_hosting/troubleshooting.md) 
 - [Server side Lua API](srv_lua/lua_api.md)
   - [Hooks](srv_lua/hooks.md)
   - [Vehicles](srv_lua/vehicles.md)

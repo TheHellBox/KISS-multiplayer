@@ -1,6 +1,6 @@
 Here's a simple admin system.
 It's probably not suitable for big servers, and only serves as an example, but it can still be used
-in it's original form
+in its original form
 ```lua
 KSA = {}
 

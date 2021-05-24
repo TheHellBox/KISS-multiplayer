@@ -5,3 +5,5 @@
 - MAX_VEHICLES_PER_CLIENT
 - MPSC_CHANNEL_SENDER
 - hooks
+- vehicles
+- connections
