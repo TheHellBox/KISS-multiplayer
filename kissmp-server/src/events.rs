@@ -14,6 +14,14 @@ impl Server {
                     client_info_list.push(connection.client_info_public.clone())
                 }
                 let connection = self.connections.get_mut(&client_id).unwrap();
+                if let Some(public_address) = &self.public_address {
+                    connection.send_chat_message(
+                        format!(
+                            "You're playing on a uPnP enabled server. Others can join you by the following address: \n{}.\nNo port forwarding is required",
+                            public_address
+                        )
+                    ).await;
+                }
                 for (_, vehicle) in &self.vehicles {
                     let _ = connection
                         .ordered

@@ -80,6 +80,7 @@ pub struct Server {
     server_identifier: String,
     upnp_enabled: bool,
     upnp_port: Option<u16>,
+    public_address: Option<String>,
     mods: Option<Vec<String>>,
     tick: u64,
 }
@@ -110,43 +111,46 @@ impl Server {
             lua_commands: receiver,
             server_identifier: config.server_identifier,
             upnp_enabled: config.upnp_enabled,
+            public_address: None,
             mods: config.mods,
             tick: 0,
         }
     }
     pub async fn run(mut self, enable_lua: bool, destroyer: tokio::sync::oneshot::Receiver<()>) {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
-        let socket = UdpSocket::bind(&addr).unwrap();
-        let _ = socket.set_read_timeout(Some(std::time::Duration::from_secs(3)));
         if self.upnp_enabled {
             if let Some(port) = upnp_pf(self.port) {
                 println!("uPnP mapping succeed. Port: {}", port);
                 self.upnp_port = Some(port);
-            } else {
-                println!("uPnP mapping failed, falling back to NAT Punching");
+                println!("Fetching public IP address...");
+                let socket = UdpSocket::bind(&addr).unwrap();
+                socket.connect("kissmp.online:3691");
                 let mut i = 0;
                 while i < 5 {
-                    let _ = socket.send_to(b"hi", "kissmp.online:3691");
+                    let _ = socket.send(b"hi");
                     let mut buf = [0; 1024];
-                    let r = socket.recv_from(&mut buf);
-                    if let Ok((n, _)) = r {
+                    let r = socket.recv(&mut buf);
+                    if let Ok(n) = r {
                         let addr = String::from_utf8(buf[0..n].to_vec()).unwrap();
-                        println!("P2P IP: {}", addr);
+                        println!("IP: {}", addr);
+                        self.public_address = Some(addr);
                         break;
                     } else {
-                        println!("Failed to receive P2P IP, retrying...");
+                        println!("Failed to receive public IP, retrying...");
                     }
                     i += 1;
                 }
+            } else {
+                println!("uPnP mapping failed.");
             }
         }
-
+        let socket = UdpSocket::bind(&addr).unwrap();
         let mut ticks = IntervalStream::new(tokio::time::interval(
             std::time::Duration::from_secs(1) / self.tickrate as u32,
         ))
         .fuse();
         let mut send_info_ticks =
-            IntervalStream::new(tokio::time::interval(std::time::Duration::from_secs(1))).fuse();
+            IntervalStream::new(tokio::time::interval(std::time::Duration::from_secs(5))).fuse();
 
         let (certificate_chain, key) = generate_certificate();
 
@@ -502,6 +506,7 @@ impl Server {
         if let Some(port) = self.upnp_port {
             let _ = gateway.remove_port(igd::PortMappingProtocol::UDP, port);
         }
+        std::process::exit(0);
     }
 }
 
@@ -587,13 +592,13 @@ pub fn list_mods(mods: Option<Vec<String>>) -> anyhow::Result<Vec<(String, u32)>
 pub fn upnp_pf(port: u16) -> Option<u16> {
     let gateway = igd::search_gateway(Default::default()).unwrap();
     let ip = {
-        let ifs = interfaces::Interface::get_all().expect("could not get interfaces");
+        let ifs = ifcfg::IfCfg::get().expect("could not get interfaces");
         let mut ip = None;
         for addr in ifs[0].addresses.iter() {
-            if addr.addr.is_none() {
+            if addr.address.is_none() {
                 continue;
             };
-            let addr = match addr.addr.unwrap() {
+            let addr = match addr.address.unwrap() {
                 SocketAddr::V4(v4) => v4,
                 _ => continue,
             };

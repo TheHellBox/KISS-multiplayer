@@ -64,6 +64,7 @@ pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::Dis
                         map: data.map,
                         port: data.port,
                         mods: data.mods,
+                        upnp_enabled: true,
                         ..Default::default()
                     };
                     let rt = tokio::runtime::Runtime::new().unwrap();
