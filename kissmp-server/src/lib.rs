@@ -186,7 +186,7 @@ impl Server {
         }
         println!("Server is running!");
 
-        loop {
+        'main: loop {
             select! {
                 _ = ticks.next() => {
                     self.tick().await;
@@ -212,11 +212,11 @@ impl Server {
                 },
                 _ = destroyer => {
                     println!("Server shutdown requested. Shutting down");
-                    break;
+                    break 'main;
                 },
                 _ = ctrl_c => {
                     std::process::exit(0);
-                    break;
+                    break 'main;
                 }
             }
         }
@@ -602,7 +602,12 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
                     continue;
                 };
                 let addr = match addr.address.unwrap() {
-                    SocketAddr::V4(v4) => v4,
+                    SocketAddr::V4(v4) => {
+                        if v4.ip().octets()[1] == 127 {
+                            continue
+                        }
+                        v4
+                    },
                      _ => continue,
                 };
                 ip = Some(addr.ip().clone());
@@ -613,7 +618,8 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
             }
             std::net::SocketAddrV4::new(ip.unwrap(), port)
         };
-        match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, "KissMP Server") {
+        println!("test {}", ip);
+        match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, &format!("KissMP Server {}", rand::random::<u16>())) {
             Ok(()) => Some(port),
             Err(e) => match e {
                 igd::AddPortError::PortInUse => Some(port),
