@@ -162,9 +162,8 @@ impl Server {
                         }
                     }
                     RequestMods(files) => {
-                        let paths = std::fs::read_dir("./mods/").unwrap();
-                        for path in paths {
-                            let path = path.unwrap().path();
+                        let paths = crate::list_mods(self.mods.clone());
+                        for path in paths.unwrap().1 {
                             if path.is_dir() {
                                 continue;
                             }

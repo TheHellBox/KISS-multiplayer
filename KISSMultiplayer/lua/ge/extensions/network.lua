@@ -101,7 +101,7 @@ local function handle_player_info(player_info)
 end
 
 local function check_lua(l)
-  local filters = ["FS", "check_lua", "handle_lua", "handle_vehicle_lua", "network =", "network=", "message_handlers"]
+  local filters = {"FS", "check_lua", "handle_lua", "handle_vehicle_lua", "network =", "network=", "message_handlers"}
   for k, v in filters do
     if string.find(l, v) ~= nil then
       kissui.chat.add_message("Possibly malicious lua command has been send, rejecting. Found: "..v)

@@ -215,6 +215,7 @@ impl Server {
                     break;
                 },
                 _ = ctrl_c => {
+                    std::process::exit(0);
                     break;
                 }
             }
@@ -364,7 +365,7 @@ impl Server {
                 map: self.map.clone(),
                 tickrate: self.tickrate,
                 max_vehicles_per_client: self.max_vehicles_per_client,
-                mods: list_mods(self.mods.clone()).unwrap_or(vec![]),
+                mods: list_mods(self.mods.clone()).unwrap().0,
                 server_identifier: self.server_identifier.clone(),
             }))
             .unwrap();
@@ -506,7 +507,6 @@ impl Server {
         if let Some(port) = self.upnp_port {
             let _ = gateway.remove_port(igd::PortMappingProtocol::UDP, port);
         }
-        std::process::exit(0);
     }
 }
 
@@ -535,7 +535,7 @@ async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<
     Ok(())
 }
 
-pub fn list_mods(mods: Option<Vec<String>>) -> anyhow::Result<Vec<(String, u32)>> {
+pub fn list_mods(mods: Option<Vec<String>>) -> anyhow::Result<(Vec<(String, u32)>, Vec<std::path::PathBuf>)> {
     let paths = {
         if let Some(mods) = mods {
             let mut paths = vec![];
@@ -554,6 +554,7 @@ pub fn list_mods(mods: Option<Vec<String>>) -> anyhow::Result<Vec<(String, u32)>
         }
     };
     let mut result = vec![];
+    let mut raw = vec![];
     for path in paths {
         let mut path = path.clone();
         if path.is_dir() {
@@ -582,42 +583,48 @@ pub fn list_mods(mods: Option<Vec<String>>) -> anyhow::Result<Vec<(String, u32)>
             }
         }
         let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
-        let file = std::fs::File::open(path)?;
+        let file = std::fs::File::open(path.clone())?;
         let metadata = file.metadata()?;
-        result.push((file_name, metadata.len() as u32))
+        result.push((file_name, metadata.len() as u32));
+        raw.push(path);
     }
-    Ok(result)
+    Ok((result, raw))
 }
 
 pub fn upnp_pf(port: u16) -> Option<u16> {
-    let gateway = igd::search_gateway(Default::default()).unwrap();
-    let ip = {
-        let ifs = ifcfg::IfCfg::get().expect("could not get interfaces");
-        let mut ip = None;
-        for addr in ifs[0].addresses.iter() {
-            if addr.address.is_none() {
-                continue;
-            };
-            let addr = match addr.address.unwrap() {
-                SocketAddr::V4(v4) => v4,
-                _ => continue,
-            };
-            ip = Some(addr.ip().clone());
-            break;
-        }
-        if ip.is_none() {
-            return None;
-        }
-        std::net::SocketAddrV4::new(ip.unwrap(), port)
-    };
-    match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, "KissMP Server") {
-        Ok(()) => Some(port),
-        Err(e) => match e {
-            igd::AddPortError::PortInUse => Some(port),
-            _ => {
-                println!("uPnP Error: {:?}", e);
-                None
+    let gateway = igd::search_gateway(Default::default());
+    if let Ok(gateway) = gateway {
+        let ip = {
+            let ifs = ifcfg::IfCfg::get().expect("could not get interfaces");
+            let mut ip = None;
+            for addr in ifs[0].addresses.iter() {
+                if addr.address.is_none() {
+                    continue;
+                };
+                let addr = match addr.address.unwrap() {
+                    SocketAddr::V4(v4) => v4,
+                     _ => continue,
+                };
+                ip = Some(addr.ip().clone());
+                break;
             }
-        },
+            if ip.is_none() {
+                return None;
+            }
+            std::net::SocketAddrV4::new(ip.unwrap(), port)
+        };
+        match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, "KissMP Server") {
+            Ok(()) => Some(port),
+            Err(e) => match e {
+                igd::AddPortError::PortInUse => Some(port),
+                _ => {
+                    println!("uPnP Error: {:?}", e);
+                    None
+                }
+            },
+        }
+    }
+    else{
+        None
     }
 }

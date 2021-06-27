@@ -27,6 +27,9 @@ local function host_server()
   for k, v in pairs(M.mods) do
     table.insert(mods_converted, v)
   end
+  if #mods_converted == 0 then
+    mods_converted = nil
+  end
   local config = {
     name = ffi.string(M.server_name),
     max_players = M.max_players[0],
@@ -55,7 +58,7 @@ local function draw()
         M.map_name = v.levelName
         local native = FS:virtual2Native(map_path)
         local _, zip_end = string.find(native, ".zip")
-        if zip_end then
+        if zip_end and string.find(native, "/mods/") then
           local mod_file = string.sub(native, 1, zip_end)
           print(mod_file)
           local virtual = to_non_lowered(FS:native2Virtual(mod_file))
