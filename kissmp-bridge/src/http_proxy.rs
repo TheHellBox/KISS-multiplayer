@@ -75,7 +75,12 @@ pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::Discord
                     });
                 });
                 // FIXME: Utilize setup response at some point. Like display dialog message on client with copy button instead of chat message
-                let _result = setup_result_rx.try_recv();
+                loop {
+                    let result = setup_result_rx.try_recv();
+                    if result.is_ok() {
+                        break;
+                    }
+                }
                 let response = tiny_http::Response::from_string("ok");
                 request.respond(response).unwrap();
                 continue;

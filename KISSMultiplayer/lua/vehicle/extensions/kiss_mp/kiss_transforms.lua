@@ -24,7 +24,7 @@ M.target_transform = {
 M.force = 10
 M.ang_force = 100
 M.debug = false
-M.lerp_factor = 20.0
+M.lerp_factor = 30.0
 
 local function predict(dt)
   M.target_transform.velocity = M.received_transform.velocity + M.received_transform.acceleration * M.received_transform.time_past
@@ -49,7 +49,7 @@ local function try_rude()
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
     return true
   end
-  if distance > 3 then
+  if distance > 6 then
     local p = M.target_transform.position
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPosition(Point3F("..p.x..", "..p.y..", "..p.z.."))")
     return true
@@ -112,7 +112,7 @@ local function update(dt)
       angular_force.z,
       angular_force.x
     )
-  elseif linear_force:length() > 0.1 then
+  elseif linear_force:length() > (dt * 15) then
     kiss_vehicle.apply_linear_velocity(
       linear_force.x,
       linear_force.y,
