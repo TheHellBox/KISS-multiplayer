@@ -2,7 +2,7 @@ local M = {}
 local imgui = ui_imgui
 
 local function draw(gui)
-  if not M.show_download then return end
+  if not kissui.show_download then return end
 
   if not imgui.isWindowVisible("Downloads") then return end
   imgui.SetNextWindowBgAlpha(M.window_opacity[0])
@@ -57,7 +57,7 @@ local function draw(gui)
     imgui.SameLine()
     if imgui.Button("Cancel###cancel_download", imgui.ImVec2(split_width, -1)) then
       network.cancel_download()
-      M.show_download = false
+      kissui.show_download = false
       network.disconnect()
     end
   end

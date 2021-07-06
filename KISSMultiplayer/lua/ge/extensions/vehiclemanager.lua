@@ -205,17 +205,19 @@ local function spawn_vehicle(data)
     return
   end
   print("Attempt to spawn vehicle "..name)
+  local options = { 
+    vehicleName = "mp_veh",
+    paint  = createVehiclePaint({x=c[1], y=c[2], z=c[3], w=c[4]}, metal_data),
+    paint2 = createVehiclePaint({x=cp0[1], y=cp0[2], z=cp0[3], w=cp0[4]}, metal_data),
+    paint3 = createVehiclePaint({x=cp1[1], y=cp1[2], z=cp1[3], w=cp1[4]}, metal_data),
+    autoEnterVehicle = false
+  }
   local spawned = spawn.spawnVehicle(
     name,
     serialize(parts_config),
     vec3(data.position),
     quat(data.rotation),
-    ColorF(c[1],c[2],c[3],c[4]),
-    ColorF(cp0[1],cp0[2],cp0[3],cp0[4]),
-    ColorF(cp1[1],cp1[2],cp1[3],cp1[4]),
-    "mp_veh",
-    true,
-    false
+    options
   )
   if not spawned then return end
   local p = data.position
@@ -516,9 +518,6 @@ end
 local function onMissionLoaded(mission)
   M.is_network_session = network.connection.connected
   if not network.connection.connected then return end
-  --if mission:lower() ~= network.connection.server_info.map:lower() then
-  --  network.disconnect()
-  --end
   M.id_map = {}
   M.ownership = {}
   M.loading_map = false
