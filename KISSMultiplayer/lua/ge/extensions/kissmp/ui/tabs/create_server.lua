@@ -1,7 +1,6 @@
 local M = {}
 local imgui = ui_imgui
 local http = require("socket.http")
-local socket = require("socket")
 
 M.map = "/levels/industrial/info.json"
 M.map_name = "industrial"
@@ -41,7 +40,6 @@ local function host_server()
   local b, _, _  = http.request("http://127.0.0.1:3693/host/"..jsonEncode(config))
   if b == "ok" then
     local player_name = ffi.string(kissui.player_name)
-    socket.sleep(1)
     network.connect("127.0.0.1:"..port, player_name)
   end
 end
@@ -56,11 +54,15 @@ local function draw()
     for k, v in pairs(core_levels.getList()) do
       if imgui.Selectable1(v.levelName.."###host_map_s_"..k) then
         local map_path = v.misFilePath
+        print(map_path)
         M.map = map_path
         M.map_name = v.levelName
-        local native = FS:virtual2Native(map_path)
+        -- Stupid fix for a stupid bug. We use FS:findFiles to select first file in map directory, as virtual2Native works weirdly if applied to folders after 0.23
+        local native = FS:virtual2Native(FS:findFiles(map_path, "*", 1)[1])
+        print(native)
         local _, zip_end = string.find(native, ".zip")
-        if zip_end and string.find(native, "/mods/") then
+        local _, is_mod = string.find(native, "mods")
+        if zip_end and is_mod then
           local mod_file = string.sub(native, 1, zip_end)
           print(mod_file)
           local virtual = to_non_lowered(FS:native2Virtual(mod_file))

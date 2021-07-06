@@ -73,6 +73,7 @@ pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::Dis
                         server.run(false, destroyer_rx).await;
                     });
                 });
+                std::thread::sleep(std::time::Duration::from_secs(5));
                 let response = tiny_http::Response::from_string("ok");
                 request.respond(response).unwrap();
                 continue;
