@@ -39,9 +39,6 @@ local function update(dt)
         end
       else
         if M.inactive[id] then
-          -- Don't ask. It's a workaround. Belive me.
-          vehicle:setActive(1)
-          vehicle:setActive(0)
           vehicle:setActive(1)
           M.inactive[id] = false
         end
