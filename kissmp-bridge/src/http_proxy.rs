@@ -11,7 +11,7 @@ struct ServerHostData {
     port: u16,
 }
 
-pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::DiscordState>) {
+pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::DiscordState>) {
     // Master server proxy
     //println!("start");
     let server = tiny_http::Server::http("0.0.0.0:3693").unwrap();
@@ -55,6 +55,7 @@ pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::Dis
                     let _ = destroyer.send(());
                 }
                 let (destroyer_tx, destroyer_rx) = tokio::sync::oneshot::channel();
+                let (setup_result_tx, mut setup_result_rx) = tokio::sync::oneshot::channel();
                 destroyer = Some(destroyer_tx);
                 std::thread::spawn(move || {
                     let data: ServerHostData = serde_json::from_str(&data).unwrap();
@@ -70,9 +71,11 @@ pub async fn spawn_http_proxy(mut discord_tx: std::sync::mpsc::Sender<crate::Dis
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async move {
                         let server = kissmp_server::Server::from_config(config);
-                        server.run(false, destroyer_rx).await;
+                        server.run(false, destroyer_rx, Some(setup_result_tx)).await;
                     });
                 });
+                // FIXME: Utilize setup response at some point. Like display dialog message on client with copy button instead of chat message
+                let _result = setup_result_rx.try_recv();
                 let response = tiny_http::Response::from_string("ok");
                 request.respond(response).unwrap();
                 continue;

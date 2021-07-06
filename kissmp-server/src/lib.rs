@@ -117,7 +117,12 @@ impl Server {
             tick: 0,
         }
     }
-    pub async fn run(mut self, enable_lua: bool, destroyer: tokio::sync::oneshot::Receiver<()>) {
+    pub async fn run(
+        mut self,
+        enable_lua: bool,
+        destroyer: tokio::sync::oneshot::Receiver<()>,
+        setup_result: Option<tokio::sync::oneshot::Sender<ServerSetupResult>>,
+    ) {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
         if self.upnp_enabled {
             if let Some(port) = upnp_pf(self.port) {
@@ -185,7 +190,13 @@ impl Server {
             let _ = self.update_lua_connections();
         }
         println!("Server is running!");
-
+        if let Some(setup_result) = setup_result {
+            setup_result.send(ServerSetupResult{
+                addr: addr.to_string(),
+                port: self.port,
+                is_upnp: self.upnp_port.is_some()
+            });
+        }
         'main: loop {
             select! {
                 _ = ticks.next() => {
@@ -500,7 +511,7 @@ impl Server {
     fn cleanup(&mut self) {
         println!("Server is shutting down");
         let gateway = igd::search_gateway(Default::default());
-        if Ok(gateway) == gateway {
+        if let Ok(gateway) = gateway {
             if let Some(port) = self.upnp_port {
                 let _ = gateway.remove_port(igd::PortMappingProtocol::UDP, port);
             }
@@ -613,31 +624,37 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
                             };
 
                             if ipv4_addr.ip().is_private() {
-                                let network  = Ipv4Network::with_netmask(*ipv4_addr.ip(), *ipv4_mask.ip()).expect("An interface somehow has an invalid netmask");
+                                let network =
+                                    Ipv4Network::with_netmask(*ipv4_addr.ip(), *ipv4_mask.ip())
+                                        .expect("An interface somehow has an invalid netmask");
                                 if network.contains(*gateway.addr.ip()) {
                                     valid_ips.push(ipv4_addr);
                                 }
                             } else {
-                                continue
+                                continue;
                             }
-                        },
+                        }
                         // v6 Addresses are not compatible with uPnP
                         _ => continue,
                     }
                 }
             }
 
-            println!("uPnP: We are going to try the following IPs: {:#?}", valid_ips);
+            println!(
+                "uPnP: We are going to try the following IPs: {:#?}",
+                valid_ips
+            );
 
             if valid_ips.is_empty() {
                 eprintln!("uPnP: No interfaces have a valid IP.");
-                return None
+                return None;
             }
 
             for mut ip in valid_ips {
                 ip.set_port(port);
                 println!("uPnP: Trying {}", ip);
-                match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, "KissMP Server") {
+                match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, "KissMP Server")
+                {
                     Ok(()) => return Some(port),
                     Err(e) => match e {
                         igd::AddPortError::PortInUse => return Some(port),

@@ -51,3 +51,9 @@ pub struct CouplerDetached {
     node_a_id: u32,
     node_b_id: u32,
 }
+
+pub struct ServerSetupResult {
+    pub addr: String,
+    pub port: u16,
+    pub is_upnp: bool,
+}
