@@ -1,6 +1,7 @@
 local M = {}
 local imgui = ui_imgui
 local http = require("socket.http")
+local socket = require("socket")
 
 M.map = "/levels/industrial/info.json"
 M.map_name = "industrial"
@@ -40,6 +41,7 @@ local function host_server()
   local b, _, _  = http.request("http://127.0.0.1:3693/host/"..jsonEncode(config))
   if b == "ok" then
     local player_name = ffi.string(kissui.player_name)
+    socket.sleep(1)
     network.connect("127.0.0.1:"..port, player_name)
   end
 end
