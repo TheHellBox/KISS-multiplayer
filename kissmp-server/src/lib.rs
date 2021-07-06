@@ -1,5 +1,6 @@
 #![recursion_limit = "1024"]
 
+use ipnetwork::Ipv4Network;
 use shared::vehicle;
 
 pub mod config;
@@ -589,49 +590,66 @@ pub fn list_mods(
 }
 
 pub fn upnp_pf(port: u16) -> Option<u16> {
-    let gateway = igd::search_gateway(Default::default());
-    if let Ok(gateway) = gateway {
-        let ip = {
-            let ifs = ifcfg::IfCfg::get().expect("could not get interfaces");
-            let mut ip = None;
-            for interface in ifs.iter() {
-                for addr in ifs[0].addresses.iter() {
-                    if addr.address.is_none() {
-                        continue;
-                    };
-                    let addr = match addr.address.unwrap() {
-                        SocketAddr::V4(v4) => {
-                            println!("{:?}", v4);
-                            if v4.ip().octets()[0] == 127 {
-                                continue;
+    match igd::search_gateway(Default::default()) {
+        Ok(gateway) => {
+            let ifs = match ifcfg::IfCfg::get() {
+                Ok(ifs) => ifs,
+                Err(e) => {
+                    eprintln!("could not get interfaces: {}", e);
+                    return None;
+                }
+            };
+
+            let mut valid_ips = Vec::new();
+            for interface in ifs {
+                for iface_addr in interface.addresses.iter() {
+                    match iface_addr.mask {
+                        Some(SocketAddr::V4(ipv4_mask)) => {
+                            let ipv4_addr = match iface_addr.address {
+                                Some(SocketAddr::V4(ipv4_addr)) => ipv4_addr,
+                                _ => continue,
+                            };
+
+                            if ipv4_addr.ip().is_private() {
+                                let network  = Ipv4Network::with_netmask(*ipv4_addr.ip(), *ipv4_mask.ip()).expect("An interface somehow has an invalid netmask");
+                                if network.contains(*gateway.addr.ip()) {
+                                    valid_ips.push(ipv4_addr);
+                                }
+                            } else {
+                                continue
                             }
-                            v4
-                        }
+                        },
+                        // v6 Addresses are not compatible with uPnP
                         _ => continue,
-                    };
-                    ip = Some(addr.ip().clone());
-                    break;
+                    }
                 }
             }
-            if ip.is_none() {
-                println!("uPnP: Failed to find IP address");
-                return None;
+
+            println!("uPnP: We are going to try the following IPs: {:#?}", valid_ips);
+
+            if valid_ips.is_empty() {
+                eprintln!("uPnP: No interfaces have a valid IP.");
+                return None
             }
-            std::net::SocketAddrV4::new(ip.unwrap(), port)
-        };
-        println!("test {}", ip);
-        match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, "KissMP Server") {
-            Ok(()) => Some(port),
-            Err(e) => match e {
-                igd::AddPortError::PortInUse => Some(port),
-                _ => {
-                    println!("uPnP Error: {:?}", e);
-                    None
+
+            for mut ip in valid_ips {
+                ip.set_port(port);
+                println!("uPnP: Trying {}", ip);
+                match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, "KissMP Server") {
+                    Ok(()) => return Some(port),
+                    Err(e) => match e {
+                        igd::AddPortError::PortInUse => return Some(port),
+                        _ => {
+                            eprintln!("uPnP Error: {:?}", e);
+                        }
+                    },
                 }
-            },
+            }
+            return None;
         }
-    } else {
-        println!("uPnP: Failed to find gateway");
-        None
+        Err(e) => {
+            eprintln!("uPnP: Failed to find gateway: {}", e);
+            None
+        }
     }
 }
