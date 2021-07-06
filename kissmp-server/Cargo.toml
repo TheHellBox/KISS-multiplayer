@@ -25,7 +25,7 @@ rcgen = { version = "0.8.2", default-features = false }
 tokio = { version = "1.4", features = ["rt-multi-thread", "time", "macros", "sync", "io-util", "io-std", "fs"] }
 tokio-stream = "0.1.5"
 dirs = "3.0"
-igd = "0.12.0"
+igd = { git = "https://github.com/stevefan1999-personal/rust-igd.git", rev = "c2d1f83" }
 ifcfg = "0.1.2"
 async-ctrlc = "1.2"
 ipnetwork = "0.18"

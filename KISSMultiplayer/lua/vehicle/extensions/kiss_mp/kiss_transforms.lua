@@ -21,7 +21,7 @@ M.target_transform = {
   angular_acceleration = vec3(0, 0, 0),
 }
 
-M.force = 10
+M.force = 3
 M.ang_force = 100
 M.debug = false
 M.lerp_factor = 30.0

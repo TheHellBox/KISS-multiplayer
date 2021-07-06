@@ -1,4 +1,4 @@
-#![recursion_limit = "1024"]
+#[recursion_limit = "1024"]
 
 use ipnetwork::Ipv4Network;
 use shared::vehicle;
@@ -624,12 +624,7 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
                             };
 
                             if ipv4_addr.ip().is_private() {
-                                let network =
-                                    Ipv4Network::with_netmask(*ipv4_addr.ip(), *ipv4_mask.ip())
-                                        .expect("An interface somehow has an invalid netmask");
-                                if network.contains(*gateway.addr.ip()) {
-                                    valid_ips.push(ipv4_addr);
-                                }
+                                valid_ips.push(ipv4_addr);
                             } else {
                                 continue;
                             }
@@ -653,7 +648,7 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
             for mut ip in valid_ips {
                 ip.set_port(port);
                 println!("uPnP: Trying {}", ip);
-                match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, "KissMP Server")
+                match gateway.add_port(igd::PortMappingProtocol::UDP, port, SocketAddr::V4(ip), 0, "KissMP Server")
                 {
                     Ok(()) => return Some(port),
                     Err(e) => match e {
