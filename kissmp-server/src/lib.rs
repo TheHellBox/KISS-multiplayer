@@ -178,7 +178,6 @@ impl Server {
         let reader =
             tokio_util::codec::FramedRead::new(stdin, tokio_util::codec::LinesCodec::new());
         let mut destroyer = destroyer.fuse();
-        let mut ctrl_c = async_ctrlc::CtrlC::new().unwrap().fuse();
         let mut reader = reader.fuse();
         if enable_lua {
             self.load_lua_addons();
@@ -214,10 +213,6 @@ impl Server {
                     println!("Server shutdown requested. Shutting down");
                     break 'main;
                 },
-                _ = ctrl_c => {
-                    std::process::exit(0);
-                    break 'main;
-                }
             }
         }
     }
@@ -535,7 +530,9 @@ async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<
     Ok(())
 }
 
-pub fn list_mods(mods: Option<Vec<String>>) -> anyhow::Result<(Vec<(String, u32)>, Vec<std::path::PathBuf>)> {
+pub fn list_mods(
+    mods: Option<Vec<String>>,
+) -> anyhow::Result<(Vec<(String, u32)>, Vec<std::path::PathBuf>)> {
     let paths = {
         if let Some(mods) = mods {
             let mut paths = vec![];
@@ -597,22 +594,24 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
         let ip = {
             let ifs = ifcfg::IfCfg::get().expect("could not get interfaces");
             let mut ip = None;
-            for addr in ifs[0].addresses.iter() {
-                if addr.address.is_none() {
-                    continue;
-                };
-                let addr = match addr.address.unwrap() {
-                    SocketAddr::V4(v4) => {
-                        println!("{:?}", v4);
-                        if v4.ip().octets()[0] == 127 {
-                            continue
+            for interface in ifs.iter() {
+                for addr in ifs[0].addresses.iter() {
+                    if addr.address.is_none() {
+                        continue;
+                    };
+                    let addr = match addr.address.unwrap() {
+                        SocketAddr::V4(v4) => {
+                            println!("{:?}", v4);
+                            if v4.ip().octets()[0] == 127 {
+                                continue;
+                            }
+                            v4
                         }
-                        v4
-                    },
-                     _ => continue,
-                };
-                ip = Some(addr.ip().clone());
-                break;
+                        _ => continue,
+                    };
+                    ip = Some(addr.ip().clone());
+                    break;
+                }
             }
             if ip.is_none() {
                 println!("uPnP: Failed to find IP address");
@@ -621,7 +620,7 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
             std::net::SocketAddrV4::new(ip.unwrap(), port)
         };
         println!("test {}", ip);
-        match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, &format!("KissMP Server {}", rand::random::<u16>())) {
+        match gateway.add_port(igd::PortMappingProtocol::UDP, port, ip, 0, "KissMP Server") {
             Ok(()) => Some(port),
             Err(e) => match e {
                 igd::AddPortError::PortInUse => Some(port),
@@ -631,8 +630,7 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
                 }
             },
         }
-    }
-    else{
+    } else {
         println!("uPnP: Failed to find gateway");
         None
     }

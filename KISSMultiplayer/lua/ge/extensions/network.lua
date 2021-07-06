@@ -290,7 +290,6 @@ local function connect(addr, player_name)
   M.connection.mods_left = #missing_mods
  
   kissmods.deactivate_all_mods()
-  kissmods.mount_mods(mod_names)
   for k, v in pairs(missing_mods) do
     print(k.." "..v)
   end
@@ -305,6 +304,7 @@ local function connect(addr, player_name)
   end
   vehiclemanager.loading_map = true
   if #missing_mods == 0 then
+    kissmods.mount_mods(mod_names)
     change_map(server_info.map)
   end
   kissrichpresence.update()

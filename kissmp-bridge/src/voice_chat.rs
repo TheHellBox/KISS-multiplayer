@@ -265,8 +265,7 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                     let (sink, updated_at) = {
                         if let Some(sink) = sinks.get_mut(&client) {
                             sink
-                        }
-                        else{
+                        } else {
                             let sink = rodio::SpatialSink::try_new(
                                 &stream_handle,
                                 position,
@@ -278,8 +277,7 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
                                 sink.play();
                                 sinks.insert(client, (sink, std::time::Instant::now()));
                                 sinks.get_mut(&client).unwrap()
-                            }
-                            else{
+                            } else {
                                 continue;
                             }
                         }
