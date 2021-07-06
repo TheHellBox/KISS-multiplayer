@@ -498,9 +498,11 @@ impl Server {
 
     fn cleanup(&mut self) {
         println!("Server is shutting down");
-        let gateway = igd::search_gateway(Default::default()).unwrap();
-        if let Some(port) = self.upnp_port {
-            let _ = gateway.remove_port(igd::PortMappingProtocol::UDP, port);
+        let gateway = igd::search_gateway(Default::default());
+        if Ok(gateway) == gateway {
+            if let Some(port) = self.upnp_port {
+                let _ = gateway.remove_port(igd::PortMappingProtocol::UDP, port);
+            }
         }
     }
 }
