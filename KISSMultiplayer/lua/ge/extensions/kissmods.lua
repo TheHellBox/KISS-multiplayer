@@ -33,7 +33,7 @@ end
 local function mount_mod(name)
   --local mode = mode or "added"
   --extensions.core_modmanager.workOffChangedMod("/kissmp_mods/"..name, mode)
-  if FS:fileExists("/kissmp_mods"..name) then
+  if FS:fileExists("/kissmp_mods/"..name) then
     FS:mount("/kissmp_mods/"..name)
   elseif FS:fileExists("/mods/"..name) then
     FS:mount("/mods/"..name)

@@ -603,7 +603,8 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
                 };
                 let addr = match addr.address.unwrap() {
                     SocketAddr::V4(v4) => {
-                        if v4.ip().octets()[1] == 127 {
+                        println!("{:?}", v4);
+                        if v4.ip().octets()[0] == 127 {
                             continue
                         }
                         v4
@@ -614,6 +615,7 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
                 break;
             }
             if ip.is_none() {
+                println!("uPnP: Failed to find IP address");
                 return None;
             }
             std::net::SocketAddrV4::new(ip.unwrap(), port)
@@ -631,6 +633,7 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
         }
     }
     else{
+        println!("uPnP: Failed to find gateway");
         None
     }
 }

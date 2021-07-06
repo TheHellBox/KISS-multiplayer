@@ -28,7 +28,7 @@ end
 
 local function enable_spawning(enabled)
   local jsCommand = 'angular.element(document.body).injector().get("VehicleSelectConfig").configs.default.hide = {"spawnNew":' .. tostring(not enabled) .. '}'
-  be:queueJS(jsCommand)
+  be:executeJS(jsCommand)
 end
 
 local function color_eq(a, b)

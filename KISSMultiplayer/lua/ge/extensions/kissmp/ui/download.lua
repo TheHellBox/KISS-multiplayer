@@ -4,7 +4,7 @@ local imgui = ui_imgui
 local function draw(gui)
   if not kissui.show_download then return end
 
-  if not imgui.isWindowVisible("Downloads") then return end
+  if not kissui.gui.isWindowVisible("Downloads") then return end
   imgui.SetNextWindowBgAlpha(M.window_opacity[0])
   imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
   imgui.SetNextWindowViewport(imgui.GetMainViewport().ID)
