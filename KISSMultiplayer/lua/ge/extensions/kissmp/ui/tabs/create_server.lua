@@ -47,7 +47,7 @@ local function host_server()
   end
 end
 
-local function find_zip_for_map(map_path)
+local function find_map_real_path(map_path)
   -- Stupid fix for a stupid bug. We use FS:findFiles to select a file in map directory, as virtual2Native works weirdly if applied to folders after 0.23
   local patterns = {"info.json", "*.mis", "*"}
   local found_file = map_path
@@ -80,7 +80,7 @@ local function change_map(map_info)
   M.map_name = map_info.levelName
   
   -- check if its a mod
-  local native = find_zip_for_map(map_path)
+  local native = find_map_real_path(map_path)
   print(native)
   local _, zip_end = string.find(native, ".zip")
   local _, is_mod = string.find(native, "mods")
