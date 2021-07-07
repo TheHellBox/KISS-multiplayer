@@ -1,6 +1,4 @@
-#[recursion_limit = "1024"]
-
-use ipnetwork::Ipv4Network;
+#![recursion_limit = "1024"]
 use shared::vehicle;
 
 pub mod config;
@@ -137,9 +135,8 @@ impl Server {
                     self.upnp_port = Some(port);
                     println!("Fetching public IP address...");
                     let socket = UdpSocket::bind(&addr).unwrap();
-                    socket.connect("kissmp.online:3691");
-                    let mut i = 0;
-                    while i < 5 {
+                    let _ = socket.connect("kissmp.online:3691");
+                    for _ in 0..6 {
                         let _ = socket.send(b"hi");
                         let mut buf = [0; 1024];
                         let r = socket.recv(&mut buf);
@@ -151,7 +148,6 @@ impl Server {
                         } else {
                             println!("Failed to receive public IP, retrying...");
                         }
-                        i += 1;
                     }
                 },
                 Err(e) => {
@@ -200,7 +196,7 @@ impl Server {
         }
         println!("Server is running!");
         if let Some(setup_result) = setup_result {
-            setup_result.send(ServerSetupResult{
+            let _ = setup_result.send(ServerSetupResult{
                 addr: addr.to_string(),
                 port: self.port,
                 is_upnp: self.upnp_port.is_some()
@@ -217,7 +213,7 @@ impl Server {
                 }
                 conn = incoming.select_next_some() => {
                     if let Ok(conn) = conn {
-                        if let Err(e) = self.on_connect(conn, client_events_tx.clone()).await {
+                        if let Err(_) = self.on_connect(conn, client_events_tx.clone()).await {
                             println!("Client has failed to connect to the server");
                         }
                     }
@@ -650,7 +646,7 @@ pub fn upnp_pf(port: u16) -> UPnPResult<u16> {
     for interface in ifs {
         for iface_addr in interface.addresses.iter() {
             match iface_addr.mask {
-                Some(SocketAddr::V4(ipv4_mask)) => {
+                Some(SocketAddr::V4(_ipv4_mask)) => {
                     let ipv4_addr = match iface_addr.address {
                         Some(SocketAddr::V4(ipv4_addr)) => ipv4_addr,
                         _ => continue,

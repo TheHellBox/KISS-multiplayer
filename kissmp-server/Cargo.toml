@@ -28,5 +28,4 @@ dirs = "3.0"
 igd = { git = "https://github.com/stevefan1999-personal/rust-igd.git", rev = "c2d1f83" }
 ifcfg = "0.1.2"
 async-ctrlc = "1.2"
-ipnetwork = "0.18"
 thiserror = "1.0"
