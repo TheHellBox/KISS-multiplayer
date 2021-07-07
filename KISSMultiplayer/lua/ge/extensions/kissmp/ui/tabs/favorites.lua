@@ -92,7 +92,7 @@ local function draw_add_favorite_window()
   imgui.SetNextWindowPos(imgui.ImVec2(display_size.x / 2, display_size.y / 2), imgui.Cond_Always, imgui.ImVec2(0.5, 0.5))
 
   imgui.SetNextWindowBgAlpha(kissui.window_opacity[0])
-  if imgui.Begin("Add Favorite", kissui.gui.getWindowVisibleBoolPtr("Add Favorite"), bor(imgui.WindowFlags_NoScrollbar ,imgui.WindowFlags_NoResize, imgui.WindowFlags_AlwaysAutoResize)) then
+  if imgui.Begin("Add Favorite", kissui.gui.getWindowVisibleBoolPtr("Add Favorite"), bit.bor(imgui.WindowFlags_NoScrollbar ,imgui.WindowFlags_NoResize, imgui.WindowFlags_AlwaysAutoResize)) then
     imgui.Text("Name:")
     imgui.SameLine()
     imgui.PushItemWidth(-1)
@@ -118,7 +118,7 @@ local function draw_add_favorite_window()
         add_direct_server_to_favorites(addr, name)
       end
 
-      update_filtered_servers()
+      kissui.tabs.server_list.update_filtered(M.favorite_servers)
       kissui.gui.hideWindow("Add Favorite")
     end
     imgui.SameLine()
