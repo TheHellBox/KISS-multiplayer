@@ -209,7 +209,7 @@ local function draw()
   local content_width = imgui.GetWindowContentRegionWidth()
   local button_width = content_width * 0.495
 
-  if imgui.Button("Refresh list", imgui.ImVec2(button_width, 0)) then
+  if imgui.Button("Refresh List", imgui.ImVec2(button_width, 0)) then
     kissui.tabs.server_list.refresh()
     kissui.tabs.server_list.update_filtered()
   end

@@ -198,7 +198,7 @@ local function draw(dt)
 
   imgui.EndChild()
 
-  if imgui.Button("Refresh list", imgui.ImVec2(-1, 0)) then
+  if imgui.Button("Refresh List", imgui.ImVec2(-1, 0)) then
     refresh_server_list()
     update_filtered_servers()
   end

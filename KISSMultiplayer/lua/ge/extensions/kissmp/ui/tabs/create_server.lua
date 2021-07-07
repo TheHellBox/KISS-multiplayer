@@ -3,13 +3,16 @@ local imgui = ui_imgui
 local http = require("socket.http")
 
 M.map = "/levels/industrial/info.json"
-M.map_name = "industrial"
+M.map_name = "Industrial"
 M.mods = {}
 M.server_name = imgui.ArrayChar(128, "Private KissMP server")
 M.max_players = imgui.IntPtr(8)
 M.port = imgui.IntPtr(3698)
 M.is_proton = imgui.BoolPtr(false)
 M.proton_path = imgui.ArrayChar(1024, "/home/")
+
+local forced_mods = {}
+local pre_forced_mods_state = {}
 
 local function to_non_lowered(path)
   local mods = FS:findFiles("/mods/", "*.zip", 1000)
@@ -44,54 +47,108 @@ local function host_server()
   end
 end
 
+local function find_map_real_path(map_path)
+  -- Stupid fix for a stupid bug. We use FS:findFiles to select a file in map directory, as virtual2Native works weirdly if applied to folders after 0.23
+  local patterns = {"info.json", "*.mis", "*"}
+  local found_file = map_path
+  
+  for _,pattern in pairs(patterns) do
+    local files = FS:findFiles(map_path, pattern, 1)
+    if #files > 0 then
+      found_file = files[1]
+      break
+    end
+  end
+  
+  return FS:virtual2Native(found_file)
+end
+
+local function change_map(map_info)
+  -- deactivate mods that were activated by last map selection
+  for k,v in pairs(forced_mods) do
+    if not pre_forced_mods_state[k] then
+      M.mods[k] = nil
+    end
+  end
+  forced_mods = {}
+  pre_forced_mods_state = {}
+
+  --
+  local map_path = map_info.misFilePath
+  print(map_path)
+  M.map = map_path
+  M.map_name = map_info.levelName
+  
+  -- check if its a mod
+  local native = find_map_real_path(map_path)
+  print(native)
+  local _, zip_end = string.find(native, ".zip")
+  local _, is_mod = string.find(native, "mods")
+  if zip_end and is_mod then
+    local mod_file = string.sub(native, 1, zip_end)
+    print(mod_file)
+    local virtual = to_non_lowered(FS:native2Virtual(mod_file))
+    
+    pre_forced_mods_state[virtual] = (M.mods[virtual] ~= nil)
+    M.mods[virtual] = FS:virtual2Native(virtual)
+    forced_mods[virtual] = true
+  end
+end
+
+local function checkbox(id, checked, allow_click)
+  if allow_click == nil then allow_click = allow_click or true end
+  
+  if not allow_click then imgui.PushStyleVar1(imgui.StyleVar_Alpha, 0.70) end
+  local return_value = imgui.Checkbox(id, checked)
+  if not allow_click then imgui.PopStyleVar() end
+  
+  if allow_click then return return_value else return false end
+end
+
 local function draw()
   imgui.Text("Server name:")
   imgui.InputText("##host_server_name", M.server_name)
+  
   imgui.Text("Max players:")
-  imgui.InputInt("###host_max_players", M.max_players)
+  if imgui.InputInt("###host_max_players", M.max_players) then
+    M.max_players[0] = math.max(1, math.min(255, M.max_players[0]))
+  end
+  
   imgui.Text("Map:")
   if imgui.BeginCombo("###host_map", M.map_name) then
     for k, v in pairs(core_levels.getList()) do
       if imgui.Selectable1(v.levelName.."###host_map_s_"..k) then
-        local map_path = v.misFilePath
-        print(map_path)
-        M.map = map_path
-        M.map_name = v.levelName
-        -- Stupid fix for a stupid bug. We use FS:findFiles to select first file in map directory, as virtual2Native works weirdly if applied to folders after 0.23
-        local native = FS:virtual2Native(FS:findFiles(map_path, "*", 1)[1])
-        print(native)
-        local _, zip_end = string.find(native, ".zip")
-        local _, is_mod = string.find(native, "mods")
-        if zip_end and is_mod then
-          local mod_file = string.sub(native, 1, zip_end)
-          print(mod_file)
-          local virtual = to_non_lowered(FS:native2Virtual(mod_file))
-          M.mods[virtual] = FS:virtual2Native(virtual)
-        end
+        change_map(v)
       end
     end
     imgui.EndCombo()
   end
+
   imgui.Text("Port:")
-  imgui.InputInt("###host_port", M.port)
+  if imgui.InputInt("###host_port", M.port) then
+    M.port[0] = math.max(0, math.min(65535, M.port[0]))
+  end
 
   local mods = FS:findFiles("/mods/", "*.zip", 1000)
   imgui.Text("Mods:")
   imgui.BeginChild1("###Mods", imgui.ImVec2(0, -30), true)
   for k, v in pairs(mods) do
     if not v:find("KISSMultiplayer") then
-      local enabled = imgui.BoolPtr(M.mods[v] ~= nil)
-      if imgui.Checkbox(v.."###host_mod"..k, enabled) then
-        if not M.mods[v] then
+      local forced = forced_mods[v] or false
+      local checked = imgui.BoolPtr(M.mods[v] ~= nil or forced)
+      
+      if checkbox(v.."###host_mod"..k, checked, not forced) then
+        if checked[0] and not M.mods[v] then
           M.mods[v] = FS:virtual2Native(v)
-        else
+        elseif not checked[0] then
           M.mods[v] = nil
         end
       end
     end
   end
   imgui.EndChild()
-  if imgui.Button("Create") then
+
+  if imgui.Button("Create Server", imgui.ImVec2(-1, 0)) then
     host_server()
   end
 end
