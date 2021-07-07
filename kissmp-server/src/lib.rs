@@ -10,6 +10,11 @@ pub mod incoming;
 pub mod lua;
 pub mod outgoing;
 pub mod server_vehicle;
+pub mod error;
+pub mod result;
+
+use error::*;
+use result::*;
 
 use incoming::IncomingEvent;
 use server_vehicle::*;
@@ -126,29 +131,32 @@ impl Server {
     ) {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
         if self.upnp_enabled {
-            if let Some(port) = upnp_pf(self.port) {
-                println!("uPnP mapping succeed. Port: {}", port);
-                self.upnp_port = Some(port);
-                println!("Fetching public IP address...");
-                let socket = UdpSocket::bind(&addr).unwrap();
-                socket.connect("kissmp.online:3691");
-                let mut i = 0;
-                while i < 5 {
-                    let _ = socket.send(b"hi");
-                    let mut buf = [0; 1024];
-                    let r = socket.recv(&mut buf);
-                    if let Ok(n) = r {
-                        let addr = String::from_utf8(buf[0..n].to_vec()).unwrap();
-                        println!("IP: {}", addr);
-                        self.public_address = Some(addr);
-                        break;
-                    } else {
-                        println!("Failed to receive public IP, retrying...");
+            match upnp_pf(self.port) {
+                Ok(port) => {
+                    println!("uPnP mapping succeed. Port: {}", port);
+                    self.upnp_port = Some(port);
+                    println!("Fetching public IP address...");
+                    let socket = UdpSocket::bind(&addr).unwrap();
+                    socket.connect("kissmp.online:3691");
+                    let mut i = 0;
+                    while i < 5 {
+                        let _ = socket.send(b"hi");
+                        let mut buf = [0; 1024];
+                        let r = socket.recv(&mut buf);
+                        if let Ok(n) = r {
+                            let addr = String::from_utf8(buf[0..n].to_vec()).unwrap();
+                            println!("IP: {}", addr);
+                            self.public_address = Some(addr);
+                            break;
+                        } else {
+                            println!("Failed to receive public IP, retrying...");
+                        }
+                        i += 1;
                     }
-                    i += 1;
-                }
-            } else {
-                println!("uPnP mapping failed.");
+                },
+                Err(e) => {
+                    eprintln!("uPnP mapping failed: {}", e);
+                },
             }
         }
         let socket = UdpSocket::bind(&addr).unwrap();
@@ -622,7 +630,8 @@ fn get_bind_addr() -> Result<SocketAddr, std::io::Error> {
     Ok(bind_addr)
 }
 
-pub fn upnp_pf(port: u16) -> Option<u16> {
+
+pub fn upnp_pf(port: u16) -> UPnPResult<u16> {
     let bind_addr = match get_bind_addr() {
         Ok(addr) => addr,
         Err(_error) =>  ([0, 0, 0, 0], 0).into()
@@ -634,71 +643,58 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
         ..Default::default()
     };
 
-    match igd::search_gateway(opts) {
-        Ok(gateway) => {
-            let ifs = match ifcfg::IfCfg::get() {
-                Ok(ifs) => ifs,
-                Err(e) => {
-                    eprintln!("could not get interfaces: {}", e);
-                    return None;
-                }
-            };
+    let gateway = igd::search_gateway(opts)?;
+    let ifs = ifcfg::IfCfg::get()?;
 
-            let mut valid_ips = Vec::new();
-            for interface in ifs {
-                for iface_addr in interface.addresses.iter() {
-                    match iface_addr.mask {
-                        Some(SocketAddr::V4(ipv4_mask)) => {
-                            let ipv4_addr = match iface_addr.address {
-                                Some(SocketAddr::V4(ipv4_addr)) => ipv4_addr,
-                                _ => continue,
-                            };
-
-                            if ipv4_addr.ip().is_private() {
-                                valid_ips.push(ipv4_addr);
-                            } else {
-                                continue;
-                            }
-                        }
-                        // v6 Addresses are not compatible with uPnP
+    let mut valid_ips = Vec::new();
+    for interface in ifs {
+        for iface_addr in interface.addresses.iter() {
+            match iface_addr.mask {
+                Some(SocketAddr::V4(ipv4_mask)) => {
+                    let ipv4_addr = match iface_addr.address {
+                        Some(SocketAddr::V4(ipv4_addr)) => ipv4_addr,
                         _ => continue,
+                    };
+
+                    if ipv4_addr.ip().is_private() {
+                        valid_ips.push(ipv4_addr);
+                    } else {
+                        continue;
                     }
                 }
+                // v6 Addresses are not compatible with uPnP
+                _ => continue,
             }
+        }
+    }
 
-            println!(
-                "uPnP: We are going to try the following IPs: {:#?}",
-                valid_ips
-            );
+    println!(
+        "uPnP: We are going to try the following IPs: {:#?}",
+        valid_ips
+    );
 
-            if valid_ips.is_empty() {
-                eprintln!("uPnP: No interfaces have a valid IP.");
-                return None;
-            }
-
-            for mut ip in valid_ips {
-                ip.set_port(port);
-                println!("uPnP: Trying {}", ip);
-                match gateway.add_port(igd::PortMappingProtocol::UDP, port, SocketAddr::V4(ip), 0, "KissMP Server")
-                {
-                    Ok(()) => return Some(port),
-                    Err(e) => match e {
-                        igd::AddPortError::PortInUse => {
-                            gateway.remove_port(igd::PortMappingProtocol::UDP, port);
-                            gateway.add_port(igd::PortMappingProtocol::UDP, port, SocketAddr::V4(ip), 0, "KissMP Server");
-                            return Some(port)
-                        },
-                        _ => {
-                            eprintln!("uPnP Error: {:?}", e);
-                        }
+    if valid_ips.is_empty() {
+        Err(UPnPError::NoValidInterfaceIPs)
+    } else {
+        for mut ip in valid_ips {
+            ip.set_port(port);
+            println!("uPnP: Trying {}", ip);
+            loop {
+                match gateway.add_port(
+                    igd::PortMappingProtocol::UDP,
+                    port,
+                    SocketAddr::V4(ip),
+                    0,
+                    "KissMP Server"
+                ) {
+                    Ok(()) => return Ok(port),
+                    Err(igd::AddPortError::PortInUse) => {
+                        gateway.remove_port(igd::PortMappingProtocol::UDP, port)?;
                     },
+                    Err(_) => break
                 }
-            }
-            return None;
+            };
         }
-        Err(e) => {
-            eprintln!("uPnP: Failed to find gateway: {}", e);
-            None
-        }
+        Err(UPnPError::CouldNotAddPort)
     }
 }
