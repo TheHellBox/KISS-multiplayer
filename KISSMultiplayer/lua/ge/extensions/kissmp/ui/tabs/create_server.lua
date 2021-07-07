@@ -49,7 +49,7 @@ end
 
 local function find_map_real_path(map_path)
   -- Stupid fix for a stupid bug. We use FS:findFiles to select a file in map directory, as virtual2Native works weirdly if applied to folders after 0.23
-  local patterns = {"info.json", "*.mis", "*"}
+  local patterns = {"info.json", "*.mis"}
   local found_file = map_path
   
   for _,pattern in pairs(patterns) do
@@ -59,11 +59,11 @@ local function find_map_real_path(map_path)
       break
     end
   end
-  
+  print(found_file)
   return FS:virtual2Native(found_file)
 end
 
-local function change_map(map_info)
+local function change_map(map_info, title)
   -- deactivate mods that were activated by last map selection
   for k,v in pairs(forced_mods) do
     if not pre_forced_mods_state[k] then
@@ -77,9 +77,8 @@ local function change_map(map_info)
   local map_path = map_info.misFilePath
   print(map_path)
   M.map = map_path
-  M.map_name = map_info.levelName
-  
-  -- check if its a mod
+  M.map_name = title or map_info.levelName
+
   local native = find_map_real_path(map_path)
   print(native)
   local _, zip_end = string.find(native, ".zip")
@@ -117,8 +116,12 @@ local function draw()
   imgui.Text("Map:")
   if imgui.BeginCombo("###host_map", M.map_name) then
     for k, v in pairs(core_levels.getList()) do
-      if imgui.Selectable1(v.levelName.."###host_map_s_"..k) then
-        change_map(v)
+      local title = v.title
+      if title:find("^levels.") then
+        title = v.levelName
+      end
+      if imgui.Selectable1(title.."###host_map_s_"..k) then
+        change_map(v, title)
       end
     end
     imgui.EndCombo()

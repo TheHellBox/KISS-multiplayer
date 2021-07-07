@@ -15,8 +15,7 @@ local function draw()
       vehicle_position = vec3(vehicle:getPosition())
     end
     if id ~= network.connection.client_id then
-      if not be:getPlayerVehicle(0) then return end
-      local local_position = be:getPlayerVehicle(0):getPosition() or vec3()
+      local local_position = getCameraPosition()
       local distance = vehicle_position:distance(vec3(local_position)) or 0
       vehicle_position.z = vehicle_position.z + 1.6
       debugDrawer:drawTextAdvanced(

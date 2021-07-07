@@ -35,10 +35,13 @@ local function mount_mod(name)
   --extensions.core_modmanager.workOffChangedMod("/kissmp_mods/"..name, mode)
   if FS:fileExists("/kissmp_mods/"..name) then
     FS:mount("/kissmp_mods/"..name)
-  elseif FS:fileExists("/mods/"..name) then
-    FS:mount("/mods/"..name)
   else
-    kissui.chat.add_message("Failed to mount mod "..name..", file not found", kissui.COLOR_RED)
+    files = FS:findFiles("/mods/", name, 1000)
+    if files[1] then
+      FS:mount(files[1])
+    else
+      kissui.chat.add_message("Failed to mount mod "..name..", file not found", kissui.COLOR_RED)
+    end
   end
   core_vehicles.clearCache()
 end

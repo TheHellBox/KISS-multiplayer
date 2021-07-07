@@ -683,7 +683,11 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
                 {
                     Ok(()) => return Some(port),
                     Err(e) => match e {
-                        igd::AddPortError::PortInUse => return Some(port),
+                        igd::AddPortError::PortInUse => {
+                            gateway.remove_port(igd::PortMappingProtocol::UDP, port);
+                            gateway.add_port(igd::PortMappingProtocol::UDP, port, SocketAddr::V4(ip), 0, "KissMP Server");
+                            return Some(port)
+                        },
                         _ => {
                             eprintln!("uPnP Error: {:?}", e);
                         }

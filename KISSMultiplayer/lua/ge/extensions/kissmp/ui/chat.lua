@@ -60,7 +60,7 @@ end
 
 local function draw()
   if not kissui.gui.isWindowVisible("Chat") then return end
-  imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
+  imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(100, 100))
 
   local window_title = "Chat"
   if unread_message_count > 0 and should_draw_unread_count then
