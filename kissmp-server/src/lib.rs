@@ -1,4 +1,3 @@
-#![recursion_limit = "1024"]
 use shared::vehicle;
 
 pub mod config;
