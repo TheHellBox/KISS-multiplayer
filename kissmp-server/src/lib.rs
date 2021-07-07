@@ -22,6 +22,7 @@ use futures::{select, StreamExt, TryStreamExt};
 use quinn::{Certificate, CertificateChain, PrivateKey};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 
@@ -602,8 +603,38 @@ pub fn list_mods(
     Ok((result, raw))
 }
 
+#[cfg(not(windows))]
+fn get_bind_addr() -> Result<SocketAddr, std::io::Error> {
+    Ok(([0, 0, 0, 0], 0).into())
+}
+
+#[cfg(windows)]
+// from https://github.com/jakobhellermann/ssdp-client/blob/776c3576ab43efb62b5e24ee768c296a62b22b12/src/search.rs#L44
+fn get_bind_addr() -> Result<SocketAddr, std::io::Error> {
+    // Windows 10 is multihomed so that the address that is used for the broadcast send is not guaranteed to be your local ip address, it can be any of the virtual interfaces instead.
+    // Thanks to @dheijl for figuring this out <3 (https://github.com/jakobhellermann/ssdp-client/issues/3#issuecomment-687098826)
+    let any: SocketAddr = ([0, 0, 0, 0], 0).into();
+    let socket = UdpSocket::bind(any)?;
+    let googledns: SocketAddr = ([8, 8, 8, 8], 80).into();
+    let _ = socket.connect(googledns);
+    let bind_addr = socket.local_addr()?;
+
+    Ok(bind_addr)
+}
+
 pub fn upnp_pf(port: u16) -> Option<u16> {
-    match igd::search_gateway(Default::default()) {
+    let bind_addr = match get_bind_addr() {
+        Ok(addr) => addr,
+        Err(_error) =>  ([0, 0, 0, 0], 0).into()
+    };
+
+    let opts = igd::SearchOptions {
+        timeout: Some(Duration::from_secs(10)),
+        bind_addr: bind_addr,
+        ..Default::default()
+    };
+
+    match igd::search_gateway(opts) {
         Ok(gateway) => {
             let ifs = match ifcfg::IfCfg::get() {
                 Ok(ifs) => ifs,
