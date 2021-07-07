@@ -48,7 +48,6 @@ local function host_server()
 end
 
 local function find_map_real_path(map_path)
-  -- Stupid fix for a stupid bug. We use FS:findFiles to select a file in map directory, as virtual2Native works weirdly if applied to folders after 0.23
   local patterns = {"info.json", "*.mis"}
   local found_file = map_path
   

@@ -1,6 +1,10 @@
 local M = {}
 local imgui = ui_imgui
 
+local function bytes_to_mb(bytes)
+  return (bytes / 1024) / 1024
+end
+
 local function draw(gui)
   if not kissui.show_download then return end
 
