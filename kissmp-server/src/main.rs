@@ -1,8 +1,11 @@
 use kissmp_server::*;
+use log::{info};
 
 #[tokio::main]
 async fn main() {
-    println!("Gas, Gas, Gas!");
+    shared::init_logging();
+
+    info!("Gas, Gas, Gas!");
     let path = std::path::Path::new("./mods/");
     if !path.exists() {
         std::fs::create_dir(path).unwrap();

@@ -1,3 +1,5 @@
+use log::{error};
+
 pub async fn decode(
     data: &[u8],
     writer: tokio::sync::mpsc::Sender<Vec<u8>>,
@@ -36,11 +38,11 @@ pub async fn decode(
                     result.append(&mut data);
                     writer.send(result).await.unwrap();
                 } else {
-                    println!("Error: {:?}", json);
+                    error!("Error: {:?}", json);
                 }
             }
         }
     } else {
-        println!("Error bin: {:?}", decoded);
+        error!("Error bin: {:?}", decoded);
     }
 }

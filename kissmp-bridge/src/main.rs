@@ -8,6 +8,7 @@ use futures::{StreamExt, TryStreamExt};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use log::{info, warn, error};
 
 #[derive(Debug, Clone)]
 pub struct DiscordState {
@@ -16,6 +17,8 @@ pub struct DiscordState {
 
 #[tokio::main]
 async fn main() {
+    shared::init_logging();
+
     let (discord_tx, discord_rx) = std::sync::mpsc::channel();
     let discord_tx_clone = discord_tx.clone();
     discord::spawn_discord_rpc(discord_rx).await;
@@ -24,9 +27,9 @@ async fn main() {
     });
     let addr = &"0.0.0.0:7894".parse::<SocketAddr>().unwrap();
     let listener = TcpListener::bind(addr).await.unwrap();
-    println!("Bridge is running!");
+    info!("Bridge is running!");
     while let Ok(conn) = listener.accept().await {
-        println!("Attempt to connect to a server");
+        info!("Attempt to connect to a server");
         let discord_tx = discord_tx_clone.clone();
         let stream = conn.0;
         tokio::spawn(async move {
@@ -43,7 +46,7 @@ async fn main() {
                 if let Ok(mut socket_addrs) = addr_str.to_socket_addrs() {
                     socket_addrs.next().unwrap()
                 } else {
-                    println!("Failed to parse address!");
+                    error!("Failed to parse address!");
                     return;
                 }
             };
@@ -68,10 +71,10 @@ async fn main() {
             if connection.is_err() {
                 // Send connection failed message to the client
                 let _ = writer.write_all(&[0]).await;
-                println!("Failed to connect to the server");
+                error!("Failed to connect to the server");
                 return;
             }
-            println!("Connection!");
+            info!("Connection!");
             // Confirm that connection is established
             let _ = writer.write_all(&[1]).await;
 
@@ -132,11 +135,11 @@ async fn main() {
                             _ => sender_tx.send((reliable, decoded)).unwrap(),
                         };
                     } else {
-                        println!("error decoding json {:?}", decoded);
-                        println!("{:?}", String::from_utf8(data));
+                        error!("error decoding json {:?}", decoded);
+                        error!("{:?}", String::from_utf8(data));
                     }
                 }
-                println!("Connection with game is closed");
+                info!("Connection with game is closed");
                 stream_connection.close(0u32.into(), b"Client has left the game.");
                 discord_tx.send(DiscordState { server_name: None }).unwrap();
             });
@@ -151,7 +154,7 @@ async fn main() {
             .await
             {
                 let reason = r.to_string();
-                println!("Disconnected! Reason: {}", reason);
+                warn!("Disconnected! Reason: {}", reason);
                 let reason_bytes = reason.into_bytes().to_vec();
                 let mut result = vec![2];
                 result.append(&mut (reason_bytes.len() as u32).to_le_bytes().to_vec());

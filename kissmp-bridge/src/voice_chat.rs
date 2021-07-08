@@ -1,6 +1,7 @@
 use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
 use rodio::DeviceTrait;
+use log::{info, warn, error};
 
 const SAMPLE_RATE: cpal::SampleRate = cpal::SampleRate(16000);
 const BUFFER_LEN: usize = 1920;
@@ -40,13 +41,13 @@ pub fn run_vc_recording(
     let device = match cpal::default_host().default_input_device() {
         Some(device) => device,
         None => {
-            println!("No default audio input device available for voice chat.");
-            println!("Check your OS's settings and verify you have a device available.");
+            warn!("No default audio input device available for voice chat.");
+            warn!("Check your OS's settings and verify you have a device available.");
             return Ok(());
         }
     };
     std::thread::spawn(move || {
-        println!(
+        info!(
             "Using default audio input device: {}",
             device.name().unwrap()
         );
@@ -68,15 +69,15 @@ pub fn run_vc_recording(
             break false;
         };
         if !found_config {
-            println!("Device incompatible due to the parameters it offered:");
+            warn!("Device incompatible due to the parameters it offered:");
             for cfg in device.supported_input_configs().unwrap() {
                 // Not showing every field of SupportedStreamConfigRange since they are not important at this time.
                 // Only printing fields we currently care about.
-                println!("\tChannels: {:?}", cfg.channels());
-                println!("\tSample Format: {:?}", cfg.sample_format());
-                println!("---");
+                warn!("\tChannels: {:?}", cfg.channels());
+                warn!("\tSample Format: {:?}", cfg.sample_format());
+                warn!("---");
             }
-            println!("Try a different default audio input in your OS's settings.");
+            warn!("Try a different default audio input in your OS's settings.");
             return;
         }
         let (config, buffer_size) = {
@@ -99,13 +100,13 @@ pub fn run_vc_recording(
             }
         };
         let stream_config = config.config();
-        println!("Audio stream configured with the following settings:");
-        println!("\tChannels: {:?}", stream_config.channels);
-        println!("\tSample rate: {:?}", stream_config.sample_rate);
-        println!("\tBuffer size: {:?}", stream_config.buffer_size);
-        println!("Use it with a key bound in BeamNG.Drive");
+        info!("Audio stream configured with the following settings:");
+        info!("\tChannels: {:?}", stream_config.channels);
+        info!("\tSample rate: {:?}", stream_config.sample_rate);
+        info!("\tBuffer size: {:?}", stream_config.buffer_size);
+        info!("Use it with a key bound in BeamNG.Drive");
         let err_fn = move |err| {
-            eprintln!("an error occurred on stream: {}", err);
+            error!("an error occurred on stream: {}", err);
         };
         let encoder = audiopus::coder::Encoder::new(
             audiopus::SampleRate::Hz16000,
@@ -248,8 +249,8 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
     let (_stream, stream_handle) = match rodio::OutputStream::try_default() {
         Ok(a) => a,
         _ => {
-            println!("Could not find a output audio stream for voice chat.");
-            println!("Check your OS's settings and verify you have a device available.");
+            warn!("Could not find a output audio stream for voice chat.");
+            warn!("Check your OS's settings and verify you have a device available.");
             return;
         }
     };

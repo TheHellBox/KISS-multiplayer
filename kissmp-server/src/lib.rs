@@ -25,6 +25,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
+use log::{info, warn, error};
 
 #[derive(Clone)]
 pub struct Connection {
@@ -127,9 +128,9 @@ impl Server {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
         if self.upnp_enabled {
             if let Some(port) = upnp_pf(self.port) {
-                println!("uPnP mapping succeed. Port: {}", port);
+                info!("uPnP mapping succeeded. Port: {}", port);
                 self.upnp_port = Some(port);
-                println!("Fetching public IP address...");
+                info!("Fetching public IP address...");
                 let socket = UdpSocket::bind(&addr).unwrap();
                 socket.connect("kissmp.online:3691");
                 let mut i = 0;
@@ -139,16 +140,16 @@ impl Server {
                     let r = socket.recv(&mut buf);
                     if let Ok(n) = r {
                         let addr = String::from_utf8(buf[0..n].to_vec()).unwrap();
-                        println!("IP: {}", addr);
+                        info!("IP: {}", addr);
                         self.public_address = Some(addr);
                         break;
                     } else {
-                        println!("Failed to receive public IP, retrying...");
+                        warn!("Failed to receive public IP, retrying...");
                     }
                     i += 1;
                 }
             } else {
-                println!("uPnP mapping failed.");
+                warn!("uPnP mapping failed.");
             }
         }
         let socket = UdpSocket::bind(&addr).unwrap();
@@ -178,7 +179,7 @@ impl Server {
         let (client_events_tx, client_events_rx) = mpsc::channel(128);
         let mut client_events_rx = ReceiverStream::new(client_events_rx).fuse();
         let mut incoming = incoming
-            .inspect(|_conn| println!("Client is trying to connect to the server"))
+            .inspect(|_conn| info!("Client is trying to connect to the server"))
             .buffer_unordered(16);
 
         let stdin = tokio::io::stdin();
@@ -190,7 +191,7 @@ impl Server {
             self.load_lua_addons();
             let _ = self.update_lua_connections();
         }
-        println!("Server is running!");
+        info!("Server is running!");
         if let Some(setup_result) = setup_result {
             setup_result.send(ServerSetupResult{
                 addr: addr.to_string(),
@@ -210,7 +211,7 @@ impl Server {
                 conn = incoming.select_next_some() => {
                     if let Ok(conn) = conn {
                         if let Err(e) = self.on_connect(conn, client_events_tx.clone()).await {
-                            println!("Client has failed to connect to the server");
+                            warn!("Client has failed to connect to the server");
                         }
                     }
                 },
@@ -223,7 +224,7 @@ impl Server {
                     self.on_client_event(e.0, e.1).await;
                 },
                 _ = destroyer => {
-                    println!("Server shutdown requested. Shutting down");
+                    info!("Server shutdown requested. Shutting down");
                     break 'main;
                 },
             }
@@ -289,7 +290,7 @@ impl Server {
         ) -> anyhow::Result<ClientInfoPrivate> {
             let mut stream = new_connection.uni_streams.try_next().await?;
             if let Some(stream) = &mut stream {
-                println!("Attempting to receive client info...");
+                info!("Attempting to receive client info...");
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
                 let len = u32::from_le_bytes(buf).min(16384) as usize;
@@ -510,7 +511,7 @@ impl Server {
     }
 
     fn cleanup(&mut self) {
-        println!("Server is shutting down");
+        info!("Server is shutting down");
         let gateway = igd::search_gateway(Default::default());
         if let Ok(gateway) = gateway {
             if let Some(port) = self.upnp_port {
@@ -527,7 +528,7 @@ impl Drop for Server {
 }
 
 fn generate_certificate() -> (CertificateChain, PrivateKey) {
-    println!("Generating certificate...");
+    info!("Generating certificate...");
     let cert = rcgen::generate_simple_self_signed(vec!["kissmp".into()]).unwrap();
     let key = cert.serialize_private_key_der();
     let cert = cert.serialize_der().unwrap();
@@ -576,7 +577,7 @@ pub fn list_mods(
             if !cfg!(unix) {
                 continue;
             }
-            println!("File {:?} doesn't exists, attempting to replace windows path with most common proton prefix", path);
+            info!("File {:?} doesn't exists, attempting to replace windows path with most common proton prefix", path);
             // Somewhat working fix for game returning mods with windows path
             path = dirs::home_dir()
                 .unwrap()
@@ -588,9 +589,9 @@ pub fn list_mods(
                         .replace(r#"C:\"#, "")
                         .replace(r#"\"#, "/"),
                 );
-            println!("{:?}", path);
+            info!("{:?}", path);
             if !path.exists() {
-                println!("Mod file {:?} not found", path);
+                error!("Mod file {:?} not found", path);
                 continue;
             }
         }
@@ -639,7 +640,7 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
             let ifs = match ifcfg::IfCfg::get() {
                 Ok(ifs) => ifs,
                 Err(e) => {
-                    eprintln!("could not get interfaces: {}", e);
+                    error!("could not get interfaces: {}", e);
                     return None;
                 }
             };
@@ -666,19 +667,19 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
                 }
             }
 
-            println!(
+            info!(
                 "uPnP: We are going to try the following IPs: {:#?}",
                 valid_ips
             );
 
             if valid_ips.is_empty() {
-                eprintln!("uPnP: No interfaces have a valid IP.");
+                error!("uPnP: No interfaces have a valid IP.");
                 return None;
             }
 
             for mut ip in valid_ips {
                 ip.set_port(port);
-                println!("uPnP: Trying {}", ip);
+                info!("uPnP: Trying {}", ip);
                 match gateway.add_port(igd::PortMappingProtocol::UDP, port, SocketAddr::V4(ip), 0, "KissMP Server")
                 {
                     Ok(()) => return Some(port),
@@ -689,7 +690,7 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
                             return Some(port)
                         },
                         _ => {
-                            eprintln!("uPnP Error: {:?}", e);
+                            error!("uPnP Error: {:?}", e);
                         }
                     },
                 }
@@ -697,7 +698,7 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
             return None;
         }
         Err(e) => {
-            eprintln!("uPnP: Failed to find gateway: {}", e);
+            error!("uPnP: Failed to find gateway: {}", e);
             None
         }
     }
