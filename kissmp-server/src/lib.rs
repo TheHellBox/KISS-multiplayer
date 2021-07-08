@@ -674,6 +674,7 @@ pub fn upnp_pf(port: u16) -> UPnPResult<u16> {
         for mut ip in valid_ips {
             ip.set_port(port);
             println!("uPnP: Trying {}", ip);
+            let mut tried_removing_port = false;
             loop {
                 match gateway.add_port(
                     igd::PortMappingProtocol::UDP,
@@ -684,7 +685,13 @@ pub fn upnp_pf(port: u16) -> UPnPResult<u16> {
                 ) {
                     Ok(()) => return Ok(port),
                     Err(igd::AddPortError::PortInUse) => {
-                        gateway.remove_port(igd::PortMappingProtocol::UDP, port)?;
+                        if !tried_removing_port {
+                            gateway.remove_port(igd::PortMappingProtocol::UDP, port)?;
+                            tried_removing_port = true;
+                        } else {
+                            eprintln!("uPnP: Gateway is silently not removing ports. Check if you already have a service on {}. Contact support for further help.", port);
+                            break
+                        }
                     },
                     Err(_) => break
                 }
