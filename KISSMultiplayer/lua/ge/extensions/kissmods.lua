@@ -3,8 +3,8 @@ M.mods = {}
 
 local function is_special_mod(mod_path)
   local special_mods = {"KISSMultiplayer.zip", "translations.zip"}
-  for _, allowed_mod in pairs(special_mods) do
-    if string.endswith(mod_path, allowed_mod) then
+  for _, special_mod in pairs(special_mods) do
+    if string.endswith(mod_path, special_mod) then
       return true
     end
   end
