@@ -12,7 +12,7 @@ impl Server {
         id: u32,
         data: Vec<u8>,
         client_events_tx: &mut mpsc::Sender<(u32, IncomingEvent)>,
-    ) -> anyhow::Result<()> {
+    ) -> HandleIncomingDataResult {
         let client_command = bincode::deserialize::<shared::ClientCommand>(&data)?;
         client_events_tx
             .send((id, IncomingEvent::ClientCommand(client_command)))

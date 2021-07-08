@@ -7,9 +7,9 @@ const CHUNK_SIZE: usize = 65536;
 pub async fn transfer_file(
     connection: quinn::Connection,
     path: &std::path::Path,
-) -> anyhow::Result<()> {
-    let mut file = tokio::fs::File::open(path).await?;
-    let metadata = file.metadata().await?;
+) -> TransferFileResult {
+    let mut file = tokio::fs::File::open(path).await.map_err(TransferFileError::OpenFile)?;
+    let metadata = file.metadata().await.map_err(TransferFileError::Metadata)?;
     let file_length = metadata.len() as u32;
     let file_name = path.file_name().unwrap().to_str().unwrap();
     let mut buf = [0; CHUNK_SIZE];

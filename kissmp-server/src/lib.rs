@@ -18,7 +18,6 @@ use server_vehicle::*;
 use shared::{ClientInfoPrivate, ClientInfoPublic, ServerCommand};
 use vehicle::*;
 
-use anyhow::Error;
 use futures::FutureExt;
 use futures::{select, StreamExt, TryStreamExt};
 use quinn::{Certificate, CertificateChain, PrivateKey};
@@ -246,7 +245,7 @@ impl Server {
             }
         }
     }
-    async fn send_server_info(&self) -> anyhow::Result<()> {
+    async fn send_server_info(&self) -> SendServerInfoResult {
         if !self.show_in_list {
             return Ok(());
         }
@@ -277,11 +276,11 @@ impl Server {
         &mut self,
         mut new_connection: quinn::NewConnection,
         client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
-    ) -> anyhow::Result<()> {
+    ) -> PlayerConnectResult {
         let connection = new_connection.connection.clone();
         if self.connections.len() >= self.max_players.into() {
             connection.close(0u32.into(), b"Server is full");
-            return Err(anyhow::Error::msg("Server is full"));
+            return Err(PlayerConnectError::ServerFull);
         }
         // Should be strong enough for our targets. TODO: Check for collisions anyway
         let id = rand::random::<u32>();
@@ -289,7 +288,8 @@ impl Server {
         let (unreliable_tx, unreliable_rx) = mpsc::channel(128);
         async fn receive_client_data(
             new_connection: &mut quinn::NewConnection,
-        ) -> anyhow::Result<ClientInfoPrivate> {
+        ) -> RecievePlayerInfoResult {
+            // TODO: log errors
             let mut stream = new_connection.uni_streams.try_next().await?;
             if let Some(stream) = &mut stream {
                 println!("Attempting to receive client info...");
@@ -303,10 +303,10 @@ impl Server {
                 if let shared::ClientCommand::ClientInfo(info) = info {
                     Ok(info)
                 } else {
-                    Err(anyhow::Error::msg("Failed to fetch client info"))
+                    Err(RecievePlayerInfoError::RecievedSomethingElse(info))
                 }
             } else {
-                Err(anyhow::Error::msg("Failed to fetch client info"))
+                Err(RecievePlayerInfoError::NoStream)
             }
         }
 
@@ -395,7 +395,7 @@ impl Server {
         connection: quinn::Connection,
         ordered: mpsc::Receiver<ServerCommand>,
         unreliable: mpsc::Receiver<ServerCommand>,
-    ) -> anyhow::Result<()> {
+    ) -> DriveSendResult {
         let mut ordered = ReceiverStream::new(ordered).fuse();
         let mut unreliable = ReceiverStream::new(unreliable).fuse();
         loop {
@@ -427,7 +427,7 @@ impl Server {
                 }
             }
         }
-        Err(anyhow::Error::msg("Disconnected"))
+        Err(DriveSendError::Disconnected)
     }
 
     async fn drive_receive(
@@ -435,7 +435,7 @@ impl Server {
         streams: quinn::IncomingUniStreams,
         datagrams: quinn::generic::Datagrams<quinn::crypto::rustls::TlsSession>,
         mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
-    ) -> anyhow::Result<()> {
+    ) -> DriveRecieveResult {
         let mut cmds = streams
             .map(|stream| async {
                 let mut stream = stream?;
@@ -444,7 +444,7 @@ impl Server {
                 let len = u32::from_le_bytes(buf).min(65536) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
-                Ok::<_, Error>(buf)
+                Ok::<_, CMDRecieveError>(buf)
             })
             .buffered(256)
             .fuse();
@@ -452,34 +452,36 @@ impl Server {
         let mut datagrams = datagrams
             .map(|data| async {
                 let data: Vec<u8> = data?.to_vec();
-                Ok::<_, Error>(data)
+                Ok::<_, DatagramRecieveError>(data)
             })
             .buffered(256)
             .fuse();
 
         loop {
             let data = select! {
+                // TODO: log errors
                 data = cmds.try_next() => {
                     if let Some(data) = data? {
                         data
                     }
                     else{
-                       return Err(anyhow::Error::msg("Disconnected"))
+                       return Err(DriveRecieveError::Disconnected)
                     }
                 }
+                // TODO: log errors
                 data = datagrams.try_next() => {
                     if let Some(data) = data? {
                         data
                     }
                     else{
-                        return Err(anyhow::Error::msg("Disconnected"))
+                        return Err(DriveRecieveError::Disconnected)
                     }
                 }
                 complete => break
             };
             let _ = Self::handle_incoming_data(id, data, &mut client_events_tx).await;
         }
-        Err(anyhow::Error::msg("Disconnected"))
+        Err(DriveRecieveError::Disconnected)
     }
 
     async fn tick(&mut self) {
@@ -540,7 +542,7 @@ fn generate_certificate() -> (CertificateChain, PrivateKey) {
     )
 }
 
-async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
+async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> SendResult {
     stream
         .write_all(&(message.len() as u32).to_le_bytes())
         .await?;
@@ -550,7 +552,7 @@ async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<
 
 pub fn list_mods(
     mods: Option<Vec<String>>,
-) -> anyhow::Result<(Vec<(String, u32)>, Vec<std::path::PathBuf>)> {
+) -> ListModsResult {
     let paths = {
         if let Some(mods) = mods {
             let mut paths = vec![];
@@ -563,7 +565,7 @@ pub fn list_mods(
             if !path.exists() {
                 std::fs::create_dir(path).unwrap();
             }
-            std::fs::read_dir(path)?
+            std::fs::read_dir(path).map_err(ListModsError::ReadDirectory)?
                 .map(|x| x.unwrap().path())
                 .collect()
         }
@@ -626,7 +628,7 @@ fn get_bind_addr() -> Result<SocketAddr, std::io::Error> {
 }
 
 
-pub fn upnp_pf(port: u16) -> UPnPResult<u16> {
+pub fn upnp_pf(port: u16) -> UPnPResult {
     let bind_addr = match get_bind_addr() {
         Ok(addr) => addr,
         Err(_error) =>  ([0, 0, 0, 0], 0).into()
@@ -697,6 +699,6 @@ pub fn upnp_pf(port: u16) -> UPnPResult<u16> {
                 }
             };
         }
-        Err(UPnPError::CouldNotAddPort)
+        Err(UPnPError::AddPort)
     }
 }

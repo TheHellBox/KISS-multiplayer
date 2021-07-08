@@ -15,7 +15,6 @@ rmp="0.8"
 rmp-serde="0.15"
 futures = "0.3"
 quinn = "0.7.1"
-anyhow = "1.0"
 rlua = "0.17"
 notify = "4.0"
 tokio-util = {version = "0.6", features = ["codec"]}
