@@ -135,7 +135,7 @@ local function draw()
   imgui.Text("Mods:")
   imgui.BeginChild1("###Mods", imgui.ImVec2(0, -30), true)
   for k, v in pairs(mods) do
-    if not v:find("KISSMultiplayer") then
+    if not kissmods.is_special_mod(v) then
       local forced = forced_mods[v] or false
       local checked = imgui.BoolPtr(M.mods[v] ~= nil or forced)
       
