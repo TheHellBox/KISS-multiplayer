@@ -22,6 +22,7 @@ use futures::FutureExt;
 use futures::{select, StreamExt, TryStreamExt};
 use quinn::{Certificate, CertificateChain, PrivateKey};
 use std::collections::HashMap;
+use std::fs;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -600,8 +601,7 @@ pub fn list_mods(
             }
         }
         let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
-        let file = std::fs::File::open(path.clone())?;
-        let metadata = file.metadata()?;
+        let metadata = fs::metadata(path.clone()).map_err(ListModsError::Metadata)?;
         result.push((file_name, metadata.len() as u32));
         raw.push(path);
     }
