@@ -286,7 +286,7 @@ impl Server {
             use notify::DebouncedEvent::*;
             match event {
                 Write(path) => {
-                    println!("Lua file {} has been changed. Reloading...", path.display());
+                    info!("Lua file {} has been changed. Reloading...", path.display());
                     self.load_lua_addon(&path);
                 }
                 _ => {}
@@ -303,7 +303,7 @@ impl Server {
         file.read_to_string(&mut buf).unwrap();
         self.lua.context(|lua_ctx| {
             if let Err(x) = lua_ctx.load(&buf).eval::<()>() {
-                println!("Lua error: {:?}", x);
+                error!("Lua error: {:?}", x);
             }
         });
         self.lua_watcher
@@ -553,7 +553,7 @@ pub fn run_hook<
             let (_, function): (String, rlua::Function) = pair.unwrap();
             match function.call::<A, R>(args.clone()) {
                 Ok(r) => result.push(r),
-                Err(r) => println!("{}", r),
+                Err(r) => error!("{}", r),
             }
         }
     }

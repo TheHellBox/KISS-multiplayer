@@ -84,7 +84,7 @@ impl Server {
                         client_id,
                     );
                 });
-                println!("Client has disconnected from the server");
+                info!("Client has disconnected from the server");
             }
             ClientCommand(command) => {
                 match command {
@@ -92,8 +92,8 @@ impl Server {
                         let mut initial_message = initial_message.clone();
                         initial_message.truncate(128);
                         let mut message = initial_message.clone();
-                        println!(
-                            "{}: {}",
+                        info!(
+                            "<{}> {}",
                             self.connections
                                 .get(&client_id)
                                 .unwrap()

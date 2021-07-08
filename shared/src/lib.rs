@@ -1,6 +1,11 @@
+extern crate pretty_env_logger;
+
 pub mod vehicle;
 use serde::{Deserialize, Serialize};
 use vehicle::*;
+use std::io::Write;
+use chrono::Local;
+pub use log::{info, warn, error};
 
 pub const VERSION: (u32, u32) = (0, 4);
 pub const VERSION_STR: &str = "0.4.5";
@@ -99,4 +104,37 @@ pub enum ServerCommand {
     FilePart(String, Vec<u8>, u32, u32, u32),
     VoiceChatPacket(u32, [f32; 3], Vec<u8>),
     Pong(f64),
+}
+
+pub fn init_logging()
+{
+    // pretty_env_logger doesn't appear to print anything without using
+    // a filter in the builder.
+    let filter = match std::env::var("RUST_LOG")
+    {
+      Ok(f) => f,
+      Err(_e) => "info".to_owned()
+    };
+
+
+    let _ = pretty_env_logger::formatted_builder().
+    parse_filters(&filter)
+    .default_format()
+    .format(|buf, record| {
+        let level = { buf.default_styled_level(record.level()) };
+        let mut module_path = match record.module_path()
+        {
+            Some(path) => path,
+            None => "unknown"
+        };
+
+        // this removes anything past the root so the log stays clean (ex. kissmp_server::voice_Chat -> kissmp_server)
+        let c_index = module_path.find(":");
+        if c_index.is_some() {
+            module_path = &module_path[..c_index.unwrap()];
+        }
+
+        writeln!(buf, "[{}] [{}] [{}]: {}", Local::now().format("%H:%M:%S%.3f"), module_path, format_args!("{:>5}", level), record.args())
+    })
+    .try_init();
 }
