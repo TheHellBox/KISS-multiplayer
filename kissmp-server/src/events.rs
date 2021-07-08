@@ -93,7 +93,7 @@ impl Server {
                         initial_message.truncate(128);
                         let mut message = initial_message.clone();
                         info!(
-                            "{}: {}",
+                            "<{}> {}",
                             self.connections
                                 .get(&client_id)
                                 .unwrap()
