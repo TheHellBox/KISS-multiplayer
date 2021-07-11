@@ -4,6 +4,7 @@ use cpal::traits::StreamTrait;
 use rodio::DeviceTrait;
 use log::{info, warn, error};
 use std::format;
+use indoc::indoc;
 
 const SAMPLE_RATE: cpal::SampleRate = cpal::SampleRate(16000);
 const BUFFER_LEN: usize = 1920;
@@ -56,7 +57,11 @@ pub fn run_vc_recording(
         // Build an error message
         let mut error_message = String::from("Device incompatible due to the parameters it offered:\n");
         for cfg in configs {
-            error_message.push_str(format!("\tChannels: {:?}\n\tSample Format: {:?}\n---\n", cfg.channels(), cfg.sample_format()).as_str());
+            error_message.push_str(format!(indoc!{"
+            \tChannels: {:?}
+            \tSample Format: {:?}
+            ---
+            "}, cfg.channels(), cfg.sample_format()).as_str());
         }
         return Err(anyhow!(error_message))
     };
