@@ -114,7 +114,6 @@ pub fn run_vc_recording(
                             return;
                         };
                         let samples: Vec<i16> = data
-                            .to_vec()
                             .iter()
                             .map(|x| cpal::Sample::to_i16(x))
                             .collect();
@@ -155,7 +154,6 @@ pub fn run_vc_recording(
                             return;
                         };
                         let samples: Vec<i16> = data
-                            .to_vec()
                             .iter()
                             .map(|x| cpal::Sample::to_i16(x))
                             .collect();
