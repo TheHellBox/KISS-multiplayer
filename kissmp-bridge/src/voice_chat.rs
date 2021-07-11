@@ -84,9 +84,6 @@ pub fn run_vc_recording(
     info!("\tSample rate: {:?}", stream_config.sample_rate);
     info!("\tBuffer size: {:?}", stream_config.buffer_size);
     info!("Use it with a key bound in BeamNG.Drive");
-    let err_fn = move |err| {
-        error!("an error occurred on stream: {}", err);
-    };
     let encoder = audiopus::coder::Encoder::new(
         audiopus::SampleRate::Hz16000,
         audiopus::Channels::Mono,
@@ -100,6 +97,9 @@ pub fn run_vc_recording(
     config.buffer_size = buffer_size;
     {
         let send = send.clone();
+        let err_fn = move |err| {
+            error!("an error occurred on stream: {}", err);
+        };
         match sample_format {
             cpal::SampleFormat::F32 => device
                 .build_input_stream(
