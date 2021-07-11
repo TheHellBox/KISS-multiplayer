@@ -98,7 +98,7 @@ pub fn run_vc_recording(
         audiopus::SampleRate::Hz16000,
         audiopus::Channels::Mono,
         audiopus::Application::Voip,
-    ).context("Setting up the recording encoder failed.")?;
+    )?;
     let send = std::sync::Arc::new(std::sync::Mutex::new(false));
     {
         let err_fn = move |err| {
@@ -171,7 +171,7 @@ pub fn run_vc_recording(
                     },
                     err_fn,
                 ),
-        }.context("Creating the audio stream failed.")?.play()?;
+        }?.play()?;
     }
     std::thread::spawn(move || {
         while let Ok(event) = receiver.recv() {
@@ -231,8 +231,7 @@ pub fn run_vc_playback(receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEven
     use rodio::Source;
     let (_stream, stream_handle) = rodio::OutputStream::try_default()
         .context("Could not find a output audio stream for voice chat. Check your OS's settings and verify you have a device available.")?;
-    let mut decoder = audiopus::coder::Decoder::new(audiopus::SampleRate::Hz16000, audiopus::Channels::Mono)
-        .context("Setting up the playback decoder failed.")?;
+    let mut decoder = audiopus::coder::Decoder::new(audiopus::SampleRate::Hz16000, audiopus::Channels::Mono)?;
     
     std::thread::spawn(move || {
         let mut sinks = std::collections::HashMap::new();
