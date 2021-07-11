@@ -9,7 +9,6 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use log::{error, info, trace, warn};
-use indoc::indoc;
 
 #[derive(Debug, Clone)]
 pub struct DiscordState {
@@ -105,11 +104,7 @@ async fn main() {
             let (vc_rc_writer, vc_rc_reader) = std::sync::mpsc::channel();
             match voice_chat::run_vc_recording(sender_tx.clone(), vc_rc_reader) {
                 Err(e) => {
-                    warn!(indoc!{"
-                    Trying to setup voice chat playback failed.
-                    Source of the error: {:?}
-                    Context: {}"}
-                    , e.source(), e);
+                    warn!("Trying to setup voice chat recording failed: {}", e);
                     trace!("{:#?}", e);
                 },
                 _ => ()
@@ -117,11 +112,7 @@ async fn main() {
             let (vc_pb_writer, vc_pb_reader) = std::sync::mpsc::channel();
             let playback_functional = match voice_chat::run_vc_playback(vc_pb_reader) {
                 Err(e) => {
-                    warn!(indoc!{"
-                    Trying to setup voice chat playback failed.
-                    Source of the error: {:?}
-                    Context: {}"}
-                    , e.source(), e);
+                    warn!("Trying to setup voice chat playback failed: {}", e);
                     trace!("{:#?}", e);
                     false
                 },
