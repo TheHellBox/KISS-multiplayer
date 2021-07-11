@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context};
 use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
+use indoc::formatdoc;
 use rodio::DeviceTrait;
 use log::{info, warn, error};
 use std::format;
@@ -26,34 +27,34 @@ pub enum VoiceChatRecordingEvent {
 
 fn search_configs(streams: Vec<cpal::SupportedStreamConfigRange>) -> Option<cpal::SupportedStreamConfigRange> {
     for channels in 1..5 {
-            for sample_format in SAMPLE_FORMATS {
+        for sample_format in SAMPLE_FORMATS {
             for config_range in &streams {
                 if config_range.channels() == channels && config_range.sample_format() == *sample_format {
                     return Some(config_range.clone())
                 };
-                }
             }
         }
+    }
     None
-        }
+}
 
 fn configure_device(device: &cpal::Device) -> Result<(cpal::StreamConfig, cpal::SampleFormat), anyhow::Error> {
     Ok(match search_configs(device.supported_input_configs()?.collect()) {
         Some(config_range) => {
-        let buffer_size = match config_range.buffer_size() {
-            cpal::SupportedBufferSize::Range { min, .. } => {
-                if BUFFER_LEN as u32 > *min {
-                    cpal::BufferSize::Fixed(BUFFER_LEN as u32)
-                } else {
-                    cpal::BufferSize::Default
+            let buffer_size = match config_range.buffer_size() {
+                cpal::SupportedBufferSize::Range { min, .. } => {
+                    if BUFFER_LEN as u32 > *min {
+                        cpal::BufferSize::Fixed(BUFFER_LEN as u32)
+                    } else {
+                        cpal::BufferSize::Default
+                    }
                 }
-            }
-            _ => cpal::BufferSize::Default,
-        };
+                _ => cpal::BufferSize::Default,
+            };
             let supported_config = if config_range.max_sample_rate() >= SAMPLE_RATE && config_range.min_sample_rate() <= SAMPLE_RATE {
                 config_range.with_sample_rate(SAMPLE_RATE)
-        } else {
-            let sr = config_range.max_sample_rate();
+            } else {
+                let sr = config_range.max_sample_rate();
                 config_range.with_sample_rate(sr)
             };
             let mut config = supported_config.config();
@@ -72,7 +73,7 @@ fn configure_device(device: &cpal::Device) -> Result<(cpal::StreamConfig, cpal::
             return Err(anyhow!(error_message))
         },
     })
-        }
+}
 
 pub fn run_vc_recording(
     sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
@@ -209,9 +210,9 @@ pub fn encode_and_send_samples(
     };
     if buffer.len() < BUFFER_LEN {
         buffer.append(&mut data);
-    }
-    if buffer.len() < BUFFER_LEN {
-        return;
+        if buffer.len() < BUFFER_LEN {
+            return;
+        }
     }
     let opus_out: &mut [u8; 512] = &mut [0; 512];
     let encoded = encoder.encode(&buffer[0..BUFFER_LEN], opus_out);
