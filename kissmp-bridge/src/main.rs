@@ -8,7 +8,8 @@ use futures::{StreamExt, TryStreamExt};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use log::{info, warn, error};
+use log::{error, info, trace, warn};
+use indoc::indoc;
 
 #[derive(Debug, Clone)]
 pub struct DiscordState {
@@ -102,9 +103,30 @@ async fn main() {
             });
             let stream_connection = connection.connection.clone();
             let (vc_rc_writer, vc_rc_reader) = std::sync::mpsc::channel();
-            let _ = voice_chat::run_vc_recording(sender_tx.clone(), vc_rc_reader);
+            match voice_chat::run_vc_recording(sender_tx.clone(), vc_rc_reader) {
+                Err(e) => {
+                    warn!(indoc!{"
+                    Trying to setup voice chat playback failed.
+                    Source of the error: {:?}
+                    Context: {}"}
+                    , e.source(), e);
+                    trace!("{:#?}", e);
+                },
+                _ => ()
+            };
             let (vc_pb_writer, vc_pb_reader) = std::sync::mpsc::channel();
-            voice_chat::run_vc_playback(vc_pb_reader);
+            let playback_functional = match voice_chat::run_vc_playback(vc_pb_reader) {
+                Err(e) => {
+                    warn!(indoc!{"
+                    Trying to setup voice chat playback failed.
+                    Source of the error: {:?}
+                    Context: {}"}
+                    , e.source(), e);
+                    trace!("{:#?}", e);
+                    false
+                },
+                _ => true
+            };
             let vc_pb_writer_c = vc_pb_writer.clone();
             tokio::spawn(async move {
                 let mut buffer = [0; 1];
@@ -119,11 +141,13 @@ async fn main() {
                     if let Ok(decoded) = decoded {
                         match decoded {
                             shared::ClientCommand::SpatialUpdate(left_ear, right_ear) => {
-                                let _ = vc_pb_writer_c.send(
-                                    voice_chat::VoiceChatPlaybackEvent::PositionUpdate(
-                                        left_ear, right_ear,
-                                    ),
-                                );
+                                if playback_functional {
+                                    let _ = vc_pb_writer_c.send(
+                                        voice_chat::VoiceChatPlaybackEvent::PositionUpdate(
+                                            left_ear, right_ear,
+                                        ),
+                                    );
+                                }
                             }
                             shared::ClientCommand::StartTalking => {
                                 let _ =
