@@ -24,48 +24,22 @@ pub enum VoiceChatRecordingEvent {
     End,
 }
 
-fn search_config(
-    configs: Vec<cpal::SupportedStreamConfigRange>,
-    channels: u16,
-    sample_format: cpal::SampleFormat,
-) -> Option<cpal::SupportedStreamConfigRange> {
-    for cfg in configs {
-        if (cfg.channels() == channels) && (cfg.sample_format() == sample_format) {
-            return Some(cfg);
-        }
-    }
-    None
-}
-
-pub fn run_vc_recording(
-    sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
-    receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
-) -> Result<(), anyhow::Error> {
-    let device = cpal::default_host().default_input_device()
-        .context("No default audio input device available for voice chat. Check your OS's settings and verify you have a device available.")?;
-    info!("Using default audio input device: {}", device.name().unwrap());
-    let (config_range, channels) = 'l: loop {
-        let configs: Vec<_> = device.supported_input_configs()?.collect();
-        for c in 1..5 {
+fn search_configs(streams: Vec<cpal::SupportedStreamConfigRange>) -> Option<cpal::SupportedStreamConfigRange> {
+    for channels in 1..5 {
             for sample_format in SAMPLE_FORMATS {
-                match search_config(configs.clone(), c, *sample_format) {
-                    Some(conf) => break 'l (conf, c),
-                    _ => continue
+            for config_range in &streams {
+                if config_range.channels() == channels && config_range.sample_format() == *sample_format {
+                    return Some(config_range.clone())
+                };
                 }
             }
         }
-        // Build an error message
-        let mut error_message = String::from("Device incompatible due to the parameters it offered:\n");
-        for cfg in configs {
-            error_message.push_str(format!(indoc!{"
-            \tChannels: {:?}
-            \tSample Format: {:?}
-            ---
-            "}, cfg.channels(), cfg.sample_format()).as_str());
+    None
         }
-        return Err(anyhow!(error_message))
-    };
-    let (config, buffer_size) = {
+
+fn configure_device(device: &cpal::Device) -> Result<(cpal::StreamConfig, cpal::SampleFormat), anyhow::Error> {
+    Ok(match search_configs(device.supported_input_configs()?.collect()) {
+        Some(config_range) => {
         let buffer_size = match config_range.buffer_size() {
             cpal::SupportedBufferSize::Range { min, .. } => {
                 if BUFFER_LEN as u32 > *min {
@@ -76,35 +50,63 @@ pub fn run_vc_recording(
             }
             _ => cpal::BufferSize::Default,
         };
-        if config_range.max_sample_rate() >= SAMPLE_RATE && config_range.min_sample_rate() <= SAMPLE_RATE {
-            (config_range.with_sample_rate(SAMPLE_RATE), buffer_size)
+            let supported_config = if config_range.max_sample_rate() >= SAMPLE_RATE && config_range.min_sample_rate() <= SAMPLE_RATE {
+                config_range.with_sample_rate(SAMPLE_RATE)
         } else {
             let sr = config_range.max_sample_rate();
-            (config_range.with_sample_rate(sr), buffer_size)
+                config_range.with_sample_rate(sr)
+            };
+            let mut config = supported_config.config();
+            config.buffer_size = buffer_size;
+            (config, supported_config.sample_format())
+        },
+        None => {
+            let mut error_message = String::from("Device incompatible due to the parameters it offered:\n");
+            for cfg in device.supported_input_configs()? {
+                error_message.push_str(formatdoc!("
+                \tChannels: {:?}
+                \tSample Format: {:?}
+                ---
+                ", cfg.channels(), cfg.sample_format()).as_str());
+            }
+            return Err(anyhow!(error_message))
+        },
+    })
         }
-    };
-    let stream_config = config.config();
-    info!("Audio stream configured with the following settings:");
-    info!("\tChannels: {:?}", stream_config.channels);
-    info!("\tSample rate: {:?}", stream_config.sample_rate);
-    info!("\tBuffer size: {:?}", stream_config.buffer_size);
-    info!("Use it with a key bound in BeamNG.Drive");
+
+pub fn run_vc_recording(
+    sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
+    receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
+) -> Result<(), anyhow::Error> {
+    let device = cpal::default_host().default_input_device()
+        .context("No default audio input device available for voice chat. Check your OS's settings and verify you have a device available.")?;
+    info!("Using default audio input device: {}", device.name().unwrap());
+    let (config, sample_format) = configure_device(&device)?;
+    info!(indoc!("
+    Recording stream configured with the following settings:
+    \tChannels: {:?}
+    \tSample rate: {:?}
+    \tBuffer size: {:?}
+    Use it with a key bound in BeamNG.Drive"),
+        config.channels,
+        config.sample_rate,
+        config.buffer_size
+    );
+
     let encoder = audiopus::coder::Encoder::new(
         audiopus::SampleRate::Hz16000,
         audiopus::Channels::Mono,
         audiopus::Application::Voip,
     ).context("Setting up the recording encoder failed.")?;
-    let mut buffer = vec![];
-    let sample_rate = config.sample_rate();
-    let sample_format = config.sample_format();
-    let mut config = config.config();
     let send = std::sync::Arc::new(std::sync::Mutex::new(false));
-    config.buffer_size = buffer_size;
     {
-        let send = send.clone();
         let err_fn = move |err| {
             error!("an error occurred on stream: {}", err);
         };
+        let send = send.clone();
+        let mut buffer = vec![];
+        let sample_rate = config.sample_rate;
+        let channels = config.channels;
         match sample_format {
             cpal::SampleFormat::F32 => device
                 .build_input_stream(
