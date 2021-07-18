@@ -41,40 +41,38 @@ fn search_configs(streams: Vec<cpal::SupportedStreamConfigRange>) -> Option<cpal
 }
 
 fn configure_device(device: &cpal::Device) -> Result<(cpal::StreamConfig, cpal::SampleFormat), anyhow::Error> {
-    Ok(match search_configs(device.supported_input_configs()?.collect()) {
-        Some(config_range) => {
-            let buffer_size = match config_range.buffer_size() {
-                cpal::SupportedBufferSize::Range { min, .. } => {
-                    if BUFFER_LEN as u32 > *min {
-                        cpal::BufferSize::Fixed(BUFFER_LEN as u32)
-                    } else {
-                        cpal::BufferSize::Default
-                    }
-                }
-                _ => cpal::BufferSize::Default,
-            };
-            let supported_config = if config_range.max_sample_rate() >= SAMPLE_RATE && config_range.min_sample_rate() <= SAMPLE_RATE {
-                config_range.with_sample_rate(SAMPLE_RATE)
-            } else {
-                let sr = config_range.max_sample_rate();
-                config_range.with_sample_rate(sr)
-            };
-            let mut config = supported_config.config();
-            config.buffer_size = buffer_size;
-            (config, supported_config.sample_format())
-        },
-        None => {
+    let config_range = search_configs(device.supported_input_configs()?.collect())
+        .ok_or_else(|| {
             let mut error_message = String::from("Device incompatible due to the parameters it offered:\n");
-            for cfg in device.supported_input_configs()? {
+            for cfg in device.supported_input_configs().unwrap() {
                 error_message.push_str(formatdoc!("
                 \tChannels: {:?}
                 \tSample Format: {:?}
                 ---
                 ", cfg.channels(), cfg.sample_format()).as_str());
             }
-            return Err(anyhow!(error_message))
-        },
-    })
+            anyhow!(error_message)
+        })?;
+
+    let buffer_size = match config_range.buffer_size() {
+        cpal::SupportedBufferSize::Range { min, .. } => {
+            if BUFFER_LEN as u32 > *min {
+                cpal::BufferSize::Fixed(BUFFER_LEN as u32)
+            } else {
+                cpal::BufferSize::Default
+            }
+        }
+        _ => cpal::BufferSize::Default,
+    };
+    let supported_config = if config_range.max_sample_rate() >= SAMPLE_RATE && config_range.min_sample_rate() <= SAMPLE_RATE {
+        config_range.with_sample_rate(SAMPLE_RATE)
+    } else {
+        let sr = config_range.max_sample_rate();
+        config_range.with_sample_rate(sr)
+    };
+    let mut config = supported_config.config();
+    config.buffer_size = buffer_size;
+    Ok((config, supported_config.sample_format()))
 }
 
 pub fn try_create_vc_recording_task(
