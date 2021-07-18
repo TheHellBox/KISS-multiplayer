@@ -130,8 +130,7 @@ async fn connect_to_server(
 
     // Confirm that connection is established
     let _ = client_stream_writer.write_all(&[1]).await;
-
-    // Get all of our channels set up.
+    
     let (client_event_sender, client_event_receiver) =
         tokio::sync::mpsc::unbounded_channel::<(bool, shared::ClientCommand)>();
     let (server_commands_sender, server_commands_receiver) =
@@ -140,8 +139,6 @@ async fn connect_to_server(
         std::sync::mpsc::channel();
     let (vc_playback_sender, vc_playback_receiver) =
         std::sync::mpsc::channel();
-    
-    // Then start up everything.
 
     let mut non_critical_tasks = FuturesUnordered::new();
 

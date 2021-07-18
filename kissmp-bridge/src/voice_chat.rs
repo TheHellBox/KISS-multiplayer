@@ -1,11 +1,3 @@
-/*
-    Remarks regarding cpal:
-        cpal needs to be in its own blocking thread due to how it's event loop
-        is set up, which results in only using the blocking mspc::channel's,
-        explaining why there's a discrepancy between what everything else in
-        the code is doing and this.
-*/
-
 use anyhow::{anyhow, Context};
 use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
@@ -15,8 +7,6 @@ use tokio::task::JoinHandle;
 use std::format;
 use indoc::indoc;
 
-/// Distance divisions.
-/// Higher means sounds are closer together.
 const DIST_DIV: f32 = 3.0;
 const SAMPLE_RATE: cpal::SampleRate = cpal::SampleRate(16000);
 const BUFFER_LEN: usize = 1920;
