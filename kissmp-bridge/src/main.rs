@@ -140,6 +140,8 @@ async fn connect_to_server(
     let (vc_playback_sender, vc_playback_receiver) =
         std::sync::mpsc::channel();
 
+    // TODO: Use a struct that can hold either a JoinHandle or a bare future so
+    // additional tasks that do not depend on using tokio::spawn can be added.
     let mut non_critical_tasks = FuturesUnordered::new();
 
     match voice_chat::try_create_vc_playback_task(vc_playback_receiver) {
