@@ -7,7 +7,7 @@ use tokio::task::JoinHandle;
 use std::format;
 use indoc::indoc;
 
-const DIST_DIV: f32 = 3.0;
+const DISTANCE_DIVIDER: f32 = 3.0;
 const SAMPLE_RATE: cpal::SampleRate = cpal::SampleRate(16000);
 const BUFFER_LEN: usize = 1920;
 const SAMPLE_FORMATS: &[cpal::SampleFormat] = &[
@@ -272,9 +272,9 @@ pub fn try_create_vc_playback_task(
                     };
                     *updated_at = std::time::Instant::now();
                     let position = [
-                        position[0] / DIST_DIV,
-                        position[1] / DIST_DIV,
-                        position[2] / DIST_DIV
+                        position[0] / DISTANCE_DIVIDER,
+                        position[1] / DISTANCE_DIVIDER,
+                        position[2] / DISTANCE_DIVIDER
                     ];
                     sink.set_emitter_position(position);
                     let mut samples: Vec<i16> = Vec::with_capacity(BUFFER_LEN);
@@ -291,14 +291,14 @@ pub fn try_create_vc_playback_task(
                             false
                         } else {
                             let left_ear = [
-                                left_ear[0] / DIST_DIV,
-                                left_ear[1] / DIST_DIV,
-                                left_ear[2] / DIST_DIV
+                                left_ear[0] / DISTANCE_DIVIDER,
+                                left_ear[1] / DISTANCE_DIVIDER,
+                                left_ear[2] / DISTANCE_DIVIDER
                             ];
                             let right_ear = [
-                                right_ear[0] / DIST_DIV,
-                                right_ear[1] / DIST_DIV,
-                                right_ear[2] / DIST_DIV
+                                right_ear[0] / DISTANCE_DIVIDER,
+                                right_ear[1] / DISTANCE_DIVIDER,
+                                right_ear[2] / DISTANCE_DIVIDER
                             ];
                             sink.set_left_ear_position(left_ear);
                             sink.set_right_ear_position(right_ear);

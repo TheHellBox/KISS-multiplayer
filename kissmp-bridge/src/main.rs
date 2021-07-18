@@ -11,6 +11,7 @@ use tokio::net::{TcpListener, TcpStream};
 extern crate log;
 
 const SERVER_IDLE_TIMEOUT: u64 = 120;
+const CONNECTED_BYTE: &[u8] = &[1];
 
 #[derive(Debug, Clone)]
 pub struct DiscordState {
@@ -128,8 +129,7 @@ async fn connect_to_server(
     let (client_stream_reader, mut client_stream_writer) =
         tokio::io::split(client_stream);
 
-    // Confirm that connection is established
-    let _ = client_stream_writer.write_all(&[1]).await;
+    let _ = client_stream_writer.write_all(CONNECTED_BYTE).await;
     
     let (client_event_sender, client_event_receiver) =
         tokio::sync::mpsc::unbounded_channel::<(bool, shared::ClientCommand)>();
