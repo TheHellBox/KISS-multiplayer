@@ -10,7 +10,7 @@ use tokio::net::{TcpListener, TcpStream};
 #[macro_use]
 extern crate log;
 
-const SERVER_IDLE_TIMEOUT: u64 = 120;
+const SERVER_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 const CONNECTED_BYTE: &[u8] = &[1];
 
 #[derive(Debug, Clone)]
@@ -96,7 +96,7 @@ async fn connect_to_server(
     
         let mut transport = quinn::TransportConfig::default();
         transport
-            .max_idle_timeout(Some(std::time::Duration::from_secs(SERVER_IDLE_TIMEOUT)))
+            .max_idle_timeout(Some(SERVER_IDLE_TIMEOUT))
             .unwrap();
         client_cfg.transport = std::sync::Arc::new(transport);
     
