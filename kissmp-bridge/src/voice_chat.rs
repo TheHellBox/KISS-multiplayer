@@ -27,11 +27,15 @@ pub enum VoiceChatRecordingEvent {
     End,
 }
 
-fn search_configs(streams: Vec<cpal::SupportedStreamConfigRange>) -> Option<cpal::SupportedStreamConfigRange> {
+fn find_supported_recording_configuration(
+    streams: Vec<cpal::SupportedStreamConfigRange>
+) -> Option<cpal::SupportedStreamConfigRange> {
     for channels in 1..5 {
         for sample_format in SAMPLE_FORMATS {
             for config_range in &streams {
-                if config_range.channels() == channels && config_range.sample_format() == *sample_format {
+                if  config_range.channels() == channels &&
+                    config_range.sample_format() == *sample_format
+                {
                     return Some(config_range.clone())
                 };
             }
@@ -40,10 +44,15 @@ fn search_configs(streams: Vec<cpal::SupportedStreamConfigRange>) -> Option<cpal
     None
 }
 
-fn configure_device(device: &cpal::Device) -> Result<(cpal::StreamConfig, cpal::SampleFormat), anyhow::Error> {
-    let config_range = search_configs(device.supported_input_configs()?.collect())
+fn configure_recording_device(
+    device: &cpal::Device
+) -> Result<(cpal::StreamConfig, cpal::SampleFormat), anyhow::Error> {
+    let config_range = find_supported_recording_configuration(
+            device.supported_input_configs()?.collect())
         .ok_or_else(|| {
-            let mut error_message = String::from("Device incompatible due to the parameters it offered:\n");
+            let mut error_message =
+                String::from("Recording device incompatible due to the \
+                    parameters it offered:\n");
             for cfg in device.supported_input_configs().unwrap() {
                 error_message.push_str(formatdoc!("
                 \tChannels: {:?}
@@ -51,6 +60,9 @@ fn configure_device(device: &cpal::Device) -> Result<(cpal::StreamConfig, cpal::
                 ---
                 ", cfg.channels(), cfg.sample_format()).as_str());
             }
+            error_message.push_str("We support devices that offer below 5 \
+                channels and use signed 16 bit, unsigned 16 bit, or 32 bit \
+                floating point sample rates");
             anyhow!(error_message)
         })?;
 
@@ -64,7 +76,10 @@ fn configure_device(device: &cpal::Device) -> Result<(cpal::StreamConfig, cpal::
         }
         _ => cpal::BufferSize::Default,
     };
-    let supported_config = if config_range.max_sample_rate() >= SAMPLE_RATE && config_range.min_sample_rate() <= SAMPLE_RATE {
+    let supported_config = if
+        config_range.max_sample_rate() >= SAMPLE_RATE &&
+        config_range.min_sample_rate() <= SAMPLE_RATE
+    {
         config_range.with_sample_rate(SAMPLE_RATE)
     } else {
         let sr = config_range.max_sample_rate();
@@ -80,9 +95,10 @@ pub fn try_create_vc_recording_task(
     receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
 ) -> Result<JoinHandle<Result<(), anyhow::Error>>, anyhow::Error> {
     let device = cpal::default_host().default_input_device()
-        .context("No default audio input device available for voice chat. Check your OS's settings and verify you have a device available.")?;
+        .context("No default audio input device available for voice chat. \
+            Check your OS's settings and verify you have a device available.")?;
     info!("Using default audio input device: {}", device.name().unwrap());
-    let (config, sample_format) = configure_device(&device)?;
+    let (config, sample_format) = configure_recording_device(&device)?;
     info!(indoc!("
     Recording stream configured with the following settings:
     \tChannels: {:?}
@@ -208,7 +224,9 @@ pub fn encode_and_send_samples(
     sample_rate: cpal::SampleRate,
 ) {
     let mut data = {
-        let data: Vec<i16> = samples.chunks(channels as usize).map(|x| x[0]).collect();
+        let data: Vec<i16> = samples.chunks(channels as usize)
+            .map(|x| x[0])
+            .collect();
         if sample_rate.0 != SAMPLE_RATE.0 {
             let audio = fon::Audio::<fon::mono::Mono16>::with_i16_buffer(sample_rate.0, data);
             let mut audio = fon::Audio::<fon::mono::Mono16>::with_stream(SAMPLE_RATE.0, &audio);
@@ -240,17 +258,19 @@ pub fn try_create_vc_playback_task(
     receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEvent>
 ) -> Result<JoinHandle<Result<(), anyhow::Error>>, anyhow::Error> {
     use rodio::Source;
-    let mut decoder = audiopus::coder::Decoder::new(audiopus::SampleRate::Hz16000, audiopus::Channels::Mono)?;
-    let device = {
-        let device = cpal::default_host()
-            .default_output_device()
-            .context("Could find a default device for playback. Check your OS's settings and verify you have a device available.")?;
-        info!("Using default audio output device: {}", device.name().unwrap());
-        device
-    };
+    let mut decoder = audiopus::coder::Decoder::new(
+        audiopus::SampleRate::Hz16000,
+        audiopus::Channels::Mono)?;
+    let device = cpal::default_host()
+        .default_output_device()
+        .context("Could find a default device for playback. Check your OS's \
+        settings and verify you have a device available.")?;
+    
+    info!("Using default audio output device: {}", device.name().unwrap());
     
     Ok(tokio::task::spawn_blocking(move || {
-        let (_stream, stream_handle) = rodio::OutputStream::try_from_device(&device)?;
+        let (_stream, stream_handle) =
+            rodio::OutputStream::try_from_device(&device)?;
         let mut sinks = std::collections::HashMap::new();
         while let Ok(event) = receiver.recv() {
             match event {
@@ -277,7 +297,9 @@ pub fn try_create_vc_playback_task(
                     sink.set_emitter_position(position);
                     let mut samples: Vec<i16> = Vec::with_capacity(BUFFER_LEN);
                     samples.resize(BUFFER_LEN, 0);
-                    let res = decoder.decode(Some(&encoded), &mut samples, false).unwrap();
+                    let res = decoder
+                        .decode(Some(&encoded), &mut samples, false)
+                        .unwrap();
                     samples.resize(res, 0);
                     let buf = rodio::buffer::SamplesBuffer::new(1, 16000, samples.as_slice())
                         .convert_samples::<f32>();
