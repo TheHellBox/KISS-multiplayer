@@ -77,24 +77,7 @@ local function check_lua(l)
         "fileOpen", "fileExists", "removeDirectory", "removeFile", "io%."
     }
 
-    for k, filter in pairs(filters) do
-        -- for some reason it sends it as a table now so I'm just making it work with that
-        if type(l) == 'table' then
-            log("E", "kissmp_check_lua",
-                "Error occurred in `check_lua`. found table instead of string: " ..
-                    tostring(l))
-            for _, v in pairs(l) do
-                if string.find(v, filter) ~= nil then
-                    kissui.chat.add_message(
-                        "Possibly malicious lua command has been send, rejecting. Found: " ..
-                            v)
-                    return false
-                end
-            end
-
-            return true
-        end
-
+    for _, filter in pairs(filters) do
         if string.find(l, filter) ~= nil then
             kissui.chat.add_message(
                 "Possibly malicious lua command has been send, rejecting. Found: " ..
