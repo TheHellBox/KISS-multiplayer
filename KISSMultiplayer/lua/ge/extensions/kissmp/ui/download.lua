@@ -1,6 +1,8 @@
 local M = {}
 local imgui = ui_imgui
 
+local docked = false
+
 local function bytes_to_mb(bytes)
   return (bytes / 1024) / 1024
 end
@@ -9,10 +11,13 @@ local function draw(gui)
   if not kissui.show_download then return end
 
   if not kissui.gui.isWindowVisible("Downloads") then return end
-  imgui.SetNextWindowBgAlpha(kissui.window_opacity[0])
+  if not docked then
+    imgui.SetNextWindowBgAlpha(kissui.window_opacity[0])
+  end
   imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
   imgui.SetNextWindowViewport(imgui.GetMainViewport().ID)
   if imgui.Begin("Downloading Required Mods") then
+    docked = imgui.IsWindowDocked()
     imgui.BeginChild1("DownloadsScrolling", imgui.ImVec2(0, -30), true)
 
     -- Draw a list of all the downloads, and finish by drawing a total/max size

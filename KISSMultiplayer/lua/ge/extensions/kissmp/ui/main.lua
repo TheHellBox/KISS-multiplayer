@@ -1,15 +1,22 @@
 local M = {}
 local imgui = ui_imgui
 
+if not network then network = require('network') end
+
+local docked = false
+
 local function draw(dt)
   kissui.tabs.favorites.draw_add_favorite_window(gui)
   if kissui.show_download then return end
 
   if not kissui.gui.isWindowVisible("KissMP") then return end
-  imgui.SetNextWindowBgAlpha(kissui.window_opacity[0])
+  if not docked then
+    imgui.SetNextWindowBgAlpha(kissui.window_opacity[0])
+  end
   imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
   imgui.SetNextWindowViewport(imgui.GetMainViewport().ID)
   if imgui.Begin("KissMP "..network.VERSION_STR) then
+    docked = imgui.IsWindowDocked()
     imgui.Text("Player name:")
     imgui.InputText("##name", kissui.player_name)
     if network.connection.connected then
@@ -35,6 +42,10 @@ local function draw(dt)
       end
       if imgui.BeginTabItem("Favorites") then
         kissui.tabs.favorites.draw()
+        imgui.EndTabItem()
+      end
+      if imgui.BeginTabItem("History") then
+        kissui.tabs.history.draw()
         imgui.EndTabItem()
       end
       if imgui.BeginTabItem("Settings") then

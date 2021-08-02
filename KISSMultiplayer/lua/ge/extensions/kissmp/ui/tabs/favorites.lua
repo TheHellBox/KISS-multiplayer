@@ -3,6 +3,7 @@ local imgui = ui_imgui
 
 local add_favorite_addr = imgui.ArrayChar(128)
 local add_favorite_name = imgui.ArrayChar(64, "KissMP Server")
+local docked = false
 
 M.favorite_servers = {}
 
@@ -91,8 +92,11 @@ local function draw_add_favorite_window()
   local display_size = imgui.GetIO().DisplaySize
   imgui.SetNextWindowPos(imgui.ImVec2(display_size.x / 2, display_size.y / 2), imgui.Cond_Always, imgui.ImVec2(0.5, 0.5))
 
-  imgui.SetNextWindowBgAlpha(kissui.window_opacity[0])
+  if not docked then
+    imgui.SetNextWindowBgAlpha(kissui.window_opacity[0])
+  end
   if imgui.Begin("Add Favorite", kissui.gui.getWindowVisibleBoolPtr("Add Favorite"), bit.bor(imgui.WindowFlags_NoScrollbar ,imgui.WindowFlags_NoResize, imgui.WindowFlags_AlwaysAutoResize)) then
+    docked = imgui.IsWindowDocked()
     imgui.Text("Name:")
     imgui.SameLine()
     imgui.PushItemWidth(-1)
