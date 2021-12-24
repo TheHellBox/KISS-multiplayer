@@ -2,8 +2,6 @@ local M = {}
 
 M.VERSION_STR = "0.5.0"
 
-M.downloads = {}
-M.downloading = false
 M.downloads_status = {}
 
 local current_download = nil
@@ -11,6 +9,13 @@ local current_download = nil
 local socket = require("socket")
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 local ping_send_time = 0
+
+-- shared::State
+-- Should be in it's own module, but for now this is fine.
+local state = {
+  download_directory = kissmods.get_mod_directory(),
+  disregard_unix_path_correction = false
+}
 
 M.players = {}
 M.socket = socket
@@ -75,27 +80,6 @@ local function disconnect(data)
   returnToMainMenu()
 end
 
-local function handle_disconnected(data)
-  disconnect(data)
-end
-
-local function handle_file_transfer(data)
-  kissui.show_download = true
-  local file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data:sub(1, 4)))[0]
-  local file_name = data:sub(5, #data)
-  local chunks = math.floor(file_len / FILE_TRANSFER_CHUNK_SIZE)
-  
-  current_download = {
-    file_len = file_len,
-    file_name = file_name,
-    chunks = chunks,
-    last_chunk = file_len - chunks * FILE_TRANSFER_CHUNK_SIZE,
-    current_chunk = 0,
-    file = kissmods.open_file(file_name)
-  }
-  M.downloading = true
-end
-
 local function handle_player_info(player_info)
   M.players[player_info.id] = player_info
 end
@@ -146,6 +130,45 @@ local function handle_chat(data)
   kissui.chat.add_message(data[1], nil, data[2])
 end
 
+local function change_map(map)
+  if FS:fileExists(map) or FS:directoryExists(map) then
+    vehiclemanager.loading_map = true
+    freeroam_freeroam.startFreeroam(map)
+  else
+    kissui.chat.add_message("Map file doesn't exist. Check if mod containing map is enabled", kissui.COLOR_RED)
+    disconnect()
+  end
+end
+
+local function on_finished_download()
+  vehiclemanager.loading_map = true
+  M.downloads_status = {}
+  change_map(M.connection.server_info.map)
+end
+
+local function on_download_progress(data)
+  local name, recieved, total = data[1], data[2], data[3]
+  kissui.show_download = true
+
+  M.downloads_status[name] = {
+    name = name,
+    progress = recieved/total
+  }
+  if recieved >= total then
+    M.downloads_status[name] = nil
+    M.connection.mods_left = M.connection.mods_left - 1
+    kissmods.mount_mod(name)
+  end
+  if M.connection.mods_left <= 0 then
+    kissui.show_download = false
+    on_finished_download()
+  end
+end
+
+local function on_state_update(data)
+  print("Updating the mod's state is not implemented yet!")
+end
+
 local function onExtensionLoaded()
   message_handlers.VehicleUpdate = vehiclemanager.update_vehicle
   message_handlers.VehicleSpawn = vehiclemanager.spawn_vehicle
@@ -161,9 +184,11 @@ local function onExtensionLoaded()
   message_handlers.CouplerAttached = vehiclemanager.attach_coupler
   message_handlers.CouplerDetached = vehiclemanager.detach_coupler
   message_handlers.ElectricsUndefinedUpdate = vehiclemanager.electrics_diff_update
+  message_handlers.DownloadProgress = on_download_progress
+  message_handlers.StateUpdate = on_state_update
 end
 
-local function send_data(raw_data, reliable)
+local function send_data_no_connection_check(raw_data, reliable)
   if type(raw_data) == "number" then
     print("NOT IMPLEMENTED. PLEASE REPORT TO KISSMP DEVELOPERS. CODE: "..raw_data)
     return
@@ -175,7 +200,6 @@ local function send_data(raw_data, reliable)
   else
     data = jsonEncode(raw_data)
   end
-  if not M.connection.connected then return -1 end
   local len = #data
   local len = ffi.string(ffi.new("uint32_t[?]", 1, {len}), 4)
   if reliable then
@@ -185,6 +209,11 @@ local function send_data(raw_data, reliable)
   end
   M.connection.tcp:send(string.char(reliable)..len)
   M.connection.tcp:send(data)
+end
+
+local function send_data(raw_data, reliable)
+  if not M.connection.connected then return -1 end
+  send_data_no_connection_check(raw_data, reliable)
 end
 
 local function sanitize_addr(addr)
@@ -203,20 +232,11 @@ local function generate_secret(server_identifier)
   return hashStringSHA1(secret)
 end
 
-local function change_map(map)
-  if FS:fileExists(map) or FS:directoryExists(map) then
-    vehiclemanager.loading_map = true
-    freeroam_freeroam.startFreeroam(map)
-  else
-    kissui.chat.add_message("Map file doesn't exist. Check if mod containing map is enabled", kissui.COLOR_RED)
-    disconnect()
-  end
-end
-
 local function connect(addr, player_name)
   if M.connection.connected then
     disconnect()
   end
+  M.downloads_status = {}
   M.players = {}
 
   print("Connecting...")
@@ -227,9 +247,15 @@ local function connect(addr, player_name)
   local connected, err = M.connection.tcp:connect("127.0.0.1", "7894")
 
   -- Send server address to the bridge
-  local addr_lenght = ffi.string(ffi.new("uint32_t[?]", 1, {#addr}), 4)
-  M.connection.tcp:send(addr_lenght)
+  local addr_length = ffi.string(ffi.new("uint32_t[?]", 1, {#addr}), 4)
+  M.connection.tcp:send(addr_length)
   M.connection.tcp:send(addr)
+
+  -- Send the initial state
+  kissui.chat.add_message("Sending state...")
+  send_data_no_connection_check({
+    StateUpdate = state
+  }, true)
 
   local connection_confirmed = M.connection.tcp:receive(1)
   if connection_confirmed then
@@ -319,11 +345,6 @@ local function send_messagepack(data_type, reliable, data)
   send_data(data_type, reliable, data)
 end
 
-local function on_finished_download()
-  vehiclemanager.loading_map = true
-  change_map(M.connection.server_info.map)
-end
-
 local function send_ping()
   ping_send_time = socket.gettime()
   send_data(
@@ -339,9 +360,7 @@ local function cancel_download()
   io.close(current_download.file)
   current_download = nil
     M.downloading = false]]--
-  for k, v in pairs(M.downloads) do
-     M.downloads[k]:close()
-  end
+  M.downloads_status = {}
 end
 
 local function onUpdate(dt)
@@ -371,41 +390,7 @@ local function onUpdate(dt)
         end
       end
     elseif string.byte(msg_type) == 0 then -- Binary data
-      M.downloading = true
-      kissui.show_download = true
-      local name_b = M.connection.tcp:receive(4)
-      local len_n = ffi.cast("uint32_t*", ffi.new("char[?]", 5, name_b))
-      local name, _, _ = M.connection.tcp:receive(len_n[0])
-      local chunk_n_b = M.connection.tcp:receive(4)
-      local chunk_a_b = M.connection.tcp:receive(4)
-      local read_size_b = M.connection.tcp:receive(4)
-      local chunk_n = ffi.cast("uint32_t*", ffi.new("char[?]", 5, chunk_n_b))[0]
-      local file_length = ffi.cast("uint32_t*", ffi.new("char[?]", 5, chunk_a_b))[0]
-      local read_size = ffi.cast("uint32_t*", ffi.new("char[?]", 5, read_size_b))[0]
-      local file_data, _, _ = M.connection.tcp:receive(read_size)
-      M.downloads_status[name] = {
-        name = name,
-        progress = 0
-      }
-      M.downloads_status[name].progress = chunk_n * FILE_TRANSFER_CHUNK_SIZE / file_length
-      local file = M.downloads[name]
-      if not file then
-        M.downloads[name] = kissmods.open_file(name)
-      end
-      M.downloads[name]:write(file_data)
-      if read_size < FILE_TRANSFER_CHUNK_SIZE then
-        M.downloading = false
-        kissui.show_download = false
-        kissmods.mount_mod(name)
-        M.downloads[name]:close()
-        M.downloads[name] = nil
-        M.downloads_status = {}
-        M.connection.mods_left = M.connection.mods_left - 1
-      end
-      if M.connection.mods_left <= 0 then
-        on_finished_download()
-      end
-      M.connection.tcp:settimeout(0.0)
+      -- BINARY DOWNLOADS DEPRECATED
       break
     elseif string.byte(msg_type) == 2 then
       local len_b = M.connection.tcp:receive(4)

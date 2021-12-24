@@ -123,18 +123,13 @@ local function set_mods_list(mod_list)
   end
 end
 
-local function open_file(name)
-  if not string.endswith(name, ".zip") then return end
+local function get_mod_directory()
   if not FS:directoryExists("/kissmp_mods/") then
     FS:directoryCreate("/kissmp_mods/")
   end
-  local path = "/kissmp_mods/"..name
-  print(path)
-  local file = io.open(path, "wb")
-  return file
+  return FS:getFileRealPath("/kissmp_mods/")
 end
 
-M.open_file = open_file
 M.check_mods = check_mods
 M.is_special_mod = is_special_mod
 M.mount_mod = mount_mod
@@ -143,5 +138,6 @@ M.deactivate_all_mods = deactivate_all_mods
 M.set_mods_list = set_mods_list
 M.update_status_all = update_status_all
 M.update_status = update_status
+M.get_mod_directory = get_mod_directory
 
 return M

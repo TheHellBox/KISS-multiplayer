@@ -1,6 +1,9 @@
 extern crate pretty_env_logger;
 
 pub mod vehicle;
+pub mod state;
+pub use state::State;
+
 use serde::{Deserialize, Serialize};
 use vehicle::*;
 use std::io::Write;
@@ -75,12 +78,14 @@ pub enum ClientCommand {
     CouplerDetached(CouplerDetached),
     ElectricsUndefinedUpdate(u32, ElectricsUndefined),
     VoiceChatPacket(Vec<u8>),
-    // Only used by bridge
+    /// Only used by bridge.
     SpatialUpdate([f32; 3], [f32; 3]),
-    // Only used by bridge
+    /// Only used by bridge.
     StartTalking,
-    // Only used by bridge
+    /// Only used by bridge.
     EndTalking,
+    /// Only used by bridge. Update the state to share to the bridge.
+    StateUpdate(State),
     Ping(u16),
 }
 
@@ -101,8 +106,13 @@ pub enum ServerCommand {
     CouplerDetached(CouplerDetached),
     ElectricsUndefinedUpdate(u32, ElectricsUndefined),
     ServerInfo(ServerInfo),
+    /// Name, bytes, chunk number, total size, size of chunk sent
     FilePart(String, Vec<u8>, u32, u32, u32),
     VoiceChatPacket(u32, [f32; 3], Vec<u8>),
+    /// Only used by bridge. New state modifed by the bridge.
+    StateUpdate(State),
+    /// Only used by bridge. Download progress for a download. Name, bytes saved, total.
+    DownloadProgress(String, u32, u32),
     Pong(f64),
 }
 
