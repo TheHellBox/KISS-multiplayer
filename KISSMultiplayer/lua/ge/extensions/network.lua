@@ -252,7 +252,7 @@ local function connect(addr, player_name)
   M.connection.tcp:send(addr)
 
   -- Send the initial state
-  kissui.chat.add_message("Sending state...")
+  kissui.chat.add_message("Sending state to bridge...")
   send_data_no_connection_check({
     StateUpdate = state
   }, true)
