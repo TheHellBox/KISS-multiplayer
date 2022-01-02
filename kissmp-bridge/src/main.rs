@@ -285,7 +285,13 @@ async fn connect_to_server(
 
         ) {
             Ok(_) => debug!("Tasks completed successfully"),
-            Err(e) => warn!("Tasks ended due to exception: {}", e),
+            Err(e) => {
+                if let Some(source) = e.source() {
+                    error!("Tasks ended due to exception: {}\nSource: {}", e, source)
+                } else {
+                    error!("Tasks ended due to exception: {}", e)
+                }
+            },
         }
         if active_downloads.len() > 0 {
             warn!("Unfinished downloads. Deleting...");
