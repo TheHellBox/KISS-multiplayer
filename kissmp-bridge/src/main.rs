@@ -409,6 +409,34 @@ async fn server_incoming(
         
                         let path = download_directory.join(name_ref);
 
+                        if path.exists() {
+                            // Rename to some_name.0.zip
+                            let rename_path = {
+                                let mut new_path = path.clone();
+                                let mut num: u8 = 0;
+                                // Roundabout way of a do-while by beating it into shape.
+                                // It's funny, horrifying, and clever.
+                                while {
+                                    let mut new_name = path.file_name().unwrap().to_owned();
+                                    new_name.push(".");
+                                    new_name.push(num.to_string());
+                                    new_path.set_file_name(new_name);
+                                    new_path.exists()
+                                } {
+                                    num = num.checked_add(1)
+                                        .ok_or_else(||
+                                            anyhow::Error::msg(format!("There are 255 versions of `{}`. Clean up your mods.", path.to_string_lossy()))
+                                        )?;
+                                };
+                                new_path
+                            };
+                            let path_string = path.to_string_lossy();
+                            let rename_path_string = rename_path.to_string_lossy();
+                            warn!("`{}` already exists, renaming to `{}`", path_string, rename_path_string);
+                            fs::rename(&path, &rename_path).await
+                                .with_context(|| format!("Could not rename `{}` to `{}`", path_string, rename_path_string))?;
+                        }
+
                         let f = OpenOptions::new()
                             .write(true)
                             .create_new(true)
