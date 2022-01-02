@@ -83,17 +83,13 @@ local function mount_mods(list)
 end
 
 local function update_status(mod)
-  local search_results = FS:findFiles("/kissmp_mods/", mod.name, 1)
-  local search_results2 = FS:findFiles("/mods/", mod.name, 99)
-
-  for _, v in pairs(search_results2) do
-    table.insert(search_results, v)
-  end
+  local file_path = FS:findFiles("/kissmp_mods/", mod.name, 1)[1] or
+                    FS:findFiles("/mods/", mod.name, 99)[1]
   
-  if not search_results[1] then
+  if not file_path then
     mod.status = "missing"
   else
-    local file = io.open(search_results[1])
+    local file = io.open(file_path)
     local len = file:seek("end")
     if len ~= mod.size then
       mod.status = "different"
