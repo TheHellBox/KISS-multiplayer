@@ -1,16 +1,6 @@
 local M = {}
 M.mods = {}
 
-local function is_special_mod(mod_path)
-  local special_mods = {"KISSMultiplayer.zip", "translations.zip"}
-  for _, special_mod in pairs(special_mods) do
-    if string.endswith(mod_path, special_mod) then
-      return true
-    end
-  end
-  return false
-end
-
 local function get_mod_name(name)
   local name = string.lower(name)
   name = name:gsub('.zip$', '')
@@ -27,7 +17,7 @@ end
 
 local function deactivate_all_mods()
   for k, mod_path in pairs(FS:findFiles("/mods/", "*.zip", 1000)) do
-    if not is_special_mod(mod_path) then
+    if string.endswith(mod_path, "KISSMultiplayer.zip") == false then
       FS:unmount(string.lower(mod_path))
     end
   end
@@ -120,7 +110,6 @@ end
 
 M.open_file = open_file
 M.check_mods = check_mods
-M.is_special_mod = is_special_mod
 M.mount_mod = mount_mod
 M.mount_mods = mount_mods
 M.deactivate_all_mods = deactivate_all_mods

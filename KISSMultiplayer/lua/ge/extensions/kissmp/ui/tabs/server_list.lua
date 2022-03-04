@@ -172,6 +172,7 @@ local function draw(dt)
       draw_server_description(server.description)
       imgui.PopTextWrapPos()
       if imgui.Button("Connect###connect_button_" .. tostring(server_count)) then
+        kissui.tabs.history.add_server(addr, server)
         kissconfig.save_config()
         local player_name = ffi.string(kissui.player_name)
         network.connect(addr, player_name)

@@ -1,6 +1,3 @@
-#[recursion_limit = "1024"]
-
-use ipnetwork::Ipv4Network;
 use shared::vehicle;
 
 pub mod config;
@@ -19,13 +16,13 @@ use vehicle::*;
 use anyhow::Error;
 use futures::FutureExt;
 use futures::{select, StreamExt, TryStreamExt};
+use log::{error, info, warn};
 use quinn::{Certificate, CertificateChain, PrivateKey};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
-use log::{info, warn, error};
 
 #[derive(Clone)]
 pub struct Connection {
@@ -132,7 +129,10 @@ impl Server {
                 self.upnp_port = Some(port);
                 info!("Fetching public IP address...");
                 let socket = UdpSocket::bind(&addr).unwrap();
-                socket.connect("kissmp.online:3691");
+                socket
+                    .connect("kissmp.online:3691")
+                    .map_err(|err| warn!("socket.connect failed: {:?}", err))
+                    .ok();
                 let mut i = 0;
                 while i < 5 {
                     let _ = socket.send(b"hi");
@@ -193,10 +193,10 @@ impl Server {
         }
         info!("Server is running!");
         if let Some(setup_result) = setup_result {
-            setup_result.send(ServerSetupResult{
+            setup_result.send(ServerSetupResult {
                 addr: addr.to_string(),
                 port: self.port,
-                is_upnp: self.upnp_port.is_some()
+                is_upnp: self.upnp_port.is_some(),
             });
         }
         'main: loop {
@@ -210,7 +210,7 @@ impl Server {
                 }
                 conn = incoming.select_next_some() => {
                     if let Ok(conn) = conn {
-                        if let Err(e) = self.on_connect(conn, client_events_tx.clone()).await {
+                        if let Err(_) = self.on_connect(conn, client_events_tx.clone()).await {
                             warn!("Client has failed to connect to the server");
                         }
                     }
@@ -626,7 +626,7 @@ fn get_bind_addr() -> Result<SocketAddr, std::io::Error> {
 pub fn upnp_pf(port: u16) -> Option<u16> {
     let bind_addr = match get_bind_addr() {
         Ok(addr) => addr,
-        Err(_error) =>  ([0, 0, 0, 0], 0).into()
+        Err(_error) => ([0, 0, 0, 0], 0).into(),
     };
 
     let opts = igd::SearchOptions {
@@ -649,7 +649,7 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
             for interface in ifs {
                 for iface_addr in interface.addresses.iter() {
                     match iface_addr.mask {
-                        Some(SocketAddr::V4(ipv4_mask)) => {
+                        Some(SocketAddr::V4(_ipv4_mask)) => {
                             let ipv4_addr = match iface_addr.address {
                                 Some(SocketAddr::V4(ipv4_addr)) => ipv4_addr,
                                 _ => continue,
@@ -680,15 +680,26 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
             for mut ip in valid_ips {
                 ip.set_port(port);
                 info!("uPnP: Trying {}", ip);
-                match gateway.add_port(igd::PortMappingProtocol::UDP, port, SocketAddr::V4(ip), 0, "KissMP Server")
-                {
+                match gateway.add_port(
+                    igd::PortMappingProtocol::UDP,
+                    port,
+                    SocketAddr::V4(ip),
+                    0,
+                    "KissMP Server",
+                ) {
                     Ok(()) => return Some(port),
                     Err(e) => match e {
                         igd::AddPortError::PortInUse => {
                             gateway.remove_port(igd::PortMappingProtocol::UDP, port);
-                            gateway.add_port(igd::PortMappingProtocol::UDP, port, SocketAddr::V4(ip), 0, "KissMP Server");
-                            return Some(port)
-                        },
+                            gateway.add_port(
+                                igd::PortMappingProtocol::UDP,
+                                port,
+                                SocketAddr::V4(ip),
+                                0,
+                                "KissMP Server",
+                            );
+                            return Some(port);
+                        }
                         _ => {
                             error!("uPnP Error: {:?}", e);
                         }

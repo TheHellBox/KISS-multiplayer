@@ -7,6 +7,9 @@ registerCoreModule("kissplayers")
 load("vehiclemanager")
 registerCoreModule("vehiclemanager")
 
+load("network")
+registerCoreModule("network")
+
 load("kisstransform")
 registerCoreModule("kisstransform")
 
@@ -18,9 +21,6 @@ registerCoreModule("kissmods")
 
 load("kissrichpresence")
 registerCoreModule("kissrichpresence")
-
-load("network")
-registerCoreModule("network")
 
 load("kissconfig")
 registerCoreModule("kissconfig")

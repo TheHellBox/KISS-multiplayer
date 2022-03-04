@@ -13,6 +13,7 @@ local function draw()
   if imgui.SliderFloat("###window_opacity", kissui.window_opacity, 0, 1) then
     kissconfig.save_config()
   end
+  imgui.Text("Warning. This feature will not work when docked due to ImGui")
   if imgui.Checkbox("Enable view distance (Experimental)", kissui.enable_view_distance) then
     kissconfig.save_config()
   end

@@ -11,6 +11,7 @@ local names = require("kissmp.ui.names")
 M.tabs = {
   server_list = require("kissmp.ui.tabs.server_list"),
   favorites = require("kissmp.ui.tabs.favorites"),
+  history = require("kissmp.ui.tabs.history"),
   settings = require("kissmp.ui.tabs.settings"),
   direct_connect = require("kissmp.ui.tabs.direct_connect"),
   create_server = require("kissmp.ui.tabs.create_server"),
@@ -69,6 +70,18 @@ local function toggle_ui()
 end
 
 local function open_ui()
+  local background = imgui.ImVec4(36.0/255, 41.0/255, 46.0/255, 1.0)
+
+  local style = imgui.GetStyle().Colors
+  style[imgui.Col_Text]                   = imgui.ImVec4(1, 1, 1, 1)
+
+  imgui.PushStyleVar1(imgui.StyleVar_WindowRounding, 0)
+  imgui.PushStyleVar1(imgui.StyleVar_ChildRounding, 0)
+  imgui.PushStyleVar1(imgui.StyleVar_ScrollbarRounding, 0)
+  imgui.PushStyleVar1(imgui.StyleVar_GrabRounding, 0)
+  imgui.PushStyleVar1(imgui.StyleVar_TabRounding, 0)
+  imgui.PushStyleVar1(imgui.StyleVar_PopupRounding, 0)
+
   main_window.init(M)
   gui_module.initialize(M.gui)
   M.gui.registerWindow("KissMP", imgui.ImVec2(256, 256))
@@ -112,6 +125,8 @@ M.onUpdate = onUpdate
 -- Backwards compatability
 M.add_message = M.chat.add_message
 M.draw_download = M.download_window.draw
+
+M.names = names
 
 M.show_ui = show_ui
 M.hide_ui = hide_ui
