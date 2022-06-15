@@ -549,23 +549,28 @@ async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<
 pub fn list_mods(
     mods: Option<Vec<String>>,
 ) -> anyhow::Result<(Vec<(String, u32)>, Vec<std::path::PathBuf>)> {
-    let paths = {
-        if let Some(mods) = mods {
-            let mut paths = vec![];
-            for path in mods {
-                paths.push(std::path::PathBuf::from(&path));
-            }
-            paths
-        } else {
-            let path = std::path::Path::new("./mods/");
-            if !path.exists() {
-                std::fs::create_dir(path).unwrap();
-            }
-            std::fs::read_dir(path)?
-                .map(|x| x.unwrap().path())
-                .collect()
+    let mut paths = vec![];
+
+    if let Some(mods) = mods {
+        for path in mods {
+            paths.push(std::path::PathBuf::from(&path));
         }
-    };
+    } else {
+        let mods_path = std::path::Path::new("./mods/");
+        if !mods_path.exists() {
+            std::fs::create_dir(mods_path).unwrap();
+        }
+
+        for entry in std::fs::read_dir(mods_path)? {
+            let path = entry.unwrap().path();
+            if let Some(extension) = path.extension() {
+                if extension.to_string_lossy().to_lowercase() == "zip" {
+                    paths.push(path);
+                }
+            }
+        }
+    }
+
     let mut result = vec![];
     let mut raw = vec![];
     for path in paths {
