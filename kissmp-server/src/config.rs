@@ -13,6 +13,7 @@ pub struct Config {
     pub show_in_server_list: bool,
     pub upnp_enabled: bool,
     pub server_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mods: Option<Vec<String>>,
 }
 
