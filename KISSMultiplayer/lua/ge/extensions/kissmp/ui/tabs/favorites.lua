@@ -118,7 +118,7 @@ local function draw_add_favorite_window()
         add_direct_server_to_favorites(addr, name)
       end
 
-      kissui.tabs.server_list.update_filtered(M.favorite_servers)
+      kissui.tabs.server_list.update_filtered()
       kissui.gui.hideWindow("Add Favorite")
     end
     imgui.SameLine()
@@ -193,7 +193,7 @@ local function draw()
       imgui.SameLine()
       if imgui.Button("Remove from Favorites###remove_favorite_button_" .. tostring(favorites_count)) then
         remove_server_from_favorites(addr)
-        update_filtered_servers()
+        kissui.tabs.server_list.update_filtered()
       end
     end
   end
