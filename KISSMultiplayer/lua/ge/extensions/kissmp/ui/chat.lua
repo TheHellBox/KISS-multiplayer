@@ -69,7 +69,6 @@ local function draw()
   window_title = window_title .. "###chat"
 
   imgui.SetNextWindowBgAlpha(kissui.window_opacity[0])
-  imgui.SetNextWindowViewport(imgui.GetMainViewport().ID)
   if imgui.Begin(window_title) then
     local content_width = imgui.GetWindowContentRegionWidth()
     imgui.BeginChild1("ChatWindowUpperContent", imgui.ImVec2(0, -30), true)
@@ -141,7 +140,7 @@ local function draw()
     imgui.PopItemWidth()
   end
   imgui.End()
-  imgui.PopStyleVar(1)
+  imgui.PopStyleVar()
   should_draw_unread_count = true
 end
 
