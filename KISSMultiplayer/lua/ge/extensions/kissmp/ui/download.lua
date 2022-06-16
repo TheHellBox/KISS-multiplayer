@@ -66,6 +66,7 @@ local function draw(gui)
     end
   end
   imgui.End()
+  imgui.PopStyleVar()
 end
 
 M.draw = draw

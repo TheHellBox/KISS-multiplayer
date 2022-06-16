@@ -44,8 +44,8 @@ local function draw(dt)
       imgui.EndTabBar()
     end
   end
-  imgui.PopStyleVar()
   imgui.End()
+  imgui.PopStyleVar()
 end
 
 local function init(m)
