@@ -8,11 +8,11 @@ end)
 Keep in mind that the subname has to be unique.
 
 **Default hooks include:**
-- OnChat(int client_id, string message)
+- OnChat(client_id, message)
   `returns string - modified message` 
   
 - Tick()
-- OnStdIn(string input)
+- OnStdIn(input)
 - OnVehicleRemoved(vehicle_id, client_id)
 - OnVehicleSpawned(vehicle_id, client_id)
 - OnVehicleResetted(vehicle_id, client_id)
