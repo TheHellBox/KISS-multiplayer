@@ -64,7 +64,9 @@ local function on_chat(client_id, message)
     local args = cmd_parse(message, " ")
     if args[1] ~= "/set_time" then return end
 
-    -- we have the time command!
+    -- to call this in game, it looks like "/set_time hh:mm:ss" (minute and second are optional)
+
+    -- we have the time command, time to parse it.
     local time_args = {}
     for num in string.gmatch(args[2], "[^:]+") do
         table.insert(time_args, tonumber(num))
