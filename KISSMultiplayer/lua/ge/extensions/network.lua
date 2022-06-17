@@ -11,6 +11,7 @@ local current_download = nil
 local socket = require("socket")
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 local ping_send_time = 0
+local handlers_set = false
 
 M.players = {}
 M.socket = socket
@@ -146,7 +147,7 @@ local function handle_chat(data)
   kissui.chat.add_message(data[1], nil, data[2])
 end
 
-local function onExtensionLoaded()
+local function setup_handlers()
   message_handlers.VehicleUpdate = vehiclemanager.update_vehicle
   message_handlers.VehicleSpawn = vehiclemanager.spawn_vehicle
   message_handlers.RemoveVehicle = vehiclemanager.remove_vehicle
@@ -345,6 +346,11 @@ local function cancel_download()
 end
 
 local function onUpdate(dt)
+  if not handlers_set and vehiclemanager then
+    handlers_set = true
+    setup_handlers()
+  end
+  
   if not M.connection.connected then return end
   if M.connection.timer < M.connection.heartbeat_time then
     M.connection.timer = M.connection.timer + dt

@@ -84,6 +84,7 @@ local function spawn_player(data)
 end
 
 local function update_players(dt)
+  if not network or network.connection.connected then return end
   for id, data in pairs(M.player_transforms) do
     local player = M.players[id]
     if player and data then

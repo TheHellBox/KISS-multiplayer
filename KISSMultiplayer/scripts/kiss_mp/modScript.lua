@@ -4,11 +4,8 @@ loadJsonMaterialsFile("art/shapes/kissmp_playermodels/main.materials.json")
 load("kissplayers")
 registerCoreModule("kissplayers")
 
-load("vehiclemanager")
-registerCoreModule("vehiclemanager")
-
-load("kisstransform")
-registerCoreModule("kisstransform")
+load("kissconfig")
+registerCoreModule("kissconfig")
 
 load("kissui")
 registerCoreModule("kissui")
@@ -19,11 +16,14 @@ registerCoreModule("kissmods")
 load("kissrichpresence")
 registerCoreModule("kissrichpresence")
 
+load("vehiclemanager")
+registerCoreModule("vehiclemanager")
+
 load("network")
 registerCoreModule("network")
 
-load("kissconfig")
-registerCoreModule("kissconfig")
+load("kisstransform")
+registerCoreModule("kisstransform")
 
 load("kissvoicechat")
 registerCoreModule("kissvoicechat")
