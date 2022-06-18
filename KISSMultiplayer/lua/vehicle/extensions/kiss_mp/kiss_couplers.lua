@@ -31,7 +31,6 @@ end
 
 local function onCouplerDetached(node_id, obj2_id, obj2_node_id)
   if not ownership then return end
-  if not ownership then return end
   if ignore_detachment then
     ignore_detachment = false
     return
