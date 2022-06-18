@@ -51,7 +51,7 @@ local function try_rude()
   end
   if distance > 6 then
     local p = M.target_transform.position
-    obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPosition(Point3F("..p.x..", "..p.y..", "..p.z.."))")
+    obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionNoPhysicsReset(Point3F("..p.x..", "..p.y..", "..p.z.."))")
     return true
   end
   return false

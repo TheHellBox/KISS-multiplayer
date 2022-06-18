@@ -426,7 +426,7 @@ local function attach_coupler(data)
     local node_a_pos = vec3(vehicle:getPosition()) + vec3(vehicle:getNodePosition(data.node_a_id))
     local node_b_pos = vec3(vehicle_b:getPosition()) + vec3(vehicle_b:getNodePosition(data.node_b_id))
     local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
-    vehicle_b:setPosition(Point3F(pos.x, pos.y, pos.z))
+    vehicle_b:setPositionNoPhysicsReset(Point3F(pos.x, pos.y, pos.z))
     vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data.node_b_id..")")
     onCouplerAttached(obj_a, obj_b, data.node_a_id, data.node_b_id)
   end
@@ -441,9 +441,11 @@ local function detach_coupler(data)
     local vehicle_b = be:getObjectByID(obj_b)
     if not vehicle then return end
     if not vehicle_b then return end
-    if vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
+    if vehicle_ ~= vehicle_b and vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
     vehicle:queueLuaCommand("kiss_couplers.detach_coupler("..data.node_a_id..")")
     onCouplerDetached(obj_a, obj_b, data.node_a_id, data.node_b_id)
+    onCouplerDetach(obj_a, data.node_a_id)
+    onCouplerDetach(obj_b, data.node_b_id)
   end
 end
 
