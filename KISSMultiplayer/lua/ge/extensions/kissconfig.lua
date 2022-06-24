@@ -32,6 +32,7 @@ local function save_config()
 end
 
 local function load_config()
+  if not network then return end
   local file = io.open("./settings/kissmp_config.json", "r")
   if not file then
     if Steam and Steam.isWorking and Steam.accountLoggedIn then
@@ -41,7 +42,8 @@ local function load_config()
   end
   local content = file:read("*a")
   local config = jsonDecode(content or "")
-  if not config then return end
+  if not config then return true end
+  if not kissui then return false end
 
   if config.name ~= nil then
     kissui.player_name = imgui.ArrayChar(32, config.name)
@@ -68,17 +70,10 @@ local function load_config()
     network.base_secret = config.base_secret_v2
   end
   io.close(file)
-end
-
-local function init()
-  load_config()
-  if #FS:findFiles("/mods/", "KISSMultiplayer.zip", 1000) == 0 then
-    kissui.incorrect_install = true
-  end
+  return true
 end
 
 M.save_config = save_config
 M.load_config = load_config
-M.onExtensionLoaded = init
 
 return M

@@ -3,7 +3,6 @@ local imgui = ui_imgui
 
 local function draw(dt)
   kissui.tabs.favorites.draw_add_favorite_window(gui)
-  if kissui.show_download then return end
 
   if not kissui.gui.isWindowVisible("KissMP") then return end
   imgui.SetNextWindowBgAlpha(kissui.window_opacity[0])

@@ -3,7 +3,7 @@ M.el = vec3(0.08, 0, 0)
 M.er = vec3(-0.08, 0, 0)
 
 local function onUpdate()
-  if not network.connection.connected then return end
+  if not network or not network.connection.connected then return end
   local position = vec3(getCameraPosition() or vec3())
   local ear_left = M.el:rotated(quat(getCameraQuat()))
   local ear_right = M.er:rotated(quat(getCameraQuat()))
