@@ -16,7 +16,7 @@ M.velocity_error_limit = 10
 M.hidden = {}
 
 local function update(dt)
-  if not network or not network.connection.connected then return end
+  if not network.connection.connected then return end
     -- Get rotation/angular velocity from vehicle lua
   for i = 0, be:getObjectCount() do
     local vehicle = be:getObject(i)

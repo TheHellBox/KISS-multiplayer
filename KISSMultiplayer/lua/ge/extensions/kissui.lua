@@ -35,7 +35,6 @@ M.gui = {setupEditorGuiTheme = nop}
 local imgui = ui_imgui
 
 local ui_showing = false
-local config_loaded = false
 
 -- TODO: Move all this somewhere else. Some of settings aren't even related to UI
 M.addr = imgui.ArrayChar(128)
@@ -77,11 +76,6 @@ local function open_ui()
   M.gui.registerWindow("Downloads", imgui.ImVec2(512, 512))
   M.gui.registerWindow("Add Favorite", imgui.ImVec2(256, 128))
   M.gui.registerWindow("Incorrect install detected", imgui.ImVec2(256, 128))
-
-  if #FS:findFiles("/mods/", "KISSMultiplayer.zip", 1000) == 0 then
-    M.incorrect_install = true
-  end
-
   M.gui.hideWindow("Add Favorite")
   show_ui()
 end
@@ -98,11 +92,6 @@ local function draw_incorrect_install()
 end
 
 local function onUpdate(dt)
-  if not network then return end
-  if not config_loaded then
-    config_loaded = kissconfig.load_config()
-  end
-
   if getMissionFilename() ~= '' and not vehiclemanager.is_network_session then
     return
   end
