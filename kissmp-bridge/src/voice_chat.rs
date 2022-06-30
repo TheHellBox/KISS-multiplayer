@@ -263,7 +263,7 @@ pub fn try_create_vc_playback_task(
         audiopus::Channels::Mono)?;
     let device = cpal::default_host()
         .default_output_device()
-        .context("Could find a default device for playback. Check your OS's \
+        .context("Couldn't find a default device for playback. Check your OS's \
         settings and verify you have a device available.")?;
     
     info!("Using default audio output device: {}", device.name().unwrap());
