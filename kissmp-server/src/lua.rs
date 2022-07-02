@@ -102,6 +102,24 @@ impl rlua::UserData for Vehicle {
             Ok(())
         });
         methods.add_method(
+            "setPosition",
+            |lua_ctx, this, (x, y, z): (f32, f32, f32)| {
+                let globals = lua_ctx.globals();
+                let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
+                sender
+                    .0
+                    .send(LuaCommand::SendLua(
+                        this.data.owner.unwrap_or(0),
+                        format!(
+                            "be:getObjectByID({}):setPositionNoPhysicsReset(Point3F({}, {}, {}))",
+                            this.data.in_game_id, x, y, z
+                        ),
+                    ))
+                    .unwrap();
+                Ok(())
+            },
+        );
+        methods.add_method(
             "setPositionRotation",
             |lua_ctx, this, (x, y, z, xr, yr, zr, w): (f32, f32, f32, f32, f32, f32, f32)| {
                 let globals = lua_ctx.globals();
