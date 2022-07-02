@@ -427,9 +427,9 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
                     Ok(LuaVehicleData(VehicleData {
                         parts_config,
                         in_game_id: 0,
-                        color: [color[0], color[1], color[2], color[3]],
-                        palete_0: [p0[0], p0[1], p0[2], p0[3]],
-                        palete_1: [p1[0], p1[1], p1[2], p1[3]],
+                        color: [color[0], color[1], color[2], color[3], color[4], color[5], color[6], color[7]],
+                        palete_0: [p0[0], p0[1], p0[2], p0[3], p0[4], p0[5], p0[6], p0[7]],
+                        palete_1: [p1[0], p1[1], p1[2], p1[3], p1[4], p1[5], p1[6], p1[7]],
                         plate: Some(plate),
                         name,
                         server_id: 0,

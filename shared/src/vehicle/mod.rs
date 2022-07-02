@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 pub struct VehicleData {
     pub parts_config: String,
     pub in_game_id: u32,
-    pub color: [f32; 4],
-    pub palete_0: [f32; 4],
-    pub palete_1: [f32; 4],
+    pub color: [f32; 8],
+    pub palete_0: [f32; 8],
+    pub palete_1: [f32; 8],
     pub plate: Option<String>,
     pub name: String,
     pub server_id: u32,

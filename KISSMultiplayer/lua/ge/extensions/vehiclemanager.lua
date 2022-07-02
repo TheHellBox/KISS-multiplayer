@@ -31,8 +31,22 @@ local function enable_spawning(enabled)
   be:executeJS(jsCommand)
 end
 
+local function color_to_table(color, metal_data)
+  return {color.x, color.y, color.z, color.w, metal_data.metallic, metal_data.roughness, metal_data.clearcoat, metal_data.clearcoatRoughness}
+end
+
+local function table_to_color(t)
+  return {baseColor = {t[1], t[2], t[3], t[4]}, metallic = t[5], roughness = t[6], clearcoat = t[7], clearcoatRoughness = t[8]}
+end
+
+local function table_to_paint(t)
+  return createVehiclePaint({x=t[1], y=t[2], z=t[3], w=t[4]}, {t[5], t[6], t[7], t[8]})
+end
+
 local function color_eq(a, b)
-  return (a[1] == b[1]) and (a[2] == b[2]) and {a[3] == b[3]} and {a[4] == b[4]}
+  local color_eq = (a[1] == b[1]) and (a[2] == b[2]) and (a[3] == b[3]) and (a[4] == b[4])
+  local metal_eq = (a[5] == b[5]) and (a[6] == b[6]) and (a[7] == b[7]) and (a[8] == b[8])
+  return color_eq and metal_eq
 end
 
 local function colors_eq(a, b)
@@ -81,14 +95,15 @@ local function send_vehicle_meta_updates()
       local changed = false
       local id = vehicle:getID()
       
+      local metal_data = vehicle:getMetallicPaintData()
       local color = vehicle.color
       local palete_0 = vehicle.colorPalette0
       local palete_1 = vehicle.colorPalette1
       local plate = vehicle.licenseText
       local colors = {
-        {color.x, color.y, color.z, color.w},
-        {palete_0.x, palete_0.y, palete_0.z, palete_0.w},
-        {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
+        color_to_table(color, metal_data[1]),
+        color_to_table(palete_0, metal_data[2]),
+        color_to_table(palete_1, metal_data[3])
       }
       
       if plates_buffer[id] then
@@ -140,6 +155,7 @@ local function send_vehicle_config_inner(id, parts_config, data)
   end
   local data = jsonDecode(data)
   local vehicle = be:getObjectByID(id)
+  local metal_data = vehicle:getMetallicPaintData()
   local color = vehicle.color
   local palete_0 = vehicle.colorPalette0
   local palete_1 = vehicle.colorPalette1
@@ -149,9 +165,9 @@ local function send_vehicle_config_inner(id, parts_config, data)
   local vehicle_data = {}
   vehicle_data.parts_config = parts_config
   vehicle_data.in_game_id = id
-  vehicle_data.color = {color.x, color.y, color.z, color.w}
-  vehicle_data.palete_0 = {palete_0.x, palete_0.y, palete_0.z, palete_0.w}
-  vehicle_data.palete_1 = {palete_1.x, palete_1.y, palete_1.z, palete_1.w}
+  vehicle_data.color = color_to_table(color, metal_data[1])
+  vehicle_data.palete_0 = color_to_table(palete_0, metal_data[2])
+  vehicle_data.palete_1 = color_to_table(palete_1, metal_data[3])
   vehicle_data.plate = plate
   vehicle_data.name = vehicle:getJBeamFilename()
   vehicle_data.position = {position.x, position.y, position.z}
@@ -204,21 +220,21 @@ local function spawn_vehicle(data)
     kissplayers.spawn_player(data)
     return
   end
+  
   print("Attempt to spawn vehicle "..name)
   local options = { 
     vehicleName = "mp_veh",
-    paint  = createVehiclePaint({x=c[1], y=c[2], z=c[3], w=c[4]}, metal_data),
-    paint2 = createVehiclePaint({x=cp0[1], y=cp0[2], z=cp0[3], w=cp0[4]}, metal_data),
-    paint3 = createVehiclePaint({x=cp1[1], y=cp1[2], z=cp1[3], w=cp1[4]}, metal_data),
+    pos = vec3(data.position),
+    rot = quat(data.rotation),
+    config = serialize(parts_config),
+    paint  = table_to_paint(c),
+    paint2 = table_to_paint(cp0),
+    paint3 = table_to_paint(cp1),
     autoEnterVehicle = false
   }
-  local spawned = spawn.spawnVehicle(
-    name,
-    serialize(parts_config),
-    vec3(data.position),
-    quat(data.rotation),
-    options
-  )
+  options = sanitizeVehicleSpawnOptions(name, options)
+  
+  local spawned = spawn.spawnVehicle(name, options.config, options.pos, options.rot, options)
   if not spawned then return end
   local p = data.position
   local r = data.rotation
@@ -361,12 +377,15 @@ local function update_vehicle_meta(data)
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
   local plate = data.plate
-  local colors = {
-    data.colors_table[1],
-    data.colors_table[2],
-    data.colors_table[3]
+  
+  local color = data.colors_table[1]
+  local palete_0 = data.colors_table[2]
+  local palete_1 = data.colors_table[3]
+  local color_tables = {
+    color,
+    palete_0,
+    palete_1
   }
-
   -- Apply plate
   if plate ~= nil then
     extensions.core_vehicles.setPlateText(plate, id)
@@ -374,9 +393,14 @@ local function update_vehicle_meta(data)
 
   -- Apply colors
   local vd = extensions.core_vehicle_manager.getVehicleData(id)
-  if not vd or not vd.config or not vd.config.colors then return end
-  vd.config.colors = colors
-  extensions.core_vehicle_manager.liveUpdateVehicleColors(id, vehicle)
+  if not vd or not vd.config or not vd.config.paints then return end
+  
+  for i=1,3 do
+    local ct = color_tables[i]
+    vd.config.paints[i] =  table_to_paint(ct)
+    extensions.core_vehicle_manager.liveUpdateVehicleColors(id, vehicle, i, table_to_color(ct))
+  end
+  vehicle:setField('partConfig', '', serialize(vd.config))
 end
 
 local function electrics_diff_update(data)
