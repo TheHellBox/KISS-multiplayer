@@ -69,7 +69,8 @@ local ignored_keys = {
   esc = true,
   escActive = true,
   brakelights = true,
-  radiatorFanSpin = true
+  radiatorFanSpin = true,
+  smoothShiftLogicAV = true
 }
 
 local function ignore_key(key)
