@@ -1,7 +1,7 @@
 local M = {}
 local imgui = ui_imgui
 local http = require("socket.http")
-local VERSION_PRTL = "0.4.5"
+local VERSION_PRTL = "0.5.0"
 
 local filter_servers_notfull = imgui.BoolPtr(false)
 local filter_servers_online = imgui.BoolPtr(false)

@@ -1,6 +1,6 @@
 [package]
 name = "kissmp-master"
-version = "0.4.5"
+version = "0.5.0"
 authors = ["TheHellBox <thehellbox11@gmail.com>"]
 edition = "2018"
 
