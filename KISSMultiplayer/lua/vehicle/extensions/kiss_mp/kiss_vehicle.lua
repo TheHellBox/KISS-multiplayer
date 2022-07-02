@@ -5,7 +5,9 @@ local ref_nodes = {}
 
 local last_node = 1
 local nodes_per_frame = 32
-local node_pos_thresh = 32
+
+local node_pos_thresh = 3
+local node_pos_thresh_sqr = node_pos_thresh * node_pos_thresh
 
 M.test_quat = quat(0.707, 0, 0, 0.707)
 
@@ -20,14 +22,17 @@ local function kissInit()
   }
 
   local total_mass = 0
+  local inverse_rot =  quat(obj:getRotation()):inversed()
   for _, node in pairs(v.data.nodes) do
     local node_mass = obj:getNodeMass(node.cid)
+    local node_pos = inverse_rot * obj:getNodePosition(node.cid)
     table.insert(
       nodes,
       {
         node.cid,
         node_mass * force,
-        true
+        true,
+        node_pos
       }
     )
     --M.test_nodes_sync[node.cid] = vec3(obj:getNodePosition(node.cid))
@@ -41,7 +46,7 @@ local function kissInit()
         node,
         total_mass * force / 4,
         true,
-
+        inverse_rot * obj:getNodePosition(node)
       }
     )
   end
@@ -51,10 +56,12 @@ end
   -- This is a temperary solution. It's not great. We made it to release the mod.
   -- A better solution will be used in future versions
 local function update_eligible_nodes()
+  local inverse_rot =  quat(obj:getRotation()):inversed()
   for k=last_node, math.min(#nodes , last_node + nodes_per_frame) do
     local node = nodes[k]
-    local node_position = obj:getNodePosition(node[1])
-    node[3] = node_position:length() < node_pos_thresh
+    local local_node_pos = inverse_rot * obj:getNodePosition(node[1])
+    local local_original_pos = node[4]
+    node[3] = (local_node_pos - local_original_pos):squaredLength() < node_pos_thresh_sqr
     last_node = k
   end
   if last_node == #nodes then last_node = 1 end
