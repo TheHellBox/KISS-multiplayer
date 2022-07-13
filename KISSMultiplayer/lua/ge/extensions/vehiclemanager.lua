@@ -183,6 +183,12 @@ local function send_vehicle_config_inner(id, parts_config, data)
 end
 
 local function spawn_vehicle(data)
+  local model_info = core_vehicles.getModel(data.name)
+  if tableSize(model_info) == 0 then
+    print("Rejected modded vehicle spawn " .. data.name)
+    return
+  end
+
   local away = true
   if kisstransform.raw_transforms[data.server_id] then
     away = (vec3(kisstransform.raw_transforms[data.server_id].position):distance(vec3(getCameraPosition())) > kissui.view_distance[0])
