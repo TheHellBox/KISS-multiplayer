@@ -1,6 +1,5 @@
 #[recursion_limit = "1024"]
 
-use ipnetwork::Ipv4Network;
 use shared::vehicle;
 
 pub mod config;
@@ -19,13 +18,14 @@ use vehicle::*;
 use anyhow::Error;
 use futures::FutureExt;
 use futures::{select, StreamExt, TryStreamExt};
-use quinn::{Certificate, CertificateChain, PrivateKey};
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 use log::{info, warn, error};
+const CLIENT_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[derive(Clone)]
 pub struct Connection {
@@ -86,6 +86,26 @@ pub struct Server {
     public_address: Option<String>,
     mods: Option<Vec<String>>,
     tick: u64,
+}
+
+fn build_quinn_server_config(
+    certificate_chain: Vec<rustls::Certificate>,
+    private_key: rustls::PrivateKey
+) -> quinn::ServerConfig {
+    use std::sync::Arc;
+
+    let server_crypto_config = rustls::ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(certificate_chain, private_key)
+        .expect("bad certificate/key for server");
+
+    let mut c = quinn::ServerConfig::with_crypto(Arc::new(server_crypto_config));
+    Arc::get_mut(&mut c.transport)
+        .unwrap()
+        .max_idle_timeout(Some(CLIENT_IDLE_TIMEOUT.try_into().unwrap()));
+
+    c
 }
 
 impl Server {
@@ -152,29 +172,24 @@ impl Server {
                 warn!("uPnP mapping failed.");
             }
         }
-        let socket = UdpSocket::bind(&addr).unwrap();
         let mut ticks = IntervalStream::new(tokio::time::interval(
             std::time::Duration::from_secs(1) / self.tickrate as u32,
         ))
         .fuse();
+
         let mut send_info_ticks =
             IntervalStream::new(tokio::time::interval(std::time::Duration::from_secs(5))).fuse();
 
         let (certificate_chain, key) = generate_certificate();
 
-        let mut server_config = quinn::ServerConfigBuilder::default();
-        server_config.certificate(certificate_chain, key).unwrap();
-        let mut server_config = server_config.build();
+        let server_config = build_quinn_server_config(certificate_chain, key);
 
-        let mut transport = quinn::TransportConfig::default();
-        transport
-            .max_idle_timeout(Some(std::time::Duration::from_secs(60)))
-            .unwrap();
-        server_config.transport = std::sync::Arc::new(transport);
+        // TODO: multiple binds (for IPv4/6 configurations, or servers with multiple interfaces)
 
-        let mut endpoint = quinn::Endpoint::builder();
-        endpoint.listen(server_config);
-        let (_, incoming) = endpoint.with_socket(socket).unwrap();
+        let (_, incoming) = quinn::Endpoint::server(
+            server_config,
+            addr
+        ).unwrap();
 
         let (client_events_tx, client_events_rx) = mpsc::channel(128);
         let mut client_events_rx = ReceiverStream::new(client_events_rx).fuse();
@@ -431,7 +446,7 @@ impl Server {
     async fn drive_receive(
         id: u32,
         streams: quinn::IncomingUniStreams,
-        datagrams: quinn::generic::Datagrams<quinn::crypto::rustls::TlsSession>,
+        datagrams: quinn::Datagrams,
         mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
         let mut cmds = streams
@@ -527,14 +542,15 @@ impl Drop for Server {
     }
 }
 
-fn generate_certificate() -> (CertificateChain, PrivateKey) {
+fn generate_certificate() -> (Vec<rustls::Certificate>, rustls::PrivateKey) {
     info!("Generating certificate...");
-    let cert = rcgen::generate_simple_self_signed(vec!["kissmp".into()]).unwrap();
-    let key = cert.serialize_private_key_der();
-    let cert = cert.serialize_der().unwrap();
+    let self_signed_certificate = rcgen::generate_simple_self_signed(vec!["kissmp".into()]).unwrap();
+    let certificate = rustls::Certificate(self_signed_certificate.serialize_der().unwrap());
+    let private_key = rustls::PrivateKey(self_signed_certificate.serialize_private_key_der());
+    let cert_chain = vec![certificate];
     (
-        CertificateChain::from_certs(Certificate::from_der(&cert)),
-        PrivateKey::from_der(&key).unwrap(),
+        cert_chain,
+        private_key,
     )
 }
 

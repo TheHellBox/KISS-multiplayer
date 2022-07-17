@@ -4,6 +4,7 @@ pub mod voice_chat;
 
 use futures::stream::FuturesUnordered;
 use futures::{StreamExt};
+use std::convert::TryInto;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
@@ -86,39 +87,39 @@ async fn main() {
     }
 }
 
+fn build_quinn_client_config() -> quinn::ClientConfig {
+    use std::sync::Arc;
+
+    let client_crypto_config = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_custom_certificate_verifier(Arc::new(AcceptAnyCertificate))
+        .with_no_client_auth();
+    
+    let mut c = quinn::ClientConfig::new(Arc::new(client_crypto_config));
+    Arc::get_mut(&mut c.transport)
+        .unwrap()
+        .max_idle_timeout(Some(SERVER_IDLE_TIMEOUT.try_into().unwrap()));
+
+    c
+}
+
 async fn connect_to_server(
     addr: SocketAddr,
     client_stream: TcpStream,
     discord_tx: std::sync::mpsc::Sender<DiscordState>
 ) -> () {
     let endpoint = {
-        let mut client_cfg = quinn::ClientConfig::default();
-    
-        let mut transport = quinn::TransportConfig::default();
-        transport
-            .max_idle_timeout(Some(SERVER_IDLE_TIMEOUT))
-            .unwrap();
-        client_cfg.transport = std::sync::Arc::new(transport);
-    
-        let tls_cfg = std::sync::Arc::get_mut(&mut client_cfg.crypto).unwrap();
-        tls_cfg
-            .dangerous()
-            .set_certificate_verifier(std::sync::Arc::new(AcceptAnyCertificate));
-        
-        let mut endpoint = quinn::Endpoint::builder();
-        endpoint.default_client_config(client_cfg);
+        let mut endpoint = quinn::Endpoint::client(match addr {
+            SocketAddr::V4(_) => SocketAddr::new(IpAddr::from(Ipv4Addr::UNSPECIFIED), 0),
+            SocketAddr::V6(_) => SocketAddr::new(IpAddr::from(Ipv6Addr::UNSPECIFIED), 0),
+        }).unwrap();
 
-        let bind_from = match addr {
-            SocketAddr::V4(_) => IpAddr::from(Ipv4Addr::UNSPECIFIED),
-            SocketAddr::V6(_) => IpAddr::from(Ipv6Addr::UNSPECIFIED),
-        };
+        endpoint.set_default_client_config(build_quinn_client_config());
 
         endpoint
-            .bind(&SocketAddr::new(bind_from, 0))
-            .unwrap().0
     };
 
-    let server_connection = match endpoint.connect(&addr, "kissmp").unwrap().await {
+    let server_connection = match endpoint.connect(addr, "kissmp").unwrap().await {
         Ok(c) => c,
         Err(e) => {
             error!("Failed to connect to the server: {}", e);
@@ -240,7 +241,7 @@ async fn client_outgoing(
 async fn server_incoming(
     server_commands_sender: tokio::sync::mpsc::Sender<shared::ServerCommand>,
     vc_playback_sender: std::sync::mpsc::Sender<voice_chat::VoiceChatPlaybackEvent>,
-    server_connection: quinn::generic::NewConnection<quinn::crypto::rustls::TlsSession>
+    server_connection: quinn::NewConnection
 ) -> AHResult {
     let mut reliable_commands = server_connection
         .uni_streams
@@ -281,7 +282,7 @@ async fn server_incoming(
 }
 
 async fn client_incoming(
-    server_stream: quinn::generic::Connection<quinn::crypto::rustls::TlsSession>,
+    server_stream: quinn::Connection,
     vc_playback_sender: std::sync::mpsc::Sender<voice_chat::VoiceChatPlaybackEvent>,
     mut client_stream_reader: tokio::io::ReadHalf<TcpStream>,
     vc_recording_sender: std::sync::mpsc::Sender<voice_chat::VoiceChatRecordingEvent>,
@@ -325,7 +326,7 @@ async fn client_incoming(
 }
 
 async fn server_outgoing(
-    server_stream: quinn::generic::Connection<quinn::crypto::rustls::TlsSession>,
+    server_stream: quinn::Connection,
     mut client_event_receiver: tokio::sync::mpsc::UnboundedReceiver<(bool, shared::ClientCommand)>
 )  -> AHResult {
     while let Some((reliable, client_command)) = client_event_receiver.recv().await {
@@ -342,14 +343,16 @@ async fn server_outgoing(
 
 struct AcceptAnyCertificate;
 
-impl rustls::ServerCertVerifier for AcceptAnyCertificate {
+impl rustls::client::ServerCertVerifier for AcceptAnyCertificate {
     fn verify_server_cert(
         &self,
-        _roots: &rustls::RootCertStore,
-        _presented_certs: &[rustls::Certificate],
-        _dns_name: webpki::DNSNameRef,
+        _end_entity: &rustls::Certificate,
+        _intermediates: &[rustls::Certificate],
+        _server_name: &rustls::ServerName,
+        _scts: &mut dyn Iterator<Item = &[u8]>,
         _ocsp_response: &[u8],
-    ) -> Result<rustls::ServerCertVerified, rustls::TLSError> {
-        Ok(rustls::ServerCertVerified::assertion())
+        _now: std::time::SystemTime,
+    ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::ServerCertVerified::assertion())
     }
 }

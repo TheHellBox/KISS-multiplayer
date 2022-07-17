@@ -228,8 +228,8 @@ pub fn encode_and_send_samples(
             .map(|x| x[0])
             .collect();
         if sample_rate.0 != SAMPLE_RATE.0 {
-            let audio = fon::Audio::<fon::mono::Mono16>::with_i16_buffer(sample_rate.0, data);
-            let mut audio = fon::Audio::<fon::mono::Mono16>::with_stream(SAMPLE_RATE.0, &audio);
+            let audio = fon::Audio::<fon::chan::Ch16, 1>::with_i16_buffer(sample_rate.0, data);
+            let mut audio = fon::Audio::<fon::chan::Ch16, 1>::with_audio(SAMPLE_RATE.0, &audio);
             audio.as_i16_slice().to_vec()
         } else {
             data
