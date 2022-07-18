@@ -265,10 +265,16 @@ local function connect(addr, player_name)
   M.connection.server_info = server_info
   M.connection.tickrate = server_info.tickrate
 
+  local steamid64 = ""
+  if Steam and Steam.isWorking then
+    steamid64 = Steam.getAccountIDStr()
+  end
+
   local client_info = {
     ClientInfo = {
       name = player_name,
       secret = generate_secret(server_info.server_identifier),
+      steamid64 = steamid64,
       client_version = {0, 5}
     }
   }

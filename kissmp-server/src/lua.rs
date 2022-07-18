@@ -155,12 +155,14 @@ struct LuaConnection {
     current_vehicle: u32,
     ip: String,
     secret: String,
+    steamid64: String
 }
 
 impl rlua::UserData for LuaConnection {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("getIpAddr", |_, this, _: ()| Ok(this.ip.clone()));
         methods.add_method("getSecret", |_, this, _: ()| Ok(this.secret.clone()));
+        methods.add_method("getSteamID", |_, this, _: ()| Ok(this.steamid64.clone()));
         methods.add_method("getID", |_, this, _: ()| Ok(this.id));
         methods.add_method("getCurrentVehicle", |_, this, _: ()| {
             Ok(this.current_vehicle)
@@ -235,6 +237,7 @@ impl Server {
                     name: connection.client_info_public.name.clone(),
                     ip: connection.conn.remote_address().ip().to_string(),
                     secret: connection.client_info_private.secret.clone(),
+                    steamid64: connection.client_info_private.steamid64.clone(),
                 },
             );
         }
