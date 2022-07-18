@@ -90,7 +90,7 @@ pub struct Server {
 
 impl Server {
     pub fn from_config(config: config::Config) -> Self {
-        let (lua, receiver) = lua::setup_lua();
+        let (lua, receiver) = lua::setup_lua(config.unsafe_debug_library);
         let (watcher_tx, watcher_rx) = std::sync::mpsc::channel();
         let lua_watcher =
             notify::Watcher::new(watcher_tx, std::time::Duration::from_secs(2)).unwrap();
