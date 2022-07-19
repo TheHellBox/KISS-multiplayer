@@ -225,6 +225,10 @@ local function connect(addr, player_name)
   M.connection.tcp = socket.tcp()
   M.connection.tcp:settimeout(3.0)
   local connected, err = M.connection.tcp:connect("127.0.0.1", "7894")
+  if not connected then
+    kissui.chat.add_message("Failed to connect to bridge, make sure it's running.", kissui.COLOR_RED)
+    return
+  end
 
   -- Send server address to the bridge
   local addr_lenght = ffi.string(ffi.new("uint32_t[?]", 1, {#addr}), 4)
@@ -238,7 +242,7 @@ local function connect(addr, player_name)
       return
     end
   else
-    kissui.chat.add_message("Failed to confirm connection. Check if bridge is running.", kissui.COLOR_RED)
+    kissui.chat.add_message("Server appears to be offline", kissui.COLOR_RED)
     return
   end
 
