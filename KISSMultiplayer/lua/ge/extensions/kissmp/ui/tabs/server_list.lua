@@ -4,10 +4,12 @@ local http = require("socket.http")
 local VERSION_PRTL = "0.5.0"
 
 local filter_servers_notfull = imgui.BoolPtr(false)
+local filter_servers_notempty = imgui.BoolPtr(false)
 local filter_servers_online = imgui.BoolPtr(false)
 
 local prev_search_text = ""
 local prev_filter_notfull = false
+local prev_filter_notempty = false
 local prev_filter_online = false
 
 local search_buffer = imgui.ArrayChar(64)
@@ -39,7 +41,7 @@ local function spairs(t, order)
   end
 end
 
-local function filter_server_list(list, term, filter_notfull, filter_online, m)
+local function filter_server_list(list, term, filter_notfull, filter_notempty, filter_online, m)
   local kissui = kissui or m
   local return_servers = {}
 
@@ -59,6 +61,9 @@ local function filter_server_list(list, term, filter_notfull, filter_online, m)
     if filter_notfull and server_found_in_list and not discard then
       discard = discard or server_from_list.player_count >= server_from_list.max_players
     end
+    if filter_notempty and server_found_in_list and not discard then
+      discard = discard or server_from_list.player_count == 0
+    end
     if filter_online and not discard then
       discard = discard or not server_found_in_list
     end
@@ -75,9 +80,10 @@ local function update_filtered_servers(m)
   local kissui = kissui or m
   local term = ffi.string(search_buffer)
   local filter_notfull = filter_servers_notfull[0]
+  local filter_notempty = filter_servers_notempty[0]
   local filter_online = filter_servers_online[0]
 
-  filtered_servers = filter_server_list(M.server_list, term, filter_notfull, filter_online, m)
+  filtered_servers = filter_server_list(M.server_list, term, filter_notfull, filter_notempty, filter_online, m)
   --filtered_favorite_servers = filter_server_list(kissui.tabs.favorites.favorite_servers, term, filter_notfull, filter_online, m)
 end
 
@@ -104,6 +110,11 @@ local function draw_list_search_and_filters(show_online_filter)
   imgui.SameLine()
 
   imgui.Checkbox("Not Full", filter_servers_notfull)
+
+  imgui.SameLine()
+
+  imgui.Checkbox("Not Empty", filter_servers_notempty)
+
   if show_online_filter then
     imgui.SameLine()
     imgui.Checkbox("Online", filter_servers_online)
@@ -136,15 +147,17 @@ local function draw(dt)
   -- Search update
   local search_text = ffi.string(search_buffer)
   local filter_notfull = filter_servers_notfull[0]
+  local filter_notempty = filter_servers_notempty[0]
   local filter_online = filter_servers_online[0]
 
-  if search_text ~= prev_search_text or filter_notfull ~= prev_filter_notfull or filter_online ~= prev_filter_online then
+  if search_text ~= prev_search_text or filter_notfull ~= prev_filter_notfull or filter_notempty ~= prev_filter_notempty or filter_online ~= prev_filter_online then
     time_since_filters_change = 0
     filter_queued = true
   end
 
   prev_search_text = search_text
   prev_filter_notfull = filter_notfull
+  prev_filter_notempty = filter_notempty
   prev_filter_online = filter_online
 
   if time_since_filters_change > 0.5 and filter_queued then
