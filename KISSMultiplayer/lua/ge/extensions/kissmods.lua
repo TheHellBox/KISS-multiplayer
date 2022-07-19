@@ -26,9 +26,22 @@ local function deactivate_mod(name)
   core_vehicles.clearCache()
 end
 
+local function is_app_mod(path)
+  local pattern = "([^/]+)%.zip$"
+  if string.sub(path, -4) ~= ".zip" then
+      pattern = "([^/]+)$"
+  end
+  
+  path = string.match(path, pattern)
+  local mod = core_modmanager.getModDB(path)
+  if not mod then return false end
+
+  return mod.modType == "app"
+end
+
 local function deactivate_all_mods()
   for k, mod_path in pairs(FS:findFiles("/mods/", "*.zip", 1000)) do
-    if not is_special_mod(mod_path) then
+    if not is_special_mod(mod_path) or not is_app_mod(mod_path) then
       FS:unmount(string.lower(mod_path))
     end
   end
@@ -36,7 +49,9 @@ local function deactivate_all_mods()
     FS:unmount(mod_path)
   end
   for k, mod_path in pairs(FS:directoryList("/mods/unpacked/", "*", 1)) do
-    FS:unmount(mod_path.."/")
+    if not is_app_mod(mod_path) then
+      FS:unmount(mod_path.."/")
+    end
   end
   core_vehicles.clearCache()
 end
