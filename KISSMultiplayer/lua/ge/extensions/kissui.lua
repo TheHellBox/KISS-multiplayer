@@ -29,6 +29,7 @@ M.COLOR_YELLOW = {r = 1, g = 1, b = 0}
 M.COLOR_RED = {r = 1, g = 0, b = 0}
 
 M.force_disable_nametags = false
+M.menu_visible = true
 
 local gui_module = require("ge/extensions/editor/api/gui")
 M.gui = {setupEditorGuiTheme = nop}
@@ -93,7 +94,10 @@ end
 
 local function onUpdate(dt)
   if getMissionFilename() ~= '' and not vehiclemanager.is_network_session then
-    return
+    be:queueJS("if (document.getElementsByClassName('mainmenu')[0]) { bngApi.engineLua('kissui.menu_visible = true') } else { bngApi.engineLua('kissui.menu_visible = false') }")
+    if not M.menu_visible then
+      return
+    end
   end
   main_window.draw(dt)
   M.chat.draw()
