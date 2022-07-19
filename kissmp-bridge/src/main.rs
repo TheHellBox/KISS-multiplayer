@@ -10,7 +10,7 @@ use tokio::net::{TcpListener, TcpStream};
 #[macro_use]
 extern crate log;
 
-const SERVER_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+const SERVER_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
 const CONNECTED_BYTE: &[u8] = &[1];
 
 #[derive(Debug, Clone)]
