@@ -30,3 +30,6 @@ ifcfg = "0.1.2"
 async-ctrlc = "1.2"
 ipnetwork = "0.18"
 log = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+steamlocate = "1.0"
