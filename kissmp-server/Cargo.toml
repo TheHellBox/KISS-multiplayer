@@ -30,3 +30,6 @@ igd = { git = "https://github.com/stevefan1999-personal/rust-igd.git", rev = "c2
 ifcfg = "0.1"
 async-ctrlc = "1.2"
 log = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+steamlocate = "1.0"
