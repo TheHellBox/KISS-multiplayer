@@ -83,17 +83,13 @@ local function mount_mods(list)
 end
 
 local function update_status(mod)
-  local search_results = FS:findFiles("/kissmp_mods/", mod.name, 1)
-  local search_results2 = FS:findFiles("/mods/", mod.name, 99)
-
-  for _, v in pairs(search_results2) do
-    table.insert(search_results, v)
-  end
+  local file_path = FS:findFiles("/kissmp_mods/", mod.name, 1)[1] or
+                    FS:findFiles("/mods/", mod.name, 99)[1]
   
-  if not search_results[1] then
+  if not file_path then
     mod.status = "missing"
   else
-    local file = io.open(search_results[1])
+    local file = io.open(file_path)
     local len = file:seek("end")
     if len ~= mod.size then
       mod.status = "different"
@@ -123,18 +119,13 @@ local function set_mods_list(mod_list)
   end
 end
 
-local function open_file(name)
-  if not string.endswith(name, ".zip") then return end
+local function get_mod_directory()
   if not FS:directoryExists("/kissmp_mods/") then
     FS:directoryCreate("/kissmp_mods/")
   end
-  local path = "/kissmp_mods/"..name
-  print(path)
-  local file = io.open(path, "wb")
-  return file
+  return FS:getFileRealPath("/kissmp_mods/")
 end
 
-M.open_file = open_file
 M.check_mods = check_mods
 M.is_special_mod = is_special_mod
 M.mount_mod = mount_mod
@@ -143,5 +134,6 @@ M.deactivate_all_mods = deactivate_all_mods
 M.set_mods_list = set_mods_list
 M.update_status_all = update_status_all
 M.update_status = update_status
+M.get_mod_directory = get_mod_directory
 
 return M
