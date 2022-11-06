@@ -28,7 +28,7 @@ impl Default for Config {
             max_vehicles_per_client: 3,
             port: 3698,
             show_in_server_list: false,
-            upnp_enabled: false,
+            upnp_enabled: true,
             server_identifier: rand_string(),
             mods: None,
         }
