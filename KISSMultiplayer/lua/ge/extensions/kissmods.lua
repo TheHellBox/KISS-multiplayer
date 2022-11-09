@@ -93,14 +93,12 @@ local function update_status(mod)
   if not search_results[1] then
     mod.status = "missing"
   else
-    local file = io.open(search_results[1])
-    local len = file:seek("end")
+    local len = FS:stat(search_results[1]).filesize
     if len ~= mod.size then
       mod.status = "different"
     else
       mod.status = "ok"
     end
-    io.close(file)
   end
 end
 
