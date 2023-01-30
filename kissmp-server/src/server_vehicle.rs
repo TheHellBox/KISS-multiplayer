@@ -33,22 +33,35 @@ impl crate::Server {
                 (id, client_id),
             );
         });
-    }
-    pub async fn reset_vehicle(&mut self, server_id: u32, client_id: Option<u32>) {
+    }    
+    pub async fn reset_vehicle(&mut self, data: VehicleReset, client_id: Option<u32>) {
         for (cid, client) in &mut self.connections {
             if client_id.is_some() && *cid == client_id.unwrap() {
                 continue;
             }
             let _ = client
                 .ordered
-                .send(ServerCommand::ResetVehicle(server_id))
+                .send(ServerCommand::ResetVehicle(data.clone()))
                 .await;
         }
+
+        if let Some(vehicle) = self.vehicles.get_mut(&data.vehicle_id) {
+            vehicle.data.position = data.position;
+            vehicle.data.rotation = data.rotation;
+            vehicle.transform = Some(Transform {
+                position: data.position,
+                rotation:  data.rotation,
+                angular_velocity: [0.0, 0.0, 0.0],
+                velocity: [0.0, 0.0, 0.0]
+            });
+        }
+        let _ = self.update_lua_vehicles();
+        
         self.lua.context(|lua_ctx| {
             let _ = crate::lua::run_hook::<(u32, Option<u32>), ()>(
                 lua_ctx,
                 String::from("OnVehicleResetted"),
-                (server_id, client_id),
+                (data.vehicle_id, client_id),
             );
         });
     }
