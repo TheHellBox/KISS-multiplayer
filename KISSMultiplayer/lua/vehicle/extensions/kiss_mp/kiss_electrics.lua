@@ -70,7 +70,34 @@ local ignored_keys = {
   escActive = true,
   brakelights = true,
   radiatorFanSpin = true,
-  smoothShiftLogicAV = true
+  smoothShiftLogicAV = true,
+  accXSmooth = true,
+  accYSmooth = true,
+  accZSmooth = true,
+  trip = true,
+  odometer = true,
+  steeringUnassisted = true,
+  boost = true,
+  superchargerBoost = true,
+  gearModeIndex = true,
+  hPatternAxisX = true,
+  hPatternAxisY = true,
+  tirePressureControl_activeGroupPressure = true,
+  reverse_wigwag_L = true,
+  reverse_wigwag_R = true,
+  highbeam_wigwag_L = true,
+  highbeam_wigwag_R = true,
+  lowhighbeam_signal_L = true,
+  lowhighbeam_signal_R = true,
+  brakelight_signal_L = true,
+  brakelight_signal_R = true,
+  isYCBrakeActive = true,
+  isTCBrakeActive = true,
+  isABSBrakeActive = true,
+  dseWarningPulse = true,
+  dseRollingOver = true,
+  dseRollOverStopped = true,
+  dseCrashStopped = true
 }
 
 local function ignore_key(key)
@@ -190,10 +217,10 @@ local function kissInit()
     ignored_keys["led"..tostring(i)] = true
   end
  
-  -- Ignore lightbar electrics, and jato fuel electrics
+  -- Ignore lightbar, jato fuel, and beacon electrics
   if v.data.controller and type(v.data.controller) == 'table' then 
     for _, controller in pairs(v.data.controller) do
-      if controller.name == "lightbar" and controller.modes then
+      if controller.fileName == "lightbar" and controller.modes then
           local modes = tableFromHeaderTable(controller.modes)
           for _, vm in pairs(modes) do
             local configEntries = tableFromHeaderTable(deepcopy(vm.config))
@@ -201,8 +228,10 @@ local function kissInit()
               ignored_keys[j.electric] = true
             end 
           end
-      elseif controller.name == "jato" then
+      elseif controller.fileName == "jato" then
         ignored_keys["jatofuel"] = true
+      elseif controller.fileName == "beaconSpin" and controller.electricsName then
+        ignored_keys[controller.electricsName] = true
       end
     end
   end
