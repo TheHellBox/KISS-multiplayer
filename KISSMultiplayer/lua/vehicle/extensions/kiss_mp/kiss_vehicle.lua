@@ -72,8 +72,8 @@ local function update_transform_info()
   local p = obj:getPosition()
   local input = {
     vehicle_id = obj:getID() or 0,
-    throttle_input = electrics.values.throttle_input or 0,
-    brake_input = electrics.values.brake_input or 0,
+    throttle_input = electrics.values.throttle or 0,
+    brake_input = electrics.values.brake or 0,
     clutch = electrics.values.clutch_input or 0,
     parkingbrake = electrics.values.parkingbrake_input or 0,
     steering_input = electrics.values.steering_input or 0,
