@@ -103,7 +103,7 @@ end
 local function kissUpdateOwnership(owned)
   ownership = owned
   if owned then return end
-  if gearbox and gearbox_is_manual then
+  if gearbox and gearbox_is_manual_type then
     gearbox.gearDamageThreshold = math.huge
   end
 end
