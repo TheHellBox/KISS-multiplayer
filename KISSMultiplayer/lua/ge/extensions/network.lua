@@ -1,6 +1,6 @@
 local M = {}
 
-M.VERSION_STR = "0.5.0"
+M.VERSION_STR = "0.6.0"
 
 M.downloads = {}
 M.downloading = false
@@ -269,7 +269,7 @@ local function connect(addr, player_name)
     ClientInfo = {
       name = player_name,
       secret = generate_secret(server_info.server_identifier),
-      client_version = {0, 5}
+      client_version = {0, 6}
     }
   }
   send_data(client_info, true)
