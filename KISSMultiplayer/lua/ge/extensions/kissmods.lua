@@ -41,7 +41,7 @@ end
 
 local function deactivate_all_mods()
   for k, mod_path in pairs(FS:findFiles("/mods/", "*.zip", 1000)) do
-    if not is_special_mod(mod_path) or not is_app_mod(mod_path) then
+    if not is_special_mod(mod_path) and not is_app_mod(mod_path) then
       FS:unmount(string.lower(mod_path))
     end
   end
