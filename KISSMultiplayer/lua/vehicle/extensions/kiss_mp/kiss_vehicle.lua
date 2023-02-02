@@ -11,7 +11,7 @@ local node_pos_thresh_sqr = node_pos_thresh * node_pos_thresh
 
 M.test_quat = quat(0.707, 0, 0, 0.707)
 
-local function kissInit()
+local function onExtensionLoaded()
   local force = obj:getPhysicsFPS()
 
   local ref = {
@@ -70,10 +70,17 @@ end
 local function update_transform_info()
   local r = quat(obj:getRotation())
   local p = obj:getPosition()
+  
+  local throttle_input = electrics.values.throttle_input or 0
+  local brake_input = electrics.values.brake_input or 0
+  if electrics.values.gearboxMode == "arcade" and electrics.values.gearIndex < 0 then
+    throttle_input, brake_input = brake_input, throttle_input
+  end
+  
   local input = {
     vehicle_id = obj:getID() or 0,
-    throttle_input = electrics.values.throttle or 0,
-    brake_input = electrics.values.brake or 0,
+    throttle_input = throttle_input,
+    brake_input =  brake_input,
     clutch = electrics.values.clutch_input or 0,
     parkingbrake = electrics.values.parkingbrake_input or 0,
     steering_input = electrics.values.steering_input or 0,
@@ -141,7 +148,7 @@ M.update_transform_info = update_transform_info
 M.apply_linear_velocity_ang_torque = apply_linear_velocity_ang_torque
 M.update_eligible_nodes = update_eligible_nodes
 M.apply_linear_velocity = apply_linear_velocity
-M.kissInit = kissInit
+M.onExtensionLoaded = onExtensionLoaded
 M.set_reference = set_reference
 M.save_state = save_state
 M.send_vehicle_config = send_vehicle_config
