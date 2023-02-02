@@ -13,7 +13,6 @@ impl crate::Server {
         if let Some(vehicle) = self.vehicles.get(&id) {
             if let Some(owner_id) = vehicle.data.owner {
                 if let Some(client_vehicles) = self.vehicle_ids.get_mut(&owner_id) {
-                    println!("{}", "Removed from client_vehicles successfuly");
                     client_vehicles.remove(&vehicle.data.in_game_id);
                 }
             }
