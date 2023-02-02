@@ -11,6 +11,13 @@ pub use vehicle_meta::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VehicleReset {
+    pub vehicle_id: u32,
+    pub position: [f32; 3],
+    pub rotation: [f32; 4],
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VehicleData {
     pub parts_config: String,
     pub in_game_id: u32,

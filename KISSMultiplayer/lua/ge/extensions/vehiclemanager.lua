@@ -355,25 +355,25 @@ local function remove_vehicle(data)
 end
 
 local function reset_vehicle(data)
-  local id = data
+  local id = data.vehicle_id
   id = M.id_map[id] or -1
+  
+  local position = data.position
+  local rotation = data.rotation
+  
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
-  local position = vehicle:getPosition()
   if vehicle then
     vehicle:reset()
-    if kisstransform.local_transforms[id] then
-      local rotation = kisstransform.local_transforms[id].rotation
-      vehicle:setPositionRotation(
-        position.x,
-        position.y,
-        position.z,
-        rotation[1],
-        rotation[2],
-        rotation[3],
-        rotation[4]
-      )
-    end
+    vehicle:setPositionRotation(
+      position[1],
+      position[2],
+      position[3],
+      rotation[1],
+      rotation[2],
+      rotation[3],
+      rotation[4]
+    )
   end
 end
 
@@ -521,9 +521,14 @@ end
 local function onVehicleResetted(id)
   if not network.connection.connected then return end
   if M.ownership[id] then
+    local vehicle = be:getObjectByID(id)
+    local rotation = quat(vehicle:getRefNodeMatrix():toQuatF())
+    local position = vec3(vehicle:getPosition())
+    local data = { vehicle_id = id, position = {position.x, position.y, position.z}, rotation = {rotation.x, rotation.y, rotation.z, rotation.w}}
+    
     network.send_data(
       {
-        ResetVehicle = id,
+        ResetVehicle = data,
       },
       true
     )
