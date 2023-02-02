@@ -2,16 +2,19 @@ local M = {}
 
 local mainController = nil
 local gearbox = nil
-local gearbox_is_manual_type = false
+
 local gearbox_is_sequential = false
 local vehicle_is_electric = false
+local gearbox_is_manual = false
 
+local last_requseted_gear = nil
 local sequential_lock = false
 local ownership = false
+local ownership_known = false
 local cooldown_timer = 0
 
 local function set_gear_indices(indices)
-  if mainController and cooldown_timer < 0 then
+  if mainController and cooldown_timer <= 0 then
     local index = indices[1]
     local canShift = true
     
@@ -25,6 +28,7 @@ local function set_gear_indices(indices)
     
     if canShift then
       mainController.shiftToGearIndex(index, true) -- true for ignoring sequential bounds
+      last_requseted_gear = index
     end
   end
 end
@@ -34,7 +38,7 @@ local function get_gear_indices()
   
   -- convert gearIndex to values that shiftToGearIndex accepts
   if index == nil then index = 0 end
-  if not gearbox_is_manual_type then
+  if not gearbox_is_sequential and not gearbox_is_manual then
     if type(electrics.values.gear) == 'string' and string.sub(electrics.values.gear, 1, 1) == 'M' then
       index = 6 -- M1 is the best we can do
     elseif electrics.values.gear == "P" then     
@@ -64,7 +68,7 @@ local function apply(data)
 end
 
 local function updateGFX(dt)
-  if ownership then return end
+  if not ownership_known or ownership then return end
   if cooldown_timer > 0 then
     cooldown_timer = cooldown_timer - clamp(dt, 0, 0.02)
     return
@@ -72,6 +76,11 @@ local function updateGFX(dt)
   if sequential_lock and electrics.values.gearIndex == 0 then
     sequential_lock = false
   end
+  if gearbox_is_manual and last_requseted_gear ~= 0 and electrics.values.gearIndex == 0 then
+    electrics.values.clutchOverride = 1
+  else
+    electrics.values.clutchOverride = nil
+  end  
 end
 
 local function onReset()
@@ -79,7 +88,7 @@ local function onReset()
   sequential_lock = false
 end
 
-local function kissInit()
+local function onExtensionLoaded()
   mainController = controller.mainController
   vehicle_is_electric = tableSize(powertrain.getDevicesByType("electricMotor")) > 0
   gearbox = powertrain.getDevice("gearbox")
@@ -95,15 +104,16 @@ local function kissInit()
   end
   
   if gearbox then
-    gearbox_is_manual_type = (gearbox.type == "manualGearbox" or gearbox.type == "sequentialGearbox")
+    gearbox_is_manual = gearbox.type == "manualGearbox"
     gearbox_is_sequential = gearbox.type == "sequentialGearbox"
   end
 end
 
 local function kissUpdateOwnership(owned)
   ownership = owned
+  ownership_known = true
   if owned then return end
-  if gearbox and gearbox.type == "manualGearbox" then
+  if gearbox and gearbox_is_manual then
     gearbox.gearDamageThreshold = math.huge
   end
 end
@@ -111,9 +121,9 @@ end
 M.send = send
 M.apply = apply
 M.get_gearbox_data = get_gearbox_data
+M.onExtensionLoaded = onExtensionLoaded
 M.updateGFX = updateGFX
 M.onReset = onReset
-M.kissInit = kissInit
 M.kissUpdateOwnership = kissUpdateOwnership
 
 return M
