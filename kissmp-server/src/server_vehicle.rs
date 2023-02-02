@@ -10,10 +10,10 @@ pub struct Vehicle {
 
 impl crate::Server {
     pub async fn remove_vehicle(&mut self, id: u32, client_id: Option<u32>) {
-        let vehicle = self.vehicles.get(&id);
-        if let Some(client_id) = client_id {
-            if let Some(client_vehicles) = self.vehicle_ids.get_mut(&client_id) {
-                if let Some(vehicle) = vehicle {
+        if let Some(vehicle) = self.vehicles.get(&id) {
+            if let Some(owner_id) = vehicle.data.owner {
+                if let Some(client_vehicles) = self.vehicle_ids.get_mut(&owner_id) {
+                    println!("{}", "Removed from client_vehicles successfuly");
                     client_vehicles.remove(&vehicle.data.in_game_id);
                 }
             }
