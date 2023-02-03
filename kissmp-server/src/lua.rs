@@ -157,7 +157,7 @@ impl rlua::UserData for Vehicle {
 struct LuaConnection {
     id: u32,
     name: String,
-    current_vehicle: u32,
+    current_vehicle: Option<u32>,
     ip: String,
     secret: String,
 }
