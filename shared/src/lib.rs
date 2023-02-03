@@ -7,13 +7,14 @@ use std::io::Write;
 use chrono::Local;
 pub use log::{info, warn, error};
 
-pub const VERSION: (u32, u32) = (0, 5);
-pub const VERSION_STR: &str = "0.5.0";
+pub const VERSION: (u32, u32) = (0, 6);
+pub const VERSION_STR: &str = "0.6.0";
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientInfoPrivate {
     pub name: String,
     pub secret: String,
+    pub steamid64: Option<String>,
     pub client_version: (u32, u32),
 }
 
@@ -21,7 +22,7 @@ pub struct ClientInfoPrivate {
 pub struct ClientInfoPublic {
     pub name: String,
     pub id: u32,
-    pub current_vehicle: u32,
+    pub current_vehicle: Option<u32>,
     pub ping: u32,
     pub hide_nametag: bool,
 }
@@ -52,7 +53,7 @@ impl Default for ClientInfoPublic {
         Self {
             name: String::from("Unknown"),
             id: 0,
-            current_vehicle: 0,
+            current_vehicle: None,
             ping: 0,
             hide_nametag: false,
         }
@@ -66,7 +67,7 @@ pub enum ClientCommand {
     VehicleData(VehicleData),
     GearboxUpdate(Gearbox),
     RemoveVehicle(u32),
-    ResetVehicle(u32),
+    ResetVehicle(VehicleReset),
     Chat(String),
     RequestMods(Vec<String>),
     VehicleMetaUpdate(VehicleMeta),
@@ -89,7 +90,7 @@ pub enum ServerCommand {
     VehicleUpdate(VehicleUpdate),
     VehicleSpawn(VehicleData),
     RemoveVehicle(u32),
-    ResetVehicle(u32),
+    ResetVehicle(VehicleReset),
     Chat(String, Option<u32>),
     TransferFile(String),
     SendLua(String),

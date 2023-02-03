@@ -77,9 +77,11 @@ local function draw()
 
     if not set_column_offset then
       -- Imgui doesn't have a "first time" method for this, so we track it ourselves..
-      imgui.SetColumnOffset(1, upper_content_width - 175)
+      local column_position = upper_content_width - 175
+      if column_position > 0 then
+        imgui.SetColumnOffset(1, column_position)
+      end
       set_column_offset = true
-
     end
 
     -- Draw messages

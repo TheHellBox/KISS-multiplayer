@@ -1,6 +1,6 @@
 local M = {}
 
-M.VERSION_STR = "0.5.0"
+M.VERSION_STR = "0.6.0"
 
 M.downloads = {}
 M.downloading = false
@@ -265,11 +265,17 @@ local function connect(addr, player_name)
   M.connection.server_info = server_info
   M.connection.tickrate = server_info.tickrate
 
+  local steamid64 = nil
+  if Steam and Steam.isWorking then
+    steamid64 = Steam.getAccountIDStr() ~= "0" and Steam.getAccountIDStr() or nil
+  end
+
   local client_info = {
     ClientInfo = {
       name = player_name,
       secret = generate_secret(server_info.server_identifier),
-      client_version = {0, 5}
+      steamid64 = steamid64,
+      client_version = {0, 6}
     }
   }
   send_data(client_info, true)

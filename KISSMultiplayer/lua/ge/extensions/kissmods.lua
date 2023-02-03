@@ -41,7 +41,7 @@ end
 
 local function deactivate_all_mods()
   for k, mod_path in pairs(FS:findFiles("/mods/", "*.zip", 1000)) do
-    if not is_special_mod(mod_path) or not is_app_mod(mod_path) then
+    if not is_special_mod(mod_path) and not is_app_mod(mod_path) then
       FS:unmount(string.lower(mod_path))
     end
   end
@@ -93,14 +93,12 @@ local function update_status(mod)
   if not search_results[1] then
     mod.status = "missing"
   else
-    local file = io.open(search_results[1])
-    local len = file:seek("end")
+    local len = FS:stat(search_results[1]).filesize
     if len ~= mod.size then
       mod.status = "different"
     else
       mod.status = "ok"
     end
-    io.close(file)
   end
 end
 

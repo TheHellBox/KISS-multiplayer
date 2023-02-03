@@ -337,7 +337,7 @@ impl Server {
             let client_info_public = ClientInfoPublic {
                 name: client_info.name.clone(),
                 id: id,
-                current_vehicle: 0,
+                current_vehicle: None,
                 ping: 0,
                 hide_nametag: false,
             };
