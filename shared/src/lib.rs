@@ -14,6 +14,7 @@ pub const VERSION_STR: &str = "0.6.0";
 pub struct ClientInfoPrivate {
     pub name: String,
     pub secret: String,
+    pub steamid64: Option<String>,
     pub client_version: (u32, u32),
 }
 
