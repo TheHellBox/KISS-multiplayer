@@ -22,7 +22,7 @@ pub struct ClientInfoPrivate {
 pub struct ClientInfoPublic {
     pub name: String,
     pub id: u32,
-    pub current_vehicle: u32,
+    pub current_vehicle: Option<u32>,
     pub ping: u32,
     pub hide_nametag: bool,
 }
@@ -53,7 +53,7 @@ impl Default for ClientInfoPublic {
         Self {
             name: String::from("Unknown"),
             id: 0,
-            current_vehicle: 0,
+            current_vehicle: None,
             ping: 0,
             hide_nametag: false,
         }
