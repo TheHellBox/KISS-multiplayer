@@ -191,7 +191,6 @@ local function apply_diff(data)
 end
 
 local function onExtensionLoaded()
-  print("kiss_electrics onExtensionLoaded")
   -- Ignore powertrain electrics
   local devices = powertrain.getDevices()
   for _, device in pairs(devices) do
