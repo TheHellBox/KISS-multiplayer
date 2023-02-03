@@ -10,7 +10,7 @@ local function attach_coupler(node)
 end
 
 local function detach_coupler(node)
-  obj:detachCoupler(node)
+  obj:detachCoupler(node, 0)
   ignore_detachment = true
 end
 

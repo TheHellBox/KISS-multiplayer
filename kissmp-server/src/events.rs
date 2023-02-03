@@ -156,9 +156,11 @@ impl Server {
                             self.remove_vehicle(server_id, Some(client_id)).await;
                         }
                     }
-                    ResetVehicle(id) => {
-                        if let Some(server_id) = self.get_server_id_from_game_id(client_id, id) {
-                            self.reset_vehicle(server_id, Some(client_id)).await;
+                    ResetVehicle(data) => {
+                        if let Some(server_id) = self.get_server_id_from_game_id(client_id, data.vehicle_id) {
+                            let mut data = data.clone();
+                            data.vehicle_id = server_id;
+                            self.reset_vehicle(data, Some(client_id)).await;
                         }
                     }
                     RequestMods(files) => {
@@ -236,11 +238,7 @@ impl Server {
                     }
                     VehicleChanged(id) => {
                         if let Some(server_id) = self.get_server_id_from_game_id(client_id, id) {
-                            self.connections
-                                .get_mut(&client_id)
-                                .unwrap()
-                                .client_info_public
-                                .current_vehicle = server_id;
+                            self.set_current_vehicle(client_id, server_id).await;
                         }
                     }
                     CouplerAttached(event) => {

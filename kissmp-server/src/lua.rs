@@ -12,7 +12,6 @@ pub enum LuaCommand {
     ChatMessage(u32, String),
     ChatMessageBroadcast(String),
     RemoveVehicle(u32),
-    ResetVehicle(u32),
     SendLua(u32, String),
     SendVehicleLua(u32, String),
     Kick(u32, String),
@@ -97,7 +96,13 @@ impl rlua::UserData for Vehicle {
             let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
             sender
                 .0
-                .send(LuaCommand::ResetVehicle(this.data.server_id))
+                .send(LuaCommand::SendLua(
+                    this.data.owner.unwrap_or(0),
+                    format!(
+                        "be:getObjectByID({}):reset()",
+                        this.data.in_game_id
+                    ),
+                ))
                 .unwrap();
             Ok(())
         });
@@ -276,7 +281,6 @@ impl Server {
                 RemoveVehicle(id) => {
                     self.remove_vehicle(id, None).await;
                 }
-                ResetVehicle(id) => self.reset_vehicle(id, None).await,
                 SendLua(id, lua) => {
                     if let Some(conn) = self.connections.get_mut(&id) {
                         conn.send_lua(lua.clone()).await;

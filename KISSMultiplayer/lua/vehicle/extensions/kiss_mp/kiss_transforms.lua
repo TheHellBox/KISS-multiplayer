@@ -134,7 +134,7 @@ local function set_target_transform(raw)
   M.received_transform.time_past = transform.time_past
 end
 
-local function kissInit()
+local function onExtensionLoaded()
   M.received_transform.position = vec3(obj:getPosition())
   M.target_transform.position = vec3(obj:getPosition())
   M.received_transform.rotation = quat(obj:getRotation())
@@ -148,7 +148,7 @@ end
 
 M.set_target_transform = set_target_transform
 M.update = update
-M.kissInit = kissInit
+M.onExtensionLoaded = onExtensionLoaded
 M.onReset = onReset
 
 return M
