@@ -14,6 +14,9 @@ Vehicle objects are stored in the global table `vehicles` and a specific vehicle
   - Returns: null
 - reset()
   - Returns: null
+- setPosition(x, y, z)
+	- Sets vehicle position without reset
+	- Returns: null
 - setPositionRotation(x, y, z, xr, yr, zr, w)
   - **Note:** Rotation is in quaternion form.
   - Returns: null

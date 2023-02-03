@@ -43,12 +43,6 @@ end
 
 local function try_rude()
   local distance =  M.target_transform.position:distance(vec3(obj:getPosition()))
-  if distance > 15 then
-    local p = M.target_transform.position
-    local r = M.target_transform.rotation
-    obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionRotation("..p.x..", "..p.y..", "..p.z..", "..r.x..", "..r.y..", "..r.z..", "..r.w..")")
-    return true
-  end
   if distance > 6 then
     local p = M.target_transform.position
     obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionNoPhysicsReset(Point3F("..p.x..", "..p.y..", "..p.z.."))")
@@ -140,7 +134,7 @@ local function set_target_transform(raw)
   M.received_transform.time_past = transform.time_past
 end
 
-local function kissInit()
+local function onExtensionLoaded()
   M.received_transform.position = vec3(obj:getPosition())
   M.target_transform.position = vec3(obj:getPosition())
   M.received_transform.rotation = quat(obj:getRotation())
@@ -154,7 +148,7 @@ end
 
 M.set_target_transform = set_target_transform
 M.update = update
-M.kissInit = kissInit
+M.onExtensionLoaded = onExtensionLoaded
 M.onReset = onReset
 
 return M

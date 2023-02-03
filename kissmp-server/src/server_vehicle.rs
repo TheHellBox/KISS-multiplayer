@@ -10,11 +10,13 @@ pub struct Vehicle {
 
 impl crate::Server {
     pub async fn remove_vehicle(&mut self, id: u32, client_id: Option<u32>) {
-        let vehicle = self.vehicles.get(&id);
-        if let Some(client_id) = client_id {
-            if let Some(client_vehicles) = self.vehicle_ids.get_mut(&client_id) {
-                if let Some(vehicle) = vehicle {
+        if let Some(vehicle) = self.vehicles.get(&id) {
+            if let Some(owner_id) = vehicle.data.owner {
+                if let Some(client_vehicles) = self.vehicle_ids.get_mut(&owner_id) {
                     client_vehicles.remove(&vehicle.data.in_game_id);
+                    if client_vehicles.len() == 0 {
+                        self.set_current_vehicle(owner_id, None).await;
+                    }
                 }
             }
         }
@@ -26,6 +28,7 @@ impl crate::Server {
             }
             let _ = client.ordered.send(ServerCommand::RemoveVehicle(id)).await;
         }
+
         self.lua.context(|lua_ctx| {
             let _ = crate::lua::run_hook::<(u32, Option<u32>), ()>(
                 lua_ctx,
@@ -33,30 +36,44 @@ impl crate::Server {
                 (id, client_id),
             );
         });
-    }
-    pub async fn reset_vehicle(&mut self, server_id: u32, client_id: Option<u32>) {
+    }    
+    pub async fn reset_vehicle(&mut self, data: VehicleReset, client_id: Option<u32>) {
         for (cid, client) in &mut self.connections {
             if client_id.is_some() && *cid == client_id.unwrap() {
                 continue;
             }
             let _ = client
                 .ordered
-                .send(ServerCommand::ResetVehicle(server_id))
+                .send(ServerCommand::ResetVehicle(data.clone()))
                 .await;
         }
+
+        if let Some(vehicle) = self.vehicles.get_mut(&data.vehicle_id) {
+            vehicle.data.position = data.position;
+            vehicle.data.rotation = data.rotation;
+            vehicle.transform = Some(Transform {
+                position: data.position,
+                rotation:  data.rotation,
+                angular_velocity: [0.0, 0.0, 0.0],
+                velocity: [0.0, 0.0, 0.0]
+            });
+        }
+
+        let _ = self.update_lua_vehicles();
         self.lua.context(|lua_ctx| {
             let _ = crate::lua::run_hook::<(u32, Option<u32>), ()>(
                 lua_ctx,
                 String::from("OnVehicleResetted"),
-                (server_id, client_id),
+                (data.vehicle_id, client_id),
             );
         });
     }
 
-    pub async fn set_current_vehicle(&mut self, client_id: u32, vehicle_id: u32) {
-        let connection = self.connections.get_mut(&client_id).unwrap();
-        connection.client_info_public.current_vehicle = vehicle_id;
-        let _ = self.update_lua_connections();
+    pub async fn set_current_vehicle(&mut self, client_id: u32, vehicle_id: Option<u32>) {
+        if let Some(connection) = self.connections.get_mut(&client_id) {
+            connection.client_info_public.current_vehicle = vehicle_id;
+            let _ = self.update_lua_connections();
+        }
     }
 
     pub fn get_server_id_from_game_id(&self, client_id: u32, game_id: u32) -> Option<u32> {
@@ -101,9 +118,10 @@ impl crate::Server {
                 transform: None,
             },
         );
+
         let _ = self.update_lua_vehicles();
         if let Some(owner) = owner {
-            self.set_current_vehicle(owner, server_id).await;
+            self.set_current_vehicle(owner, Some(server_id)).await;
             self.lua.context(|lua_ctx| {
                 let _ = crate::lua::run_hook::<(u32, u32), ()>(
                     lua_ctx,

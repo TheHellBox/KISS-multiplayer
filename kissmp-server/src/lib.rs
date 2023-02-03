@@ -16,7 +16,7 @@ use server_vehicle::*;
 use shared::{ClientInfoPrivate, ClientInfoPublic, ServerCommand};
 use vehicle::*;
 
-use anyhow::Error;
+use anyhow::{Error, Context};
 use futures::FutureExt;
 use futures::{select, StreamExt, TryStreamExt};
 use quinn::{Certificate, CertificateChain, PrivateKey};
@@ -337,7 +337,7 @@ impl Server {
             let client_info_public = ClientInfoPublic {
                 name: client_info.name.clone(),
                 id: id,
-                current_vehicle: 0,
+                current_vehicle: None,
                 ping: 0,
                 hide_nametag: false,
             };
@@ -579,25 +579,48 @@ pub fn list_mods(
             continue;
         }
         if !path.exists() {
-            if !cfg!(unix) {
-                continue;
-            }
-            info!("File {:?} doesn't exists, attempting to replace windows path with most common proton prefix", path);
-            // Somewhat working fix for game returning mods with windows path
-            path = dirs::home_dir()
-                .unwrap()
-                .join(".steam/steam/steamapps/compatdata/284160/pfx/drive_c/")
-                .join(
-                    path.to_str()
-                        .unwrap()
-                        .to_string()
-                        .replace(r#"C:\"#, "")
-                        .replace(r#"\"#, "/"),
-                );
-            info!("{:?}", path);
-            if !path.exists() {
-                error!("Mod file {:?} not found", path);
-                continue;
+            #[cfg(not(unix))]
+            continue;
+            #[cfg(unix)]
+            {
+                use steamlocate::SteamDir;
+                use std::path::{Path, PathBuf};
+                
+                info!("Could not find {:?}, must be inside a Proton prefix", path);
+                let r: anyhow::Result<PathBuf> = {
+                    Ok(SteamDir::locate()
+                        .context("Could not find Steam installation")?
+                        .app(&284160)
+                        .context("Could not find BeamNG.Drive installation")?
+                        // /steamapps/common/BeamNG.drive/
+                        .path
+                        // /steamapps/common
+                        .parent()
+                        .context("Could not navigate to steamapps/common")?
+                        // /steamapps
+                        .parent()
+                        .context("Could not navigate to steamapps")?
+                        .join(Path::new("compatdata/284160/pfx/drive_c/"))
+                        .join(
+                            path.to_str()
+                                .unwrap()
+                                .to_string()
+                                .replace(r#"C:\"#, "")
+                                .replace(r#"\"#, "/")
+                        ))
+                };
+                match r {
+                    Ok(p) => {
+                        if !p.exists() {
+                            error!("Mod file {:?} not found", p);
+                            continue;
+                        }
+                    }
+                    Err(e) => {
+                        error!("{}", e);
+                        continue;
+                    }
+                }
             }
         }
         let file_name = path.file_name().unwrap().to_str().unwrap().to_string();

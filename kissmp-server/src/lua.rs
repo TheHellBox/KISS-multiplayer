@@ -12,7 +12,6 @@ pub enum LuaCommand {
     ChatMessage(u32, String),
     ChatMessageBroadcast(String),
     RemoveVehicle(u32),
-    ResetVehicle(u32),
     SendLua(u32, String),
     SendVehicleLua(u32, String),
     Kick(u32, String),
@@ -97,10 +96,34 @@ impl rlua::UserData for Vehicle {
             let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
             sender
                 .0
-                .send(LuaCommand::ResetVehicle(this.data.server_id))
+                .send(LuaCommand::SendLua(
+                    this.data.owner.unwrap_or(0),
+                    format!(
+                        "be:getObjectByID({}):reset()",
+                        this.data.in_game_id
+                    ),
+                ))
                 .unwrap();
             Ok(())
         });
+        methods.add_method(
+            "setPosition",
+            |lua_ctx, this, (x, y, z): (f32, f32, f32)| {
+                let globals = lua_ctx.globals();
+                let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
+                sender
+                    .0
+                    .send(LuaCommand::SendLua(
+                        this.data.owner.unwrap_or(0),
+                        format!(
+                            "be:getObjectByID({}):setPositionNoPhysicsReset(Point3F({}, {}, {}))",
+                            this.data.in_game_id, x, y, z
+                        ),
+                    ))
+                    .unwrap();
+                Ok(())
+            },
+        );
         methods.add_method(
             "setPositionRotation",
             |lua_ctx, this, (x, y, z, xr, yr, zr, w): (f32, f32, f32, f32, f32, f32, f32)| {
@@ -134,15 +157,17 @@ impl rlua::UserData for Vehicle {
 struct LuaConnection {
     id: u32,
     name: String,
-    current_vehicle: u32,
+    current_vehicle: Option<u32>,
     ip: String,
     secret: String,
+    steamid64: Option<String>
 }
 
 impl rlua::UserData for LuaConnection {
     fn add_methods<'lua, M: rlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("getIpAddr", |_, this, _: ()| Ok(this.ip.clone()));
         methods.add_method("getSecret", |_, this, _: ()| Ok(this.secret.clone()));
+        methods.add_method("getSteamID", |_, this, _: ()| Ok(this.steamid64.clone()));
         methods.add_method("getID", |_, this, _: ()| Ok(this.id));
         methods.add_method("getCurrentVehicle", |_, this, _: ()| {
             Ok(this.current_vehicle)
@@ -217,6 +242,7 @@ impl Server {
                     name: connection.client_info_public.name.clone(),
                     ip: connection.conn.remote_address().ip().to_string(),
                     secret: connection.client_info_private.secret.clone(),
+                    steamid64: connection.client_info_private.steamid64.clone(),
                 },
             );
         }
@@ -255,7 +281,6 @@ impl Server {
                 RemoveVehicle(id) => {
                     self.remove_vehicle(id, None).await;
                 }
-                ResetVehicle(id) => self.reset_vehicle(id, None).await,
                 SendLua(id, lua) => {
                     if let Some(conn) = self.connections.get_mut(&id) {
                         conn.send_lua(lua.clone()).await;
@@ -409,9 +434,9 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
                     Ok(LuaVehicleData(VehicleData {
                         parts_config,
                         in_game_id: 0,
-                        color: [color[0], color[1], color[2], color[3]],
-                        palete_0: [p0[0], p0[1], p0[2], p0[3]],
-                        palete_1: [p1[0], p1[1], p1[2], p1[3]],
+                        color: [color[0], color[1], color[2], color[3], color[4], color[5], color[6], color[7]],
+                        palete_0: [p0[0], p0[1], p0[2], p0[3], p0[4], p0[5], p0[6], p0[7]],
+                        palete_1: [p1[0], p1[1], p1[2], p1[3], p1[4], p1[5], p1[6], p1[7]],
                         plate: Some(plate),
                         name,
                         server_id: 0,
