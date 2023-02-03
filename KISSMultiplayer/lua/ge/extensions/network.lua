@@ -265,9 +265,9 @@ local function connect(addr, player_name)
   M.connection.server_info = server_info
   M.connection.tickrate = server_info.tickrate
 
-  local steamid64 = ""
+  local steamid64 = nil
   if Steam and Steam.isWorking then
-    steamid64 = Steam.getAccountIDStr()
+    steamid64 = Steam.getAccountIDStr() ~= "0" and Steam.getAccountIDStr() or nil
   end
 
   local client_info = {

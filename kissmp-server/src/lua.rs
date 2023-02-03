@@ -160,7 +160,7 @@ struct LuaConnection {
     current_vehicle: Option<u32>,
     ip: String,
     secret: String,
-    steamid64: String
+    steamid64: Option<String>
 }
 
 impl rlua::UserData for LuaConnection {
