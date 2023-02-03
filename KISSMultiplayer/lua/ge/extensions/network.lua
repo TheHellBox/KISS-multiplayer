@@ -11,6 +11,7 @@ local current_download = nil
 local socket = require("socket")
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
 local ping_send_time = 0
+local events = {}
 
 M.players = {}
 M.socket = socket
@@ -61,6 +62,7 @@ local function disconnect(data)
   M.connection.connected = false
   M.connection.tcp:close()
   M.players = {}
+  events = {}
   kissplayers.players = {}
   kissplayers.player_transforms = {}
   kissplayers.players_in_cars = {}
@@ -117,6 +119,21 @@ local function handle_lua(data)
   end
 end
 
+local function trigger_event(data)
+  local event = data[1]
+  local args = data[2]
+  if events[event] then
+    events[event](args)
+  end
+end
+
+local function register_event(event, callback)
+  if events[event] then
+    log("W", "network", "Event "..tostring(event).." is already registered!")
+  end
+  events[event] = callback
+end
+
 local function handle_vehicle_lua(data)
   local id = data[1]
   local lua = data[2]
@@ -153,6 +170,7 @@ local function onExtensionLoaded()
   message_handlers.ResetVehicle = vehiclemanager.reset_vehicle
   message_handlers.Chat = handle_chat
   message_handlers.SendLua = handle_lua
+  message_handlers.TriggerEvent = trigger_event
   message_handlers.PlayerInfoUpdate = handle_player_info
   message_handlers.VehicleMetaUpdate = vehiclemanager.update_vehicle_meta
   message_handlers.Pong = handle_pong
@@ -429,6 +447,7 @@ end
 M.get_client_id = get_client_id
 M.connect = connect
 M.disconnect = disconnect
+M.register_event = register_event
 M.cancel_download = cancel_download
 M.send_data = send_data
 M.onUpdate = onUpdate
