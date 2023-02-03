@@ -119,7 +119,7 @@ local function handle_lua(data)
   end
 end
 
-local function trigger_event(data)
+local function client_trigger_event(data)
   local event = data[1]
   local args = data[2]
   if events[event] then
@@ -170,7 +170,7 @@ local function onExtensionLoaded()
   message_handlers.ResetVehicle = vehiclemanager.reset_vehicle
   message_handlers.Chat = handle_chat
   message_handlers.SendLua = handle_lua
-  message_handlers.TriggerEvent = trigger_event
+  message_handlers.TriggerEvent = client_trigger_event
   message_handlers.PlayerInfoUpdate = handle_player_info
   message_handlers.VehicleMetaUpdate = vehiclemanager.update_vehicle_meta
   message_handlers.Pong = handle_pong
@@ -203,6 +203,14 @@ local function send_data(raw_data, reliable)
   end
   M.connection.tcp:send(string.char(reliable)..len)
   M.connection.tcp:send(data)
+end
+
+local function trigger_event(name, args)
+  if M.connection.connected then
+    send_data({
+      TriggerEvent = {name, args}
+    }, true)
+  end
 end
 
 local function sanitize_addr(addr)
@@ -448,6 +456,7 @@ M.get_client_id = get_client_id
 M.connect = connect
 M.disconnect = disconnect
 M.register_event = register_event
+M.trigger_event = trigger_event
 M.cancel_download = cancel_download
 M.send_data = send_data
 M.onUpdate = onUpdate

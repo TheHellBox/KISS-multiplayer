@@ -70,6 +70,7 @@ pub enum ClientCommand {
     ResetVehicle(VehicleReset),
     Chat(String),
     RequestMods(Vec<String>),
+    TriggerEvent(String, String),
     VehicleMetaUpdate(VehicleMeta),
     VehicleChanged(u32),
     CouplerAttached(CouplerAttached),
