@@ -195,26 +195,28 @@ local function onExtensionLoaded()
   local devices = powertrain.getDevices()
   for _, device in pairs(devices) do
     if device.electricsName and device.visualShaftAngle then
-      ignored_keys[device.electricsName] = true
+      ignore_key(device.electricsName)
     end
     if device.electricsThrottleName then 
-      ignored_keys[device.electricsThrottleName] = true
+      ignore_key(device.electricsThrottleName)
     end
     if device.electricsThrottleFactorName then
-      ignored_keys[device.electricsThrottleFactorName] = true
+      ignore_key(device.electricsThrottleFactorName)
     end
     if device.electricsClutchRatio1Name then
-      ignored_keys[device.electricsClutchRatio1Name] = true
+      ignore_key(device.electricsClutchRatio1Name)
     end
     if device.electricsClutchRatio2Name then
-      ignored_keys[device.electricsClutchRatio2Name] = true
+      ignore_key(device.electricsClutchRatio2Name)
     end
   end
 
+ -- Ignore common led electrics
   for i = 0, 10 do
-    ignored_keys["led"..tostring(i)] = true
+    ignore_key("led"..tostring(i))
   end
  
+  -- Ignore controller electrics
   if v.data.controller and type(v.data.controller) == 'table' then 
     for _, controller_data in pairs(v.data.controller) do
       if controller_data.fileName == "lightbar" and controller_data.modes then
@@ -223,15 +225,15 @@ local function onExtensionLoaded()
         for _, vm in pairs(modes) do
           local configEntries = tableFromHeaderTable(deepcopy(vm.config))
           for _, j in pairs(configEntries) do
-            ignored_keys[j.electric] = true
+            ignore_key(j.electric)
           end 
         end
       elseif controller_data.fileName == "jato" then
         -- ignore jato fuel
-        ignored_keys["jatofuel"] = true
+        ignore_key("jatofuel")
       elseif controller_data.fileName == "beaconSpin" and controller_data.electricsName then
         -- ignore beacon spin
-        ignored_keys[controller_data.electricsName] = true
+        ignore_key(controller_data.electricsName)
       elseif controller_data.fileName == "driveModes" and controller_data.modes then
         -- register handlers for syncing drive modes
         for _, vm in pairs(controller_data.modes) do
