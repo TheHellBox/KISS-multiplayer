@@ -258,7 +258,7 @@ local function onExtensionLoaded()
           end
         end
       elseif controller_data.fileName == "advancedCouplerControl" then
-        -- ignore electric sync for latches, but also keep track of them so we can shut/open doors
+        -- register handler for syncing advanced couplers
         local electric = controller_data.name .. "_notAttached"
         local coupler_control_controller = controller.getController(controller_data.name)
         electrics_handlers[electric] = function(v) update_advanced_coupler_state(coupler_control_controller, v) end
