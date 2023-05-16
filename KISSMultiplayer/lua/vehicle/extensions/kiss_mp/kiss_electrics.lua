@@ -179,6 +179,16 @@ local function set_drive_mode(electric_name, drive_mode_controller, desired_valu
   end
 end
 
+local function update_advanced_coupler_state(coupler_control_controller, value)
+  -- the value indicates "notattached"
+  local is_open = value > 0.5
+  if not is_open then
+    coupler_control_controller.tryAttachGroupImpulse()
+  else
+    coupler_control_controller.detachGroup()
+  end
+end
+
 local function apply_diff(data)
   local diff = jsonDecode(data)
   apply_diff_signals(diff)
@@ -246,6 +256,19 @@ local function onExtensionLoaded()
               end
             end
           end
+        end
+      elseif controller_data.fileName == "advancedCouplerControl" then
+        -- ignore electric sync for latches, but also keep track of them so we can shut/open doors
+        local electric = controller_data.name .. "_notAttached"
+        local coupler_control_controller = controller.getController(controller_data.name)
+        electrics_handlers[electric] = function(v) update_advanced_coupler_state(coupler_control_controller, v) end
+        
+        -- ignore the related couplers, we'll manage them now
+        for _, vn in pairs(tableFromHeaderTable(controller_data.couplerNodes)) do
+          local cid1 = beamstate.nodeNameMap[vn.cid1]
+          local cid2 = beamstate.nodeNameMap[vn.cid2]
+          kiss_couplers.ignore_coupler_node(cid1)
+          kiss_couplers.ignore_coupler_node(cid2)
         end
       end
     end
