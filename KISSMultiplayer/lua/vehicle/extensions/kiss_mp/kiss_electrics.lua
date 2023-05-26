@@ -179,6 +179,16 @@ local function set_drive_mode(electric_name, drive_mode_controller, desired_valu
   end
 end
 
+local function update_advanced_coupler_state(coupler_control_controller, value)
+  -- the value indicates "notattached"
+  local is_open = value > 0.5
+  if not is_open then
+    coupler_control_controller.tryAttachGroupImpulse()
+  else
+    coupler_control_controller.detachGroup()
+  end
+end
+
 local function apply_diff(data)
   local diff = jsonDecode(data)
   apply_diff_signals(diff)
@@ -195,26 +205,28 @@ local function onExtensionLoaded()
   local devices = powertrain.getDevices()
   for _, device in pairs(devices) do
     if device.electricsName and device.visualShaftAngle then
-      ignored_keys[device.electricsName] = true
+      ignore_key(device.electricsName)
     end
     if device.electricsThrottleName then 
-      ignored_keys[device.electricsThrottleName] = true
+      ignore_key(device.electricsThrottleName)
     end
     if device.electricsThrottleFactorName then
-      ignored_keys[device.electricsThrottleFactorName] = true
+      ignore_key(device.electricsThrottleFactorName)
     end
     if device.electricsClutchRatio1Name then
-      ignored_keys[device.electricsClutchRatio1Name] = true
+      ignore_key(device.electricsClutchRatio1Name)
     end
     if device.electricsClutchRatio2Name then
-      ignored_keys[device.electricsClutchRatio2Name] = true
+      ignore_key(device.electricsClutchRatio2Name)
     end
   end
 
+ -- Ignore common led electrics
   for i = 0, 10 do
-    ignored_keys["led"..tostring(i)] = true
+    ignore_key("led"..tostring(i))
   end
  
+  -- Ignore controller electrics
   if v.data.controller and type(v.data.controller) == 'table' then 
     for _, controller_data in pairs(v.data.controller) do
       if controller_data.fileName == "lightbar" and controller_data.modes then
@@ -223,15 +235,15 @@ local function onExtensionLoaded()
         for _, vm in pairs(modes) do
           local configEntries = tableFromHeaderTable(deepcopy(vm.config))
           for _, j in pairs(configEntries) do
-            ignored_keys[j.electric] = true
+            ignore_key(j.electric)
           end 
         end
       elseif controller_data.fileName == "jato" then
         -- ignore jato fuel
-        ignored_keys["jatofuel"] = true
+        ignore_key("jatofuel")
       elseif controller_data.fileName == "beaconSpin" and controller_data.electricsName then
         -- ignore beacon spin
-        ignored_keys[controller_data.electricsName] = true
+        ignore_key(controller_data.electricsName)
       elseif controller_data.fileName == "driveModes" and controller_data.modes then
         -- register handlers for syncing drive modes
         for _, vm in pairs(controller_data.modes) do
@@ -244,6 +256,19 @@ local function onExtensionLoaded()
               end
             end
           end
+        end
+      elseif controller_data.fileName == "advancedCouplerControl" then
+        -- register handler for syncing advanced couplers
+        local electric = controller_data.name .. "_notAttached"
+        local coupler_control_controller = controller.getController(controller_data.name)
+        electrics_handlers[electric] = function(v) update_advanced_coupler_state(coupler_control_controller, v) end
+        
+        -- ignore the related couplers, we'll manage them now
+        for _, vn in pairs(tableFromHeaderTable(controller_data.couplerNodes)) do
+          local cid1 = beamstate.nodeNameMap[vn.cid1]
+          local cid2 = beamstate.nodeNameMap[vn.cid2]
+          kiss_couplers.ignore_coupler_node(cid1)
+          kiss_couplers.ignore_coupler_node(cid2)
         end
       end
     end
