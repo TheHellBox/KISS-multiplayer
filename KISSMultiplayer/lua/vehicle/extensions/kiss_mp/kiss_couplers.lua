@@ -3,6 +3,12 @@ local ownership = false
 local ignore_attachment = false
 local ignore_detachment = false
 
+local ignored_couplers = {}
+
+local function ignore_coupler_node(node) 
+  ignored_couplers[node] = true
+end
+
 local function attach_coupler(node)
   local node = v.data.nodes[node]
   obj:attachCoupler(node.cid, node.couplerTag or "", node.couplerStrength or 1000000, node.couplerRadius or 0.2, 0, node.couplerLatchSpeed or 0.3, node.couplerTargets or 0)
@@ -16,6 +22,7 @@ end
 
 local function onCouplerAttached(node_id, obj2_id, obj2_node_id)
   if not ownership then return end
+  if ignored_couplers[node_id] then return end
   if ignore_attachment then
     ignore_attachment = false
     return
@@ -31,6 +38,7 @@ end
 
 local function onCouplerDetached(node_id, obj2_id, obj2_node_id)
   if not ownership then return end
+  if ignored_couplers[node_id] then return end
   if ignore_detachment then
     ignore_detachment = false
     return
@@ -48,6 +56,7 @@ local function kissUpdateOwnership(owned)
   ownership = owned
 end
 
+M.ignore_coupler_node = ignore_coupler_node
 M.onCouplerAttached = onCouplerAttached
 M.onCouplerDetached = onCouplerDetached
 M.kissUpdateOwnership = kissUpdateOwnership
