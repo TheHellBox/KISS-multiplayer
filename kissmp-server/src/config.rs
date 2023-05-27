@@ -13,6 +13,7 @@ pub struct Config {
     pub show_in_server_list: bool,
     pub upnp_enabled: bool,
     pub server_identifier: String,
+    pub unsafe_debug_library: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mods: Option<Vec<String>>,
 }
@@ -30,6 +31,7 @@ impl Default for Config {
             show_in_server_list: false,
             upnp_enabled: false,
             server_identifier: rand_string(),
+            unsafe_debug_library: false,
             mods: None,
         }
     }
