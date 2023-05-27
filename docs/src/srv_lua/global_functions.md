@@ -1,5 +1,5 @@
 ## Global functions
-- send_message_broadcast(string)
-- encode_json(table)
-- encode_json_pretty(table)
-- decode_json(string)
+- send_message_broadcast(message: string)
+- encode_json(data: table)
+- encode_json_pretty(data: table)
+- decode_json(data: string)

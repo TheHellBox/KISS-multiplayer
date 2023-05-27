@@ -15,3 +15,4 @@
   - [Globals](srv_lua/globals.md)
   - [Examples](srv_lua/examples.md)
     - [Admin system](srv_lua/admin_system_example.md)
+    - [Syncing Time](srv_lua/time_sync_example.md)
