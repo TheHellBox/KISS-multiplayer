@@ -17,9 +17,9 @@ Connections are stored in the global table `connections` and a specific connecti
   - Returns: String
 - sendChatMessage(string message)
   - Returns: null
-- kick(string reason)
+- kick(reason: string)
   - Returns: null
-- sendLua(string lua_command)
+- sendLua(lua_command: string)
   - Note: **WARNING**: You should **always** make sure to sanitize any form of user input inside of sendLua to avoid clients being vulnerable to arbitrary code injections.\
   For example `client:sendLua('ui_message("'..message..'")')` would be vulnerable if `message` is `") Evil code here--`.\
   The [admin system example](admin_system_example.html) has an example of sanitization in the `cmd_parse` function.
