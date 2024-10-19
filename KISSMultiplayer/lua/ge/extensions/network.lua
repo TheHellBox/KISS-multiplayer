@@ -53,8 +53,6 @@ time_offset_smoother.get = function(new_sample)
 end
 
 local function butesToU32(str)
-  assert(#str == 4, "Input string must be exactly 4 bytes long")
-
   local b1, b2, b3, b4 = str:byte(1, 4)
   return bit.bor(
       bit.lshift(b4, 24),
