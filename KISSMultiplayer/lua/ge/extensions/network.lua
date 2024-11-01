@@ -52,6 +52,16 @@ time_offset_smoother.get = function(new_sample)
   return sum / n
 end
 
+local function bytesToU32(str)
+  local b1, b2, b3, b4 = str:byte(1, 4)
+  return bit.bor(
+      bit.lshift(b4, 24),
+      bit.lshift(b3, 16),
+      bit.lshift(b2, 8),
+      b1
+  )
+end
+
 local function disconnect(data)
   local text = "Disconnected!"
   if data then
@@ -81,7 +91,8 @@ end
 
 local function handle_file_transfer(data)
   kissui.show_download = true
-  local file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data:sub(1, 4)))[0]
+  -- local file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data:sub(1, 4)))[0]
+  local file_len = bytesToU32(data:sub(1, 4))
   local file_name = data:sub(5, #data)
   local chunks = math.floor(file_len / FILE_TRANSFER_CHUNK_SIZE)
   
@@ -246,8 +257,7 @@ local function connect(addr, player_name)
   M.connection.tcp:receive(1)
 
   local len, _, _ = M.connection.tcp:receive(4)
-  local len = ffi.cast("uint32_t*", ffi.new("char[?]", #len + 1, len))
-  local len = len[0]
+  len = bytesToU32(len)
 
   local received, _, _ = M.connection.tcp:receive(len)
   print(received)
@@ -367,8 +377,8 @@ local function onUpdate(dt)
     -- JSON data
     if string.byte(msg_type) == 1 then
       local data = M.connection.tcp:receive(4)
-      local len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data))
-      local data, _, _ = M.connection.tcp:receive(len[0])
+      local len = bytesToU32(data)
+      local data, _, _ = M.connection.tcp:receive(len)
       M.connection.tcp:settimeout(0.0)
       local data_decoded = jsonDecode(data)
       for k, v in pairs(data_decoded) do
@@ -380,14 +390,15 @@ local function onUpdate(dt)
       M.downloading = true
       kissui.show_download = true
       local name_b = M.connection.tcp:receive(4)
-      local len_n = ffi.cast("uint32_t*", ffi.new("char[?]", 5, name_b))
-      local name, _, _ = M.connection.tcp:receive(len_n[0])
+      local len_n = bytesToU32(name_b)
+      local name, _, _ = M.connection.tcp:receive(len_n)
       local chunk_n_b = M.connection.tcp:receive(4)
       local chunk_a_b = M.connection.tcp:receive(4)
       local read_size_b = M.connection.tcp:receive(4)
-      local chunk_n = ffi.cast("uint32_t*", ffi.new("char[?]", 5, chunk_n_b))[0]
-      local file_length = ffi.cast("uint32_t*", ffi.new("char[?]", 5, chunk_a_b))[0]
-      local read_size = ffi.cast("uint32_t*", ffi.new("char[?]", 5, read_size_b))[0]
+      local chunk_n = bytesToU32(chunk_n_b)
+      local chunk_a = bytesToU32(chunk_a_b)
+      local read_size = bytesToU32(read_size_b)
+      local file_length = chunk_a
       local file_data, _, _ = M.connection.tcp:receive(read_size)
       M.downloads_status[name] = {
         name = name,
@@ -415,7 +426,7 @@ local function onUpdate(dt)
       break
     elseif string.byte(msg_type) == 2 then
       local len_b = M.connection.tcp:receive(4)
-      local len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, len_b))[0]
+      local len = bytesToU32(len_b)
       local reason, _, _ = M.connection.tcp:receive(len)
       disconnect(reason)
     end
