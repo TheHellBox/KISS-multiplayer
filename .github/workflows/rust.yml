@@ -32,7 +32,7 @@ jobs:
     - name: Store Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: build_results
+        name: build_results_bridge
         path: |
           ./target/release/kissmp-bridge
           ./target/release/kissmp-bridge.exe
@@ -53,7 +53,7 @@ jobs:
     - name: Store Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: build_results
+        name: build_results_server
         path: |
           ./target/release/kissmp-server
           ./target/release/kissmp-server.exe
@@ -74,6 +74,6 @@ jobs:
     - name: Store Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: build_results
+        name: build_results_master_server
         path: |
           ./target/release/kissmp-master
