@@ -30,7 +30,7 @@ jobs:
       run: cargo build -p kissmp-bridge --verbose --release
 
     - name: Store Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: build_results_bridge
         path: |
@@ -51,7 +51,7 @@ jobs:
       run: cargo build -p kissmp-server --verbose --release
 
     - name: Store Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: build_results_server
         path: |
@@ -72,7 +72,7 @@ jobs:
       run: cargo build -p kissmp-master --verbose --release
 
     - name: Store Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: build_results_master_server
         path: |
