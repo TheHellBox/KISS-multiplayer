@@ -1,6 +1,6 @@
 #[recursion_limit = "1024"]
-
 use ipnetwork::Ipv4Network;
+use quinn::IdleTimeout;
 use shared::vehicle;
 
 pub mod config;
@@ -16,16 +16,17 @@ use server_vehicle::*;
 use shared::{ClientInfoPrivate, ClientInfoPublic, ServerCommand};
 use vehicle::*;
 
-use anyhow::{Error, Context};
+use anyhow::{Context, Error};
 use futures::FutureExt;
 use futures::{select, StreamExt, TryStreamExt};
-use quinn::{Certificate, CertificateChain, PrivateKey};
+use log::{error, info, warn};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
-use log::{info, warn, error};
 
 #[derive(Clone)]
 pub struct Connection {
@@ -152,7 +153,6 @@ impl Server {
                 warn!("uPnP mapping failed.");
             }
         }
-        let socket = UdpSocket::bind(&addr).unwrap();
         let mut ticks = IntervalStream::new(tokio::time::interval(
             std::time::Duration::from_secs(1) / self.tickrate as u32,
         ))
@@ -160,21 +160,23 @@ impl Server {
         let mut send_info_ticks =
             IntervalStream::new(tokio::time::interval(std::time::Duration::from_secs(5))).fuse();
 
-        let (certificate_chain, key) = generate_certificate();
+        let (cert, key) = generate_certificate();
 
-        let mut server_config = quinn::ServerConfigBuilder::default();
-        server_config.certificate(certificate_chain, key).unwrap();
-        let mut server_config = server_config.build();
+        let mut server_crypto = rustls::ServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(vec![cert], key)
+            .unwrap();
+
+        let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(server_crypto));
 
         let mut transport = quinn::TransportConfig::default();
-        transport
-            .max_idle_timeout(Some(std::time::Duration::from_secs(60)))
-            .unwrap();
+        transport.max_idle_timeout(Some(
+            IdleTimeout::try_from(std::time::Duration::from_secs(60)).unwrap(),
+        ));
         server_config.transport = std::sync::Arc::new(transport);
 
-        let mut endpoint = quinn::Endpoint::builder();
-        endpoint.listen(server_config);
-        let (_, incoming) = endpoint.with_socket(socket).unwrap();
+        let (_endpoint, incoming) = quinn::Endpoint::server(server_config, addr).unwrap();
 
         let (client_events_tx, client_events_rx) = mpsc::channel(128);
         let mut client_events_rx = ReceiverStream::new(client_events_rx).fuse();
@@ -193,10 +195,10 @@ impl Server {
         }
         info!("Server is running!");
         if let Some(setup_result) = setup_result {
-            setup_result.send(ServerSetupResult{
+            setup_result.send(ServerSetupResult {
                 addr: addr.to_string(),
                 port: self.port,
-                is_upnp: self.upnp_port.is_some()
+                is_upnp: self.upnp_port.is_some(),
             });
         }
         'main: loop {
@@ -431,7 +433,7 @@ impl Server {
     async fn drive_receive(
         id: u32,
         streams: quinn::IncomingUniStreams,
-        datagrams: quinn::generic::Datagrams<quinn::crypto::rustls::TlsSession>,
+        datagrams: quinn::Datagrams,
         mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
         let mut cmds = streams
@@ -527,15 +529,12 @@ impl Drop for Server {
     }
 }
 
-fn generate_certificate() -> (CertificateChain, PrivateKey) {
+fn generate_certificate() -> (rustls::Certificate, rustls::PrivateKey) {
     info!("Generating certificate...");
     let cert = rcgen::generate_simple_self_signed(vec!["kissmp".into()]).unwrap();
     let key = cert.serialize_private_key_der();
     let cert = cert.serialize_der().unwrap();
-    (
-        CertificateChain::from_certs(Certificate::from_der(&cert)),
-        PrivateKey::from_der(&key).unwrap(),
-    )
+    (rustls::Certificate(cert), rustls::PrivateKey(key))
 }
 
 async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
@@ -583,9 +582,9 @@ pub fn list_mods(
             continue;
             #[cfg(unix)]
             {
-                use steamlocate::SteamDir;
                 use std::path::{Path, PathBuf};
-                
+                use steamlocate::SteamDir;
+
                 info!("Could not find {:?}, must be inside a Proton prefix", path);
                 let r: anyhow::Result<PathBuf> = {
                     Ok(SteamDir::locate()
@@ -606,7 +605,7 @@ pub fn list_mods(
                                 .unwrap()
                                 .to_string()
                                 .replace(r#"C:\"#, "")
-                                .replace(r#"\"#, "/")
+                                .replace(r#"\"#, "/"),
                         ))
                 };
                 match r {
@@ -654,7 +653,7 @@ fn get_bind_addr() -> Result<SocketAddr, std::io::Error> {
 pub fn upnp_pf(port: u16) -> Option<u16> {
     let bind_addr = match get_bind_addr() {
         Ok(addr) => addr,
-        Err(_error) =>  ([0, 0, 0, 0], 0).into()
+        Err(_error) => ([0, 0, 0, 0], 0).into(),
     };
 
     let opts = igd::SearchOptions {
@@ -708,15 +707,26 @@ pub fn upnp_pf(port: u16) -> Option<u16> {
             for mut ip in valid_ips {
                 ip.set_port(port);
                 info!("uPnP: Trying {}", ip);
-                match gateway.add_port(igd::PortMappingProtocol::UDP, port, SocketAddr::V4(ip), 0, "KissMP Server")
-                {
+                match gateway.add_port(
+                    igd::PortMappingProtocol::UDP,
+                    port,
+                    SocketAddr::V4(ip),
+                    0,
+                    "KissMP Server",
+                ) {
                     Ok(()) => return Some(port),
                     Err(e) => match e {
                         igd::AddPortError::PortInUse => {
                             gateway.remove_port(igd::PortMappingProtocol::UDP, port);
-                            gateway.add_port(igd::PortMappingProtocol::UDP, port, SocketAddr::V4(ip), 0, "KissMP Server");
-                            return Some(port)
-                        },
+                            gateway.add_port(
+                                igd::PortMappingProtocol::UDP,
+                                port,
+                                SocketAddr::V4(ip),
+                                0,
+                                "KissMP Server",
+                            );
+                            return Some(port);
+                        }
                         _ => {
                             error!("uPnP Error: {:?}", e);
                         }

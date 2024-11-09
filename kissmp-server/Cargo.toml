@@ -14,7 +14,8 @@ bincode="1.3.1"
 rmp="0.8.9"
 rmp-serde="0.14.4"
 futures = "0.3.13"
-quinn = "0.7.1"
+quinn = {version="0.8.5", features = ["tls-rustls"]}
+rustls = { version = "0.20.3", default-features = false }
 anyhow = "1.0.32"
 rlua = "0.17.0"
 notify = "4.0.15"
