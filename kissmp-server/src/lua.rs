@@ -358,8 +358,14 @@ pub struct MpscChannelSender(mpsc::Sender<LuaCommand>);
 
 impl rlua::UserData for MpscChannelSender {}
 
-pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
-    let lua = rlua::Lua::new();
+pub fn setup_lua(debug_lib: bool) -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
+    let lua;
+    if debug_lib {
+        unsafe { lua = rlua::Lua::unsafe_new_with(rlua::StdLib::all()); };
+    } else {
+        lua = rlua::Lua::new();
+    }
+
     let (tx, rx) = mpsc::channel();
     lua.context(|lua_ctx| {
         let globals = lua_ctx.globals();
