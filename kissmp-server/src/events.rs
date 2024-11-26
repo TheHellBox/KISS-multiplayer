@@ -122,6 +122,16 @@ impl Server {
                             }
                         }
                     }
+                    TriggerEvent(event, data) => {
+                        self.lua.context(|lua_ctx| {
+                            let _ = crate::lua::run_hook::<(u32, String), ()>(
+                                lua_ctx,
+                                String::from(event),
+                                (client_id, data),
+                            );
+                        });
+                        
+                    }
                     VehicleUpdate(data) => {
                         if let Some(server_id) =
                             self.get_server_id_from_game_id(client_id, data.vehicle_id)

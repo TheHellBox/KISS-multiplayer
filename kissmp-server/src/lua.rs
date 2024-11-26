@@ -13,6 +13,7 @@ pub enum LuaCommand {
     ChatMessageBroadcast(String),
     RemoveVehicle(u32),
     SendLua(u32, String),
+    TriggerEvent(u32, String, String),
     SendVehicleLua(u32, String),
     Kick(u32, String),
     SpawnVehicle(VehicleData, Option<u32>),
@@ -194,6 +195,12 @@ impl rlua::UserData for LuaConnection {
             sender.0.send(LuaCommand::SendLua(this.id, lua)).unwrap();
             Ok(())
         });
+        methods.add_method("triggerEvent", |lua_ctx, this, (event, data): (String, String)| {
+            let globals = lua_ctx.globals();
+            let sender: MpscChannelSender = globals.get("MPSC_CHANNEL_SENDER")?;
+            sender.0.send(LuaCommand::TriggerEvent(this.id, event, data)).unwrap();
+            Ok(())
+        });
     }
 }
 
@@ -284,6 +291,11 @@ impl Server {
                 SendLua(id, lua) => {
                     if let Some(conn) = self.connections.get_mut(&id) {
                         conn.send_lua(lua.clone()).await;
+                    }
+                }
+                TriggerEvent(id, event, data) => {
+                    if let Some(conn) = self.connections.get_mut(&id) {
+                        conn.trigger_event(event.clone(), data.clone()).await;
                     }
                 }
                 SendVehicleLua(id, lua) => {

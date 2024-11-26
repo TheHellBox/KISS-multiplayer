@@ -61,6 +61,12 @@ impl Connection {
     pub async fn send_lua(&mut self, lua: String) {
         let _ = self.ordered.send(ServerCommand::SendLua(lua.clone())).await;
     }
+    pub async fn trigger_event(&mut self, event: String, data: String) {
+        let _ = self
+            .ordered
+            .send(ServerCommand::TriggerEvent(event.clone(), data.clone()))
+            .await;
+    }
 }
 
 pub struct Server {
