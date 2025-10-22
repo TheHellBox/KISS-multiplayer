@@ -16,21 +16,21 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v5
 
     - name: Install alsa dev
-      if: runner.os == 'Linux' 
+      if: runner.os == 'Linux'
       run: |
           sudo apt-get update
           sudo apt-get install libasound2-dev
 
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
 
     - name: Build
       run: cargo build -p kissmp-bridge --verbose --release
 
     - name: Store Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build_results_bridge
         path: |
@@ -43,15 +43,15 @@ jobs:
       matrix:
         os: [ubuntu-20.04, windows-latest]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v5
 
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
 
     - name: Build
       run: cargo build -p kissmp-server --verbose --release
 
     - name: Store Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build_results_server
         path: |
@@ -64,15 +64,15 @@ jobs:
       matrix:
         os: [ubuntu-20.04]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v5
 
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
 
     - name: Build
       run: cargo build -p kissmp-master --verbose --release
 
     - name: Store Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build_results_master_server
         path: |
