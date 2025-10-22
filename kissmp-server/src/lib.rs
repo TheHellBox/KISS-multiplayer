@@ -19,7 +19,7 @@ use vehicle::*;
 use anyhow::{Context, Error};
 use futures::FutureExt;
 use futures::{select, StreamExt, TryStreamExt};
-use log::{error, info, warn};
+use log::{error, info, warn, debug};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
@@ -127,6 +127,7 @@ impl Server {
         setup_result: Option<tokio::sync::oneshot::Sender<ServerSetupResult>>,
     ) {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
+        info!("Server is starting on {}", addr);
         if self.upnp_enabled {
             if let Some(port) = upnp_pf(self.port) {
                 info!("uPnP mapping succeeded. Port: {}", port);
@@ -167,6 +168,7 @@ impl Server {
             .with_no_client_auth()
             .with_single_cert(vec![cert], key)
             .unwrap();
+        server_crypto.alpn_protocols.push(b"kissmp".to_vec());
 
         let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(server_crypto));
 
@@ -174,9 +176,11 @@ impl Server {
         transport.max_idle_timeout(Some(
             IdleTimeout::try_from(std::time::Duration::from_secs(60)).unwrap(),
         ));
+        transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
         server_config.transport = std::sync::Arc::new(transport);
 
         let (_endpoint, incoming) = quinn::Endpoint::server(server_config, addr).unwrap();
+        info!("Server is listening on {}", addr);
 
         let (client_events_tx, client_events_rx) = mpsc::channel(128);
         let mut client_events_rx = ReceiverStream::new(client_events_rx).fuse();
@@ -212,9 +216,12 @@ impl Server {
                 }
                 conn = incoming.select_next_some() => {
                     if let Ok(conn) = conn {
+                        info!("New connection attempt from {:?}", conn.connection.remote_address());
                         if let Err(e) = self.on_connect(conn, client_events_tx.clone()).await {
-                            warn!("Client has failed to connect to the server");
+                            warn!("Client has failed to connect to the server: {}", e);
                         }
+                    } else {
+                        warn!("Failed to accept incoming connection: {:?}", conn);
                     }
                 },
                 stdin_input = reader.next() => {
@@ -247,7 +254,7 @@ impl Server {
         }
     }
     async fn send_server_info(&self) -> anyhow::Result<()> {
-        if !self.show_in_list {
+        if (!self.show_in_list) {
             return Ok(());
         }
         let server_info = serde_json::json!({
@@ -278,6 +285,31 @@ impl Server {
         mut new_connection: quinn::NewConnection,
         client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
+        info!("Connection handshake starting...");
+
+        info!("Connection stats: {:?}", new_connection.connection.stats());
+
+        // timeout for receiving client info
+        let client_info = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            async {
+                let mut stream = new_connection.uni_streams.try_next().await?;
+                if let Some(stream) = &mut stream {
+                    info!("Receiving client info stream...");
+                    let mut buf = [0; 4];
+                    stream.read_exact(&mut buf[0..4]).await?;
+                    let len = u32::from_le_bytes(buf).min(16384) as usize;
+                    info!("Expected client info length: {}", len);
+                    let mut buf: Vec<u8> = vec![0; len];
+                    stream.read_exact(&mut buf).await?;
+                    info!("Received client info bytes: {} bytes", buf.len());
+                    Ok(buf)
+                } else {
+                    Err(anyhow::Error::msg("No client info stream received"))
+                }
+            }
+        ).await;
+
         let connection = new_connection.connection.clone();
         if self.connections.len() >= self.max_players.into() {
             connection.close(0u32.into(), b"Server is full");
@@ -285,6 +317,9 @@ impl Server {
         }
         // Should be strong enough for our targets. TODO: Check for collisions anyway
         let id = rand::random::<u32>();
+
+        info!("Client connected with ID: {}", id);
+
         let (ordered_tx, ordered_rx) = mpsc::channel(128);
         let (unreliable_tx, unreliable_rx) = mpsc::channel(128);
         async fn receive_client_data(
@@ -296,23 +331,29 @@ impl Server {
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
                 let len = u32::from_le_bytes(buf).min(16384) as usize;
+                info!("Client info length: {}", len);
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
+                info!("Received raw client info data");
                 let info: shared::ClientCommand =
                     bincode::deserialize::<shared::ClientCommand>(&buf)?;
+                info!("Deserialized client info");
+                info!("[DEBUG] Received client command: {:?}", info);
                 if let shared::ClientCommand::ClientInfo(info) = info {
+                    info!("Got client info: {:?}", info);
                     Ok(info)
                 } else {
-                    Err(anyhow::Error::msg("Failed to fetch client info"))
+                    Err(anyhow::Error::msg("Failed to fetch client info - wrong command type"))
                 }
             } else {
-                Err(anyhow::Error::msg("Failed to fetch client info"))
+                Err(anyhow::Error::msg("Failed to fetch client info - no stream"))
             }
         }
 
         let connection_clone = connection.clone();
         // Receiver
         tokio::spawn(async move {
+            info!("[CONNECT_TASK] Starting connection task for {}", id);
             let client_info = {
                 if let Ok(client_data) = receive_client_data(&mut new_connection).await {
                     client_data
@@ -354,6 +395,7 @@ impl Server {
                 .send((id, IncomingEvent::ClientConnected(client_connection)))
                 .await
                 .unwrap();
+            info!("[CONNECT_TASK] Starting drive_receive for {}", id);
             if let Err(_e) = Self::drive_receive(
                 id,
                 new_connection.uni_streams,
@@ -382,10 +424,24 @@ impl Server {
             .unwrap();
         // Sender
         tokio::spawn(async move {
-            let mut stream = connection.open_uni().await;
-            if let Ok(stream) = &mut stream {
-                let _ = send(stream, &server_info).await;
-                let _ = Self::drive_send(connection, ordered_rx, unreliable_rx).await;
+            let mut stream = match connection.open_uni().await {
+                Ok(stream) => stream,
+                Err(e) => {
+                    error!("Failed to open server info stream: {}", e);
+                    return;
+                }
+            };
+            info!("[DEBUG] Sender task started for {}", id);
+            if let Err(e) = send(&mut stream, &server_info).await {
+                error!("Failed to send server info: {}", e);
+                return;
+            }
+            info!("[DEBUG] Server info sent to {}", id);
+            // debug!("Sent server info to client");
+
+            // Start driving connection
+            if let Err(e) = Self::drive_send(connection, ordered_rx, unreliable_rx).await {
+                error!("Connection drive_send error: {}", e);
             }
         });
         Ok(())
@@ -436,21 +492,26 @@ impl Server {
         datagrams: quinn::Datagrams,
         mut client_events_tx: mpsc::Sender<(u32, IncomingEvent)>,
     ) -> anyhow::Result<()> {
+        info!("[DEBUG] Starting drive_receive for {}", id);
         let mut cmds = streams
             .map(|stream| async {
+                info!("[DRIVE_RECEIVE] Got a stream");
                 let mut stream = stream?;
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
                 let len = u32::from_le_bytes(buf).min(65536) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
+                info!("[DRIVE_RECEIVE] Received stream data of length {}", len);
                 Ok::<_, Error>(buf)
             })
             .buffered(256)
             .fuse();
 
+        info!("[DRIVE_RECEIVE] Creating datagram stream...");
         let mut datagrams = datagrams
             .map(|data| async {
+                info!("[DRIVE_RECEIVE] Got a datagram");
                 let data: Vec<u8> = data?.to_vec();
                 Ok::<_, Error>(data)
             })
@@ -477,6 +538,7 @@ impl Server {
                 }
                 complete => break
             };
+            info!("[DRIVE_RECEIVE] Received data of length: {}", data.len());
             let _ = Self::handle_incoming_data(id, data, &mut client_events_tx).await;
         }
         Err(anyhow::Error::msg("Disconnected"))
@@ -538,10 +600,10 @@ fn generate_certificate() -> (rustls::Certificate, rustls::PrivateKey) {
 }
 
 async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
-    stream
-        .write_all(&(message.len() as u32).to_le_bytes())
-        .await?;
-    stream.write_all(&message).await?;
+    info!("Server sending message of length: {}", message.len());
+    stream.write_all(&(message.len() as u32).to_le_bytes()).await?;
+    stream.write_all(message).await?;
+    stream.finish().await?;
     Ok(())
 }
 
@@ -610,7 +672,7 @@ pub fn list_mods(
                 };
                 match r {
                     Ok(p) => {
-                        if !p.exists() {
+                        if (!p.exists()) {
                             error!("Mod file {:?} not found", p);
                             continue;
                         }
