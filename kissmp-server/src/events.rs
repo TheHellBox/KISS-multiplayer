@@ -293,7 +293,7 @@ impl Server {
                         chunks[chunk_index as usize] = data;
 
                         if chunks.iter().all(|c| !c.is_empty()) {
-                            info!("All {} chunks received, reassembling data", total_chunks);
+                            // info!("All {} chunks received, reassembling data", total_chunks);
                             let full_json = chunks.join("");
                             // Parse and recursively handle reassembled command
                             match serde_json::from_str::<shared::ClientCommand>(&full_json) {
