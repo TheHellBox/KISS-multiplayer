@@ -82,6 +82,11 @@ pub enum ClientCommand {
     StartTalking,
     // Only used by bridge
     EndTalking,
+    DataChunk {
+        chunk_index: u32,
+        total_chunks: u32,
+        data: String,
+    },
     Ping(u16),
 }
 

@@ -282,6 +282,36 @@ impl Server {
                             let _ = client.conn.send_datagram(data.clone().into());
                         }
                     }
+                    DataChunk { chunk_index, total_chunks, data } => {
+                        // info!("Received chunk {}/{} from client {}", chunk_index + 1, total_chunks, client_id);
+                        let chunks = self.chunk_buffers
+                            .entry(client_id)
+                            .or_insert_with(HashMap::new)
+                            .entry(total_chunks)
+                            .or_insert_with(|| vec![String::new(); total_chunks as usize]);
+                        
+                        chunks[chunk_index as usize] = data;
+
+                        if chunks.iter().all(|c| !c.is_empty()) {
+                            info!("All {} chunks received, reassembling data", total_chunks);
+                            let full_json = chunks.join("");
+                            // Parse and recursively handle reassembled command
+                            match serde_json::from_str::<shared::ClientCommand>(&full_json) {
+                                Ok(original_command) => {
+                                    // Box to avoid infinite type size
+                                    Box::pin(self.on_client_event(
+                                        client_id, 
+                                        IncomingEvent::ClientCommand(original_command)
+                                    )).await;
+                                }
+                                Err(e) => {
+                                    error!("Failed to parse reassembled JSON: {}", e);
+                                }
+                            }
+                            // Clear chunks for this client
+                            self.chunk_buffers.get_mut(&client_id).unwrap().remove(&total_chunks);
+                        }
+                    }
                     _ => {}
                 }
             }

@@ -68,6 +68,7 @@ pub struct Server {
     vehicles: HashMap<u32, Vehicle>,
     // Client ID, game_id, server_id
     vehicle_ids: HashMap<u32, HashMap<u32, u32>>,
+    chunk_buffers: HashMap<u32, HashMap<u32, Vec<String>>>,  // client_id -> (total_chunks -> chunks)
     reqwest_client: reqwest::Client,
     name: String,
     description: String,
@@ -100,6 +101,7 @@ impl Server {
             reqwest_client: reqwest::Client::new(),
             vehicles: HashMap::with_capacity(64),
             vehicle_ids: HashMap::with_capacity(64),
+            chunk_buffers: HashMap::new(),
             name: config.server_name,
             description: config.description,
             map: config.map,
@@ -495,23 +497,19 @@ impl Server {
         info!("[DEBUG] Starting drive_receive for {}", id);
         let mut cmds = streams
             .map(|stream| async {
-                info!("[DRIVE_RECEIVE] Got a stream");
                 let mut stream = stream?;
                 let mut buf = [0; 4];
                 stream.read_exact(&mut buf[0..4]).await?;
                 let len = u32::from_le_bytes(buf).min(65536) as usize;
                 let mut buf: Vec<u8> = vec![0; len];
                 stream.read_exact(&mut buf).await?;
-                info!("[DRIVE_RECEIVE] Received stream data of length {}", len);
                 Ok::<_, Error>(buf)
             })
             .buffered(256)
             .fuse();
 
-        info!("[DRIVE_RECEIVE] Creating datagram stream...");
         let mut datagrams = datagrams
             .map(|data| async {
-                info!("[DRIVE_RECEIVE] Got a datagram");
                 let data: Vec<u8> = data?.to_vec();
                 Ok::<_, Error>(data)
             })
@@ -538,7 +536,6 @@ impl Server {
                 }
                 complete => break
             };
-            info!("[DRIVE_RECEIVE] Received data of length: {}", data.len());
             let _ = Self::handle_incoming_data(id, data, &mut client_events_tx).await;
         }
         Err(anyhow::Error::msg("Disconnected"))
@@ -600,7 +597,6 @@ fn generate_certificate() -> (rustls::Certificate, rustls::PrivateKey) {
 }
 
 async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
-    info!("Server sending message of length: {}", message.len());
     stream.write_all(&(message.len() as u32).to_le_bytes()).await?;
     stream.write_all(message).await?;
     stream.finish().await?;
