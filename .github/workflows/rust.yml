@@ -16,23 +16,23 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v5
 
     - name: Install alsa dev
-      if: runner.os == 'Linux' 
+      if: runner.os == 'Linux'
       run: |
           sudo apt-get update
           sudo apt-get install libasound2-dev
 
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
 
     - name: Build
       run: cargo build -p kissmp-bridge --verbose --release
 
     - name: Store Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: build_results_bridge
+        name: build_results_bridge-${{ matrix.os }}
         path: |
           ./target/release/kissmp-bridge
           ./target/release/kissmp-bridge.exe
@@ -41,19 +41,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, windows-latest]
+        os: [ubuntu-latest, windows-latest]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v5
 
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
 
     - name: Build
       run: cargo build -p kissmp-server --verbose --release
 
     - name: Store Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: build_results_server
+        name: build_results_server-${{ matrix.os }}
         path: |
           ./target/release/kissmp-server
           ./target/release/kissmp-server.exe
@@ -62,17 +62,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04]
+        os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v5
 
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
 
     - name: Build
       run: cargo build -p kissmp-master --verbose --release
 
     - name: Store Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build_results_master_server
         path: |

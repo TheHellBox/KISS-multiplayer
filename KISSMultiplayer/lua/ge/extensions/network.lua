@@ -1,6 +1,6 @@
 local M = {}
 
-M.VERSION_STR = "0.6.0"
+M.VERSION_STR = "0.7.0"
 
 M.downloads = {}
 M.downloading = false
@@ -28,6 +28,7 @@ M.connection = {
 }
 
 local FILE_TRANSFER_CHUNK_SIZE = 16384;
+local CHUNK_SIZE = 65000  -- Safe size under 65536 limit
 
 local message_handlers = {}
 
@@ -179,16 +180,45 @@ local function send_data(raw_data, reliable)
     print("NOT IMPLEMENTED. PLEASE REPORT TO KISSMP DEVELOPERS. CODE: "..raw_data)
     return
   end
+  if not M.connection.connected then return -1 end
   local data = ""
-  -- Used in context of it being called from vehicle lua, where it's already encoded into json
   if type(raw_data) == "string" then
     data = raw_data
   else
     data = jsonEncode(raw_data)
   end
-  if not M.connection.connected then return -1 end
-  local len = #data
-  local len = ffi.string(ffi.new("uint32_t[?]", 1, {len}), 4)
+  local data_size = #data
+  -- Auto-chunk if data is too large
+  if data_size > CHUNK_SIZE then
+    print("Large data detected: " .. data_size .. " bytes, sending in chunks")
+    local num_chunks = math.ceil(data_size / CHUNK_SIZE)
+    
+    for i = 0, num_chunks - 1 do
+      local start_pos = i * CHUNK_SIZE + 1
+      local end_pos = math.min((i + 1) * CHUNK_SIZE, data_size)
+      local chunk = data:sub(start_pos, end_pos)
+      
+      local chunk_data = jsonEncode({
+        DataChunk = {
+          chunk_index = i,
+          total_chunks = num_chunks,
+          data = chunk
+        }
+      })
+
+      local len = ffi.string(ffi.new("uint32_t[?]", 1, {#chunk_data}), 4)
+      M.connection.tcp:send(string.char(1)..len)
+      M.connection.tcp:send(chunk_data)
+      
+      print("Sent chunk " .. (i + 1) .. "/" .. num_chunks)
+    end
+    
+    print("All chunks sent successfully")
+    return 0
+  end
+  
+  -- Send normally
+  local len = ffi.string(ffi.new("uint32_t[?]", 1, {data_size}), 4)
   if reliable then
     reliable = 1
   else
@@ -196,6 +226,7 @@ local function send_data(raw_data, reliable)
   end
   M.connection.tcp:send(string.char(reliable)..len)
   M.connection.tcp:send(data)
+  return 0
 end
 
 local function sanitize_addr(addr)
@@ -277,7 +308,7 @@ local function connect(addr, player_name)
 
   local steamid64 = nil
   if Steam and Steam.isWorking then
-    steamid64 = Steam.getAccountIDStr() ~= "0" and Steam.getAccountIDStr() or nil
+    steamid64 = Steam.accountID ~= "0" and Steam.accountID or nil
   end
 
   local client_info = {
@@ -285,7 +316,7 @@ local function connect(addr, player_name)
       name = player_name,
       secret = generate_secret(server_info.server_identifier),
       steamid64 = steamid64,
-      client_version = {0, 6}
+      client_version = {0, 7}
     }
   }
   send_data(client_info, true)

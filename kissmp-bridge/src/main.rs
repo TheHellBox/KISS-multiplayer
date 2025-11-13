@@ -92,32 +92,123 @@ async fn connect_to_server(
     discord_tx: std::sync::mpsc::Sender<DiscordState>,
 ) -> () {
     let endpoint = {
-        let rustls_config = rustls::ClientConfig::builder()
+        // Generate certificate first
+        let cert = rcgen::generate_simple_self_signed(vec!["kissmp".into()]).unwrap();
+        let key = rustls::PrivateKey(cert.serialize_private_key_der());
+        let cert = rustls::Certificate(cert.serialize_der().unwrap());
+
+        // Create crypto config with client auth
+        let mut crypto = rustls::ClientConfig::builder()
             .with_safe_defaults()
             .with_custom_certificate_verifier(Arc::new(AcceptAnyCertificate))
-            .with_no_client_auth();
-        let mut client_cfg = quinn::ClientConfig::new(Arc::new(rustls_config));
+            .with_client_cert_resolver(Arc::new(ClientCertResolver {
+                cert: cert.clone(),
+                key: key.clone(),
+            }));
+        crypto.alpn_protocols = vec![b"kissmp".to_vec()];
+        crypto.enable_early_data = true;
 
+        let mut client_cfg = quinn::ClientConfig::new(Arc::new(crypto));
+        
         let mut transport = quinn::TransportConfig::default();
         transport.max_idle_timeout(Some(IdleTimeout::try_from(SERVER_IDLE_TIMEOUT).unwrap()));
-        client_cfg.transport = std::sync::Arc::new(transport);
+        transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
+        client_cfg.transport = Arc::new(transport);
 
-        let mut endpoint = quinn::Endpoint::client(addr).unwrap();
+        let mut endpoint = quinn::Endpoint::client(
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)
+        ).unwrap();
         endpoint.set_default_client_config(client_cfg);
         endpoint
     };
 
-    let server_connection = match endpoint.connect(addr, "kissmp").unwrap().await {
-        Ok(c) => c,
+    info!("Attempting to connect to the server at {}", addr);
+    let mut server_connection = match endpoint.connect(addr, "kissmp").unwrap().await {
+        Ok(c) => {
+            info!("Successfully connected to the server at {}", addr);
+            c
+        }
         Err(e) => {
-            error!("Failed to connect to the server: {}", e);
+            error!("Failed to connect to the server at {}: {}", addr, e);
             return;
         }
     };
 
+    // Send initial client info to establish connection
+    let client_info = shared::ClientCommand::ClientInfo(shared::ClientInfoPrivate {
+        name: "Bridge Client".to_string(),
+        client_version: shared::VERSION,
+        secret: String::from("bridge"),
+        steamid64: None,
+    });
+
+    let client_info_data = bincode::serialize(&client_info).unwrap();
+
+    // Send client info through reliable stream
+    let mut send_stream = match server_connection.connection.open_uni().await {
+        Ok(stream) => stream,
+        Err(e) => {
+            error!("Failed to open send stream: {}", e);
+            return;
+        }
+    };
+
+    if let Err(e) = send(&mut send_stream, &client_info_data).await {
+        error!("Failed to send client info: {}", e);
+        return;
+    }
+
+    // Wait for server info response
+    let mut stream = match server_connection.uni_streams.next().await {
+        Some(Ok(stream)) => stream,
+        Some(Err(e)) => {
+            error!("Error receiving server info stream: {}", e);
+            return;
+        }
+        None => {
+            error!("No server info stream received");
+            return;
+        }
+    };
+
+    let mut buf = [0; 4];
+    if let Err(e) = stream.read_exact(&mut buf).await {
+        error!("Failed to read server info length: {}", e);
+        return;
+    }
+    let len = u32::from_le_bytes(buf) as usize;
+    let mut data = vec![0; len];
+    if let Err(e) = stream.read_exact(&mut data).await {
+        error!("Failed to read server info data: {}", e);
+        return;
+    }
+
+    let server_info = match bincode::deserialize::<shared::ServerCommand>(&data) {
+        Ok(shared::ServerCommand::ServerInfo(info)) => info,
+        _ => {
+            error!("Invalid server info received");
+            return;
+        }
+    };
+
+    info!("Connected to server: {}", server_info.name);
+
+    // Send server info to game client
+    let server_info_bytes = server_command_to_client_bytes(
+        shared::ServerCommand::ServerInfo(server_info.clone())
+    );
+
     let (client_stream_reader, mut client_stream_writer) = tokio::io::split(client_stream);
 
-    let _ = client_stream_writer.write_all(CONNECTED_BYTE).await;
+    if let Err(e) = client_stream_writer.write_all(CONNECTED_BYTE).await {
+        error!("Failed to send connection byte to client: {}", e);
+        return;
+    }
+
+    if let Err(e) = client_stream_writer.write_all(&server_info_bytes).await {
+        error!("Failed to send server info to game: {}", e);
+        return;
+    }
 
     let (client_event_sender, client_event_receiver) =
         tokio::sync::mpsc::unbounded_channel::<(bool, shared::ClientCommand)>();
@@ -133,10 +224,10 @@ async fn connect_to_server(
     match voice_chat::try_create_vc_playback_task(vc_playback_receiver) {
         Ok(handle) => {
             non_critical_tasks.push(handle);
-            debug!("Playback OK")
+            info!("Voice chat playback task created successfully");
         }
         Err(e) => {
-            error!("Failed to set up voice chat playback: {}", e)
+            error!("Failed to set up voice chat playback: {}", e);
         }
     };
 
@@ -146,16 +237,16 @@ async fn connect_to_server(
     ) {
         Ok(handle) => {
             non_critical_tasks.push(handle);
-            debug!("Recording OK")
+            info!("Voice chat recording task created successfully");
         }
         Err(e) => {
-            error!("Failed to set up voice chat recording: {}", e)
+            error!("Failed to set up voice chat recording: {}", e);
         }
     };
 
     tokio::spawn(async move {
-        debug!("Starting tasks");
-        match tokio::try_join!(
+        info!("Starting tasks");
+        let result = tokio::try_join!(
             async {
                 while let Some(result) = non_critical_tasks.next().await {
                     match result {
@@ -180,12 +271,23 @@ async fn connect_to_server(
                 vc_playback_sender,
                 server_connection
             ),
-        ) {
-            Ok(_) => debug!("Tasks completed successfully"),
-            Err(e) => warn!("Tasks ended due to exception: {}", e),
+        );
+
+        match result {
+            Ok(_) => info!("Tasks completed successfully"),
+            Err(e) => {
+                error!("Tasks ended due to exception: {}", e);
+                discord_tx.send(DiscordState { server_name: None }).unwrap();
+            }
         }
-        discord_tx.send(DiscordState { server_name: None }).unwrap();
     });
+}
+
+async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
+    stream.write_all(&(message.len() as u32).to_le_bytes()).await?;
+    stream.write_all(message).await?;
+    stream.finish().await?;
+    Ok(())
 }
 
 fn server_command_to_client_bytes(command: shared::ServerCommand) -> Vec<u8> {
@@ -236,9 +338,13 @@ async fn server_incoming(
     vc_playback_sender: std::sync::mpsc::Sender<voice_chat::VoiceChatPlaybackEvent>,
     server_connection: quinn::NewConnection,
 ) -> AHResult {
-    let mut reliable_commands = server_connection
-        .uni_streams
-        .map(|stream| async { Ok::<_, anyhow::Error>(read_pascal_bytes(&mut stream?).await?) });
+    let mut reliable_commands = server_connection.uni_streams
+        .map(|stream| async { 
+            let mut stream = stream?;
+            read_pascal_bytes(&mut stream).await 
+        })
+        .buffered(256)
+        .fuse();
 
     let mut unreliable_commands = server_connection
         .datagrams
@@ -246,26 +352,48 @@ async fn server_incoming(
         .buffer_unordered(1024);
 
     loop {
-        let command_bytes = tokio::select! {
-            Some(reliable_command) = reliable_commands.next() => {
-                reliable_command.await?
+        tokio::select! {
+            command = reliable_commands.next() => match command {
+                Some(Ok(bytes)) => {
+                    let command = bincode::deserialize::<shared::ServerCommand>(&bytes)?;
+                    match command {
+                        shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
+                            let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
+                                client, pos, data,
+                            ));
+                        }
+                        _ => server_commands_sender.send(command).await?,
+                    }
+                }
+                Some(Err(e)) => {
+                    warn!("Error reading reliable command: {}", e);
+                    break;
+                }
+                None => break,
             },
-            Some(unreliable_command) = unreliable_commands.next() => {
-                unreliable_command?
+            command = unreliable_commands.next() => match command {
+                Some(Ok(bytes)) => {
+                    if let Ok(command) = bincode::deserialize::<shared::ServerCommand>(&bytes) {
+                        match command {
+                            shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
+                                let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
+                                    client, pos, data,
+                                ));
+                            }
+                            _ => server_commands_sender.send(command).await?,
+                        }
+                    }
+                }
+                Some(Err(e)) => {
+                    warn!("Error reading unreliable command: {}", e);
+                    break;
+                }
+                None => break,
             },
-            else => break
-        };
-        let command = bincode::deserialize::<shared::ServerCommand>(command_bytes.as_ref())?;
-        match command {
-            shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
-                let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
-                    client, pos, data,
-                ));
-            }
-            _ => server_commands_sender.send(command).await?,
-        };
+            else => break,
+        }
     }
-    debug!("Server incoming closed");
+    info!("Server incoming closed");
     Ok(())
 }
 
@@ -340,5 +468,29 @@ impl rustls::client::ServerCertVerifier for AcceptAnyCertificate {
         now: SystemTime,
     ) -> Result<rustls::client::ServerCertVerified, rustls::TLSError> {
         Ok(rustls::client::ServerCertVerified::assertion())
+    }
+}
+
+struct ClientCertResolver {
+    cert: rustls::Certificate,
+    key: rustls::PrivateKey,
+}
+
+impl rustls::client::ResolvesClientCert for ClientCertResolver {
+    fn resolve(
+        &self,
+        _acceptable_issuers: &[&[u8]],
+        _sigschemes: &[rustls::SignatureScheme],
+    ) -> Option<Arc<rustls::sign::CertifiedKey>> {
+        let signing_key = rustls::sign::any_supported_type(&self.key)
+            .expect("Failed to load private key");
+        Some(Arc::new(rustls::sign::CertifiedKey::new(
+            vec![self.cert.clone()],
+            signing_key,
+        )))
+    }
+
+    fn has_certs(&self) -> bool {
+        true
     }
 }

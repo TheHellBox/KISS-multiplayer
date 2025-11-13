@@ -1,8 +1,8 @@
 [package]
 name = "kissmp-bridge"
-version = "0.6.0"
-authors = ["hellbox"]
-edition = "2018"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
@@ -32,3 +32,4 @@ cpal = "0.13"
 fon = "0.5.0"
 log = "0.4"
 indoc = "1.0"
+rcgen = "0.8.2"

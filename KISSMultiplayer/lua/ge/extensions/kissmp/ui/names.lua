@@ -25,7 +25,9 @@ local function draw()
         ColorF(1, 1, 1, 1),
         true,
         false,
-        ColorI(0, 0, 0, 255)
+        ColorI(0, 0, 0, 255),
+        false,
+        false
       )
     end
   end

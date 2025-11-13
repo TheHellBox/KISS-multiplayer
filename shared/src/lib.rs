@@ -7,8 +7,8 @@ use std::io::Write;
 use chrono::Local;
 pub use log::{info, warn, error};
 
-pub const VERSION: (u32, u32) = (0, 6);
-pub const VERSION_STR: &str = "0.6.0";
+pub const VERSION: (u32, u32) = (0, 7);
+pub const VERSION_STR: &str = "0.7.0";
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientInfoPrivate {
@@ -82,6 +82,11 @@ pub enum ClientCommand {
     StartTalking,
     // Only used by bridge
     EndTalking,
+    DataChunk {
+        chunk_index: u32,
+        total_chunks: u32,
+        data: String,
+    },
     Ping(u16),
 }
 
