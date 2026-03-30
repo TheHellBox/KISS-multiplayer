@@ -8,6 +8,7 @@ local meta_timer = 0
 local colors_buffer = {}
 local plates_buffer = {}
 local first_vehicle = true
+local slowmo_factor = 0
 
 M.loading_map = false
 M.id_map = {}
@@ -121,7 +122,8 @@ local function send_vehicle_meta_updates()
           VehicleMetaUpdate = {
             id,
             plate,
-            colors
+            colors,
+            slowmo_factor
           }
         }
         network.send_data(data, true)
@@ -174,6 +176,7 @@ local function send_vehicle_config_inner(id, parts_config, data)
   vehicle_data.rotation = {rotation.x, rotation.y, rotation.z, rotation.w}
   vehicle_data.server_id = 0
   vehicle_data.owner = 0
+  vehicle_data.slowmo_factor = bullettime.get()
   network.send_data(
     {
       VehicleData = vehicle_data
@@ -261,8 +264,10 @@ local function onUpdate(dt)
     network.disconnect()
   end
   -- Track color and plate changes
+  local new_slowmo_factor = bullettime.get()
   meta_timer = meta_timer + dt
-  if meta_timer >= 1 then
+  if meta_timer >= 1 or new_slowmo_factor ~= slowmo_factor then
+    slowmo_factor = new_slowmo_factor
     send_vehicle_meta_updates()
     meta_timer = meta_timer - 1
   end
@@ -383,6 +388,7 @@ local function update_vehicle_meta(data)
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
   local plate = data.plate
+  local slowmo_factor = data.slowmo_factor
   
   local color = data.colors_table[1]
   local palete_0 = data.colors_table[2]
@@ -407,6 +413,9 @@ local function update_vehicle_meta(data)
     extensions.core_vehicle_manager.liveUpdateVehicleColors(id, vehicle, i, table_to_color(ct))
   end
   vehicle:setField('partConfig', '', serialize(vd.config))
+  
+  -- Apply pause
+  kisstransform.set_paused(id, slowmo_factor == 0)
 end
 
 local function electrics_diff_update(data)

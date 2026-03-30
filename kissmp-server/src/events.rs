@@ -192,6 +192,7 @@ impl Server {
                                 vehicle.data.palete_0 = meta.colors_table[1];
                                 vehicle.data.palete_1 = meta.colors_table[2];
                                 vehicle.data.plate = meta.plate.clone();
+                                vehicle.data.slowmo_factor = meta.slowmo_factor.clone();
                                 let mut meta = meta.clone();
                                 meta.vehicle_id = server_id;
                                 for (_, client) in &mut self.connections {

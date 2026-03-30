@@ -426,7 +426,7 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
         let build_vehicle = lua_ctx
             .create_function(
                 move |_,
-                      (parts_config, color, p0, p1, plate, name, position, rotation): (
+                      (parts_config, color, p0, p1, plate, name, position, rotation, slowmo_factor): (
                     String,
                     Vec<f32>,
                     Vec<f32>,
@@ -435,6 +435,7 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
                     String,
                     Vec<f32>,
                     Vec<f32>,
+                    f32,
                 )| {
                     Ok(LuaVehicleData(VehicleData {
                         parts_config,
@@ -448,6 +449,7 @@ pub fn setup_lua() -> (rlua::Lua, mpsc::Receiver<LuaCommand>) {
                         owner: None,
                         position: [position[0], position[1], position[2]],
                         rotation: [rotation[0], rotation[1], rotation[2], rotation[3]],
+                        slowmo_factor: slowmo_factor,
                     }))
                 },
             )
