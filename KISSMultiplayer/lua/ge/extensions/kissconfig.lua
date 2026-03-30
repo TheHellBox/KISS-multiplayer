@@ -24,6 +24,11 @@ local function save_config()
     window_opacity = kissui.window_opacity[0],
     enable_view_distance = kissui.enable_view_distance[0],
     view_distance = kissui.view_distance[0],
+    voice_range = kissui.voice_range[0],
+    voice_input_volume = kissui.voice_input_volume[0],
+    voice_input_device = kissui.voice_input_device or "",
+    voice_curve_profile = kissui.voice_curve_profile or "Balanced",
+    voice_player_volumes = kissui.voice_player_volumes or {},
     base_secret_v2 = secret
   }
   local file = io.open("./settings/kissmp_config.json", "w")
@@ -66,6 +71,33 @@ local function load_config()
   end
   if config.base_secret_v2 ~= nil then
     network.base_secret = config.base_secret_v2
+  end
+  if config.voice_range ~= nil then
+    kissui.voice_range[0] = tonumber(config.voice_range) or 120
+  end
+  if config.voice_input_volume ~= nil then
+    kissui.voice_input_volume[0] = tonumber(config.voice_input_volume) or 1.0
+  end
+  if config.voice_input_device ~= nil then
+    kissui.voice_input_device = tostring(config.voice_input_device)
+  end
+  if config.voice_curve_profile ~= nil then
+    local profile = tostring(config.voice_curve_profile)
+    if profile == "Realistic" or profile == "Balanced" or profile == "Arcade" then
+      kissui.voice_curve_profile = profile
+    else
+      kissui.voice_curve_profile = "Balanced"
+    end
+  end
+  if type(config.voice_player_volumes) == "table" then
+    kissui.voice_player_volumes = {}
+    for key, value in pairs(config.voice_player_volumes) do
+      local id = tonumber(key)
+      local volume = tonumber(value)
+      if id and volume then
+        kissui.voice_player_volumes[id] = volume
+      end
+    end
   end
   io.close(file)
 end

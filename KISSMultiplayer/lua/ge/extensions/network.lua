@@ -118,6 +118,10 @@ end
 
 local function handle_player_info(player_info)
     M.players[player_info.id] = player_info
+    local saved_volume = kissui.voice_player_volumes[player_info.id]
+    if saved_volume ~= nil and kissvoicechat and kissvoicechat.set_player_volume then
+        kissvoicechat.set_player_volume(player_info.id, saved_volume)
+    end
 end
 
 local function check_lua(l)
@@ -213,6 +217,16 @@ local function handle_chat(data)
     kissui.chat.add_message(data[1], nil, data[2])
 end
 
+local function handle_bridge_voice_input_devices(devices)
+    if type(devices) ~= "table" then
+        return
+    end
+    kissui.voice_input_devices = devices
+    if kissui.voice_input_device == "" and #devices > 0 then
+        kissui.voice_input_device = tostring(devices[1])
+    end
+end
+
 local function onExtensionLoaded()
     message_handlers.VehicleUpdate = vehiclemanager.update_vehicle
     message_handlers.VehicleSpawn = vehiclemanager.spawn_vehicle
@@ -226,6 +240,7 @@ local function onExtensionLoaded()
     message_handlers.PlayerDisconnected = handle_player_disconnected
     message_handlers.BridgeModDownloaded = handle_bridge_mod_downloaded
     message_handlers.BridgeModDownloadProgress = handle_bridge_mod_download_progress
+    message_handlers.BridgeVoiceInputDevices = handle_bridge_voice_input_devices
     message_handlers.VehicleLuaCommand = handle_vehicle_lua
     message_handlers.CouplerAttached = vehiclemanager.attach_coupler
     message_handlers.CouplerDetached = vehiclemanager.detach_coupler
@@ -413,6 +428,10 @@ local function connect(addr, player_name, is_public)
         }
     }
     send_data(client_info, true)
+
+    if kissvoicechat and kissvoicechat.apply_settings then
+        kissvoicechat.apply_settings()
+    end
 
     kissmods.set_mods_list(server_info.mods)
     kissmods.update_status_all()

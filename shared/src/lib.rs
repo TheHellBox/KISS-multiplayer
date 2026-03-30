@@ -82,6 +82,18 @@ pub enum ClientCommand {
     StartTalking,
     // Only used by bridge
     EndTalking,
+    // Only used by bridge
+    SetVoiceChatDistance(f32),
+    // Only used by bridge
+    SetVoiceChatPlayerVolume(u32, f32),
+    // Only used by bridge
+    SetVoiceChatInputVolume(f32),
+    // Only used by bridge
+    SetVoiceChatInputDevice(String),
+    // Only used by bridge
+    SetVoiceChatCurveProfile(String),
+    // Only used by bridge
+    RequestVoiceChatInputDevices,
     DataChunk {
         chunk_index: u32,
         total_chunks: u32,

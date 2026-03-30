@@ -1,13 +1,19 @@
 use anyhow::{anyhow, Context};
+use cpal::traits::DeviceTrait;
 use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
 use indoc::formatdoc;
-use rodio::DeviceTrait;
 use tokio::task::JoinHandle;
 use std::format;
 use indoc::indoc;
 
-const DISTANCE_DIVIDER: f32 = 3.0;
+const SPATIAL_DISTANCE_DIVIDER: f32 = 3.0;
+const BASE_OUTPUT_VOLUME: f32 = 2.0;
+const DEFAULT_MAX_DISTANCE: f32 = 120.0;
+const MIN_MAX_DISTANCE: f32 = 5.0;
+const MAX_MAX_DISTANCE: f32 = 1000.0;
+const MIN_GAIN: f32 = 0.0;
+const MAX_GAIN: f32 = 3.0;
 const SAMPLE_RATE: cpal::SampleRate = cpal::SampleRate(16000);
 const BUFFER_LEN: usize = 1920;
 const SAMPLE_FORMATS: &[cpal::SampleFormat] = &[
@@ -20,11 +26,120 @@ const SAMPLE_FORMATS: &[cpal::SampleFormat] = &[
 pub enum VoiceChatPlaybackEvent {
     Packet(u32, [f32; 3], Vec<u8>),
     PositionUpdate([f32; 3], [f32; 3]),
+    SetDistance(f32),
+    SetPlayerVolume(u32, f32),
+    SetCurveProfile(String),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum VoiceCurveProfile {
+    Realistic,
+    Balanced,
+    Arcade,
+}
+
+impl VoiceCurveProfile {
+    fn from_str(value: &str) -> Self {
+        match value.to_ascii_lowercase().as_str() {
+            "realistic" => VoiceCurveProfile::Realistic,
+            "arcade" => VoiceCurveProfile::Arcade,
+            _ => VoiceCurveProfile::Balanced,
+        }
+    }
+
+    fn spatial_multiplier(self) -> f32 {
+        match self {
+            VoiceCurveProfile::Realistic => 0.80,
+            VoiceCurveProfile::Balanced => 1.00,
+            VoiceCurveProfile::Arcade => 1.35,
+        }
+    }
 }
 
 pub enum VoiceChatRecordingEvent {
     Start,
     End,
+    SetInputVolume(f32),
+    SetInputDevice(String),
+}
+
+pub fn list_input_devices() -> Vec<String> {
+    let host = cpal::default_host();
+    let mut devices = Vec::new();
+    if let Ok(input_devices) = host.input_devices() {
+        for device in input_devices {
+            if let Ok(name) = device.name() {
+                devices.push(name);
+            }
+        }
+    }
+    devices.sort();
+    devices.dedup();
+    devices
+}
+
+fn clamp(value: f32, min: f32, max: f32) -> f32 {
+    value.max(min).min(max)
+}
+
+fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
+    let dx = a[0] - b[0];
+    let dy = a[1] - b[1];
+    let dz = a[2] - b[2];
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+fn is_in_range(emitter: [f32; 3], listener: [f32; 3], max_distance: f32) -> bool {
+    let max_distance = clamp(max_distance, MIN_MAX_DISTANCE, MAX_MAX_DISTANCE);
+    distance(emitter, listener) <= max_distance
+}
+
+fn spatial_divider(max_distance: f32, profile: VoiceCurveProfile) -> f32 {
+    let range_scale = clamp(max_distance, MIN_MAX_DISTANCE, MAX_MAX_DISTANCE) / DEFAULT_MAX_DISTANCE;
+    (SPATIAL_DISTANCE_DIVIDER * range_scale.max(0.1)) * profile.spatial_multiplier()
+}
+
+fn to_spatial_position(position: [f32; 3], max_distance: f32, profile: VoiceCurveProfile) -> [f32; 3] {
+    let divider = spatial_divider(max_distance, profile);
+    [
+        position[0] / divider,
+        position[1] / divider,
+        position[2] / divider,
+    ]
+}
+
+fn resolve_input_device(device_name: &Option<String>) -> Result<cpal::Device, anyhow::Error> {
+    let host = cpal::default_host();
+    if let Some(name) = device_name {
+        let mut exact_match = None;
+        let mut partial_match = None;
+        if let Ok(devices) = host.input_devices() {
+            for device in devices {
+                if let Ok(device_name_found) = device.name() {
+                    if device_name_found.eq_ignore_ascii_case(name) {
+                        exact_match = Some(device);
+                        break;
+                    }
+                    if partial_match.is_none()
+                        && device_name_found.to_lowercase().contains(&name.to_lowercase())
+                    {
+                        partial_match = Some(device);
+                    }
+                }
+            }
+        }
+        if let Some(device) = exact_match.or(partial_match) {
+            return Ok(device);
+        }
+        return Err(anyhow!(
+            "Configured audio input device '{}' was not found",
+            name
+        ));
+    }
+
+    host.default_input_device().context(
+        "No default audio input device available for voice chat. Check your OS's settings and verify you have a device available.",
+    )
 }
 
 fn find_supported_recording_configuration(
@@ -94,106 +209,18 @@ pub fn try_create_vc_recording_task(
     sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
     receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
 ) -> Result<JoinHandle<Result<(), anyhow::Error>>, anyhow::Error> {
-    let device = cpal::default_host().default_input_device()
-        .context("No default audio input device available for voice chat. \
-            Check your OS's settings and verify you have a device available.")?;
-    info!("Using default audio input device: {}", device.name().unwrap());
-    let (config, sample_format) = configure_recording_device(&device)?;
-    info!(indoc!("
-    Recording stream configured with the following settings:
-    \tChannels: {:?}
-    \tSample rate: {:?}
-    \tBuffer size: {:?}
-    Use it with a key bound in BeamNG.Drive"),
-        config.channels,
-        config.sample_rate,
-        config.buffer_size
-    );
-
-    let encoder = audiopus::coder::Encoder::new(
-        audiopus::SampleRate::Hz16000,
-        audiopus::Channels::Mono,
-        audiopus::Application::Voip,
-    )?;
-
-
-
     Ok(tokio::task::spawn_blocking(move || {
-        let err_fn = move |err| {
-            error!("an error occurred on stream: {}", err);
-        };
-        let sample_rate = config.sample_rate;
-        let channels = config.channels;
         let send = std::sync::Arc::new(std::sync::Mutex::new(false));
         let buffer = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
-        let stream = {
-            let send = send.clone();
-            let buffer = buffer.clone();
-            match sample_format {
-                cpal::SampleFormat::F32 => device
-                    .build_input_stream(
-                        &config,
-                        move |data: &[f32], _: &_| {
-                            if !*send.lock().unwrap() {
-                                return;
-                            };
-                            let samples: Vec<i16> = data
-                                .iter()
-                                .map(|x| cpal::Sample::to_i16(x))
-                                .collect();
-                            encode_and_send_samples(
-                                &mut buffer.lock().unwrap(),
-                                &samples,
-                                &sender,
-                                &encoder,
-                                channels,
-                                sample_rate,
-                            );
-                        },
-                        err_fn,
-                    ),
-                cpal::SampleFormat::I16 => device
-                    .build_input_stream(
-                        &config,
-                        move |data: &[i16], _: &_| {
-                            if !*send.lock().unwrap() {
-                                return;
-                            };
-                            encode_and_send_samples(
-                                &mut buffer.lock().unwrap(),
-                                &data,
-                                &sender,
-                                &encoder,
-                                channels,
-                                sample_rate,
-                            );
-                        },
-                        err_fn,
-                    ),
-                cpal::SampleFormat::U16 => device
-                    .build_input_stream(
-                        &config,
-                        move |data: &[u16], _: &_| {
-                            if !*send.lock().unwrap() {
-                                return;
-                            };
-                            let samples: Vec<i16> = data
-                                .iter()
-                                .map(|x| cpal::Sample::to_i16(x))
-                                .collect();
-                            encode_and_send_samples(
-                                &mut buffer.lock().unwrap(),
-                                &samples,
-                                &sender,
-                                &encoder,
-                                channels,
-                                sample_rate,
-                            );
-                        },
-                        err_fn,
-                    ),
-            }?
-        };
+        let input_gain = std::sync::Arc::new(std::sync::Mutex::new(1.0f32));
+        let mut selected_device: Option<String> = None;
+        let mut stream = build_input_stream(
+            &selected_device,
+            send.clone(),
+            buffer.clone(),
+            input_gain.clone(),
+            sender.clone(),
+        )?;
 
         stream.play()?;
 
@@ -208,11 +235,152 @@ pub fn try_create_vc_recording_task(
                     buffer.lock().unwrap().clear();
                     *send = false;
                 }
+                VoiceChatRecordingEvent::SetInputVolume(value) => {
+                    let mut gain = input_gain.lock().unwrap();
+                    *gain = clamp(value, MIN_GAIN, MAX_GAIN);
+                }
+                VoiceChatRecordingEvent::SetInputDevice(name) => {
+                    let trimmed = name.trim();
+                    selected_device = if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_owned())
+                    };
+                    match build_input_stream(
+                        &selected_device,
+                        send.clone(),
+                        buffer.clone(),
+                        input_gain.clone(),
+                        sender.clone(),
+                    ) {
+                        Ok(new_stream) => {
+                            if let Err(e) = new_stream.play() {
+                                error!("Failed to start recording stream on selected device: {}", e);
+                                continue;
+                            }
+                            stream = new_stream;
+                            buffer.lock().unwrap().clear();
+                        }
+                        Err(e) => {
+                            error!("Failed to switch recording input device: {}", e);
+                        }
+                    }
+                }
             }
         }
         debug!("Recording closed");
         Ok::<_, anyhow::Error>(())
     }))
+}
+
+fn build_input_stream(
+    selected_device: &Option<String>,
+    send: std::sync::Arc<std::sync::Mutex<bool>>,
+    buffer: std::sync::Arc<std::sync::Mutex<Vec<i16>>>,
+    input_gain: std::sync::Arc<std::sync::Mutex<f32>>,
+    sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
+) -> Result<cpal::Stream, anyhow::Error> {
+    let device = resolve_input_device(selected_device)?;
+    let device_name = device.name().unwrap_or_else(|_| String::from("<unknown>"));
+    info!("Using audio input device: {}", device_name);
+
+    let (config, sample_format) = configure_recording_device(&device)?;
+    info!(indoc!("
+    Recording stream configured with the following settings:
+    	Channels: {:?}
+    	Sample rate: {:?}
+    	Buffer size: {:?}
+    Use it with a key bound in BeamNG.Drive"),
+        config.channels,
+        config.sample_rate,
+        config.buffer_size
+    );
+
+    let encoder = audiopus::coder::Encoder::new(
+        audiopus::SampleRate::Hz16000,
+        audiopus::Channels::Mono,
+        audiopus::Application::Voip,
+    )?;
+
+    let sample_rate = config.sample_rate;
+    let channels = config.channels;
+
+    Ok(match sample_format {
+        cpal::SampleFormat::F32 => device.build_input_stream(
+            &config,
+            move |data: &[f32], _: &_| {
+                if !*send.lock().unwrap() {
+                    return;
+                }
+                let gain = *input_gain.lock().unwrap();
+                let samples: Vec<i16> = data
+                    .iter()
+                    .map(|x| scale_sample(cpal::Sample::to_i16(x), gain))
+                    .collect();
+                encode_and_send_samples(
+                    &mut buffer.lock().unwrap(),
+                    &samples,
+                    &sender,
+                    &encoder,
+                    channels,
+                    sample_rate,
+                );
+            },
+            move |err| {
+                error!("an error occurred on stream: {}", err);
+            },
+        ),
+        cpal::SampleFormat::I16 => device.build_input_stream(
+            &config,
+            move |data: &[i16], _: &_| {
+                if !*send.lock().unwrap() {
+                    return;
+                }
+                let gain = *input_gain.lock().unwrap();
+                let samples: Vec<i16> = data.iter().map(|x| scale_sample(*x, gain)).collect();
+                encode_and_send_samples(
+                    &mut buffer.lock().unwrap(),
+                    &samples,
+                    &sender,
+                    &encoder,
+                    channels,
+                    sample_rate,
+                );
+            },
+            move |err| {
+                error!("an error occurred on stream: {}", err);
+            },
+        ),
+        cpal::SampleFormat::U16 => device.build_input_stream(
+            &config,
+            move |data: &[u16], _: &_| {
+                if !*send.lock().unwrap() {
+                    return;
+                }
+                let gain = *input_gain.lock().unwrap();
+                let samples: Vec<i16> = data
+                    .iter()
+                    .map(|x| scale_sample(cpal::Sample::to_i16(x), gain))
+                    .collect();
+                encode_and_send_samples(
+                    &mut buffer.lock().unwrap(),
+                    &samples,
+                    &sender,
+                    &encoder,
+                    channels,
+                    sample_rate,
+                );
+            },
+            move |err| {
+                error!("an error occurred on stream: {}", err);
+            },
+        ),
+    }?)
+}
+
+fn scale_sample(sample: i16, gain: f32) -> i16 {
+    let scaled = (sample as f32) * clamp(gain, MIN_GAIN, MAX_GAIN);
+    scaled.max(i16::MIN as f32).min(i16::MAX as f32) as i16
 }
 
 pub fn encode_and_send_samples(
@@ -271,11 +439,18 @@ pub fn try_create_vc_playback_task(
     Ok(tokio::task::spawn_blocking(move || {
         let (_stream, stream_handle) =
             rodio::OutputStream::try_from_device(&device)?;
-        let mut sinks = std::collections::HashMap::new();
+        let mut sinks: std::collections::HashMap<u32, (rodio::SpatialSink, std::time::Instant, [f32; 3])> =
+            std::collections::HashMap::new();
+        let mut listener_position = [0.0f32, 0.0f32, 0.0f32];
+        let mut listener_left_ear = [0.0f32, -1.0f32, 0.0f32];
+        let mut listener_right_ear = [0.0f32, 1.0f32, 0.0f32];
+        let mut max_distance = DEFAULT_MAX_DISTANCE;
+        let mut curve_profile = VoiceCurveProfile::Balanced;
+        let mut player_volumes: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
         while let Ok(event) = receiver.recv() {
             match event {
                 VoiceChatPlaybackEvent::Packet(client, position, encoded) => {
-                    let (sink, updated_at) = {
+                    let (sink, updated_at, emitter_pos) = {
                         sinks.entry(client).or_insert_with(|| {
                             let sink = rodio::SpatialSink::try_new(
                                 &stream_handle,
@@ -283,18 +458,17 @@ pub fn try_create_vc_playback_task(
                                 [0.0, -1.0, 0.0],
                                 [0.0, 1.0, 0.0],
                             ).unwrap();
-                            sink.set_volume(2.0);
+                            sink.set_volume(BASE_OUTPUT_VOLUME);
                             sink.play();
-                            (sink, std::time::Instant::now())
+                            (sink, std::time::Instant::now(), position)
                         })
                     };
                     *updated_at = std::time::Instant::now();
-                    let position = [
-                        position[0] / DISTANCE_DIVIDER,
-                        position[1] / DISTANCE_DIVIDER,
-                        position[2] / DISTANCE_DIVIDER
-                    ];
-                    sink.set_emitter_position(position);
+                    *emitter_pos = position;
+                    sink.set_emitter_position(to_spatial_position(position, max_distance, curve_profile));
+                    let player_gain = clamp(*player_volumes.get(&client).unwrap_or(&1.0), MIN_GAIN, MAX_GAIN);
+                    let in_range = is_in_range(*emitter_pos, listener_position, max_distance);
+                    sink.set_volume(if in_range { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
                     let mut samples: Vec<i16> = Vec::with_capacity(BUFFER_LEN);
                     samples.resize(BUFFER_LEN, 0);
                     let res = decoder
@@ -306,25 +480,60 @@ pub fn try_create_vc_playback_task(
                     sink.append(buf);
                 },
                 VoiceChatPlaybackEvent::PositionUpdate(left_ear, right_ear) => {
-                    sinks.retain(|_, (sink, updated_at)| {
+                    listener_position = [
+                        (left_ear[0] + right_ear[0]) / 2.0,
+                        (left_ear[1] + right_ear[1]) / 2.0,
+                        (left_ear[2] + right_ear[2]) / 2.0,
+                    ];
+                    listener_left_ear = left_ear;
+                    listener_right_ear = right_ear;
+                    sinks.retain(|_, (sink, updated_at, _)| {
                         if updated_at.elapsed().as_secs() > 1 {
                             false
                         } else {
-                            let left_ear = [
-                                left_ear[0] / DISTANCE_DIVIDER,
-                                left_ear[1] / DISTANCE_DIVIDER,
-                                left_ear[2] / DISTANCE_DIVIDER
-                            ];
-                            let right_ear = [
-                                right_ear[0] / DISTANCE_DIVIDER,
-                                right_ear[1] / DISTANCE_DIVIDER,
-                                right_ear[2] / DISTANCE_DIVIDER
-                            ];
-                            sink.set_left_ear_position(left_ear);
-                            sink.set_right_ear_position(right_ear);
+                            sink.set_left_ear_position(to_spatial_position(left_ear, max_distance, curve_profile));
+                            sink.set_right_ear_position(to_spatial_position(right_ear, max_distance, curve_profile));
                             true
                         }
                     });
+                    for (client_id, (sink, _, emitter_pos)) in sinks.iter_mut() {
+                        let player_gain = clamp(*player_volumes.get(client_id).unwrap_or(&1.0), MIN_GAIN, MAX_GAIN);
+                        let in_range = is_in_range(*emitter_pos, listener_position, max_distance);
+                        sink.set_volume(if in_range { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
+                    }
+                }
+                VoiceChatPlaybackEvent::SetDistance(value) => {
+                    max_distance = clamp(value, MIN_MAX_DISTANCE, MAX_MAX_DISTANCE);
+                    for (client_id, (sink, _, emitter_pos)) in sinks.iter_mut() {
+                        sink.set_emitter_position(to_spatial_position(*emitter_pos, max_distance, curve_profile));
+                        sink.set_left_ear_position(to_spatial_position(listener_left_ear, max_distance, curve_profile));
+                        sink.set_right_ear_position(to_spatial_position(listener_right_ear, max_distance, curve_profile));
+                        let player_gain = clamp(*player_volumes.get(client_id).unwrap_or(&1.0), MIN_GAIN, MAX_GAIN);
+                        let in_range = is_in_range(*emitter_pos, listener_position, max_distance);
+                        sink.set_volume(if in_range { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
+                    }
+                }
+                VoiceChatPlaybackEvent::SetPlayerVolume(client_id, value) => {
+                    player_volumes.insert(client_id, clamp(value, MIN_GAIN, MAX_GAIN));
+                    if let Some((sink, _, emitter_pos)) = sinks.get_mut(&client_id) {
+                        let in_range = is_in_range(*emitter_pos, listener_position, max_distance);
+                        sink.set_volume(if in_range {
+                            BASE_OUTPUT_VOLUME * clamp(value, MIN_GAIN, MAX_GAIN)
+                        } else {
+                            0.0
+                        });
+                    }
+                }
+                VoiceChatPlaybackEvent::SetCurveProfile(profile) => {
+                    curve_profile = VoiceCurveProfile::from_str(&profile);
+                    for (client_id, (sink, _, emitter_pos)) in sinks.iter_mut() {
+                        sink.set_emitter_position(to_spatial_position(*emitter_pos, max_distance, curve_profile));
+                        sink.set_left_ear_position(to_spatial_position(listener_left_ear, max_distance, curve_profile));
+                        sink.set_right_ear_position(to_spatial_position(listener_right_ear, max_distance, curve_profile));
+                        let player_gain = clamp(*player_volumes.get(client_id).unwrap_or(&1.0), MIN_GAIN, MAX_GAIN);
+                        let in_range = is_in_range(*emitter_pos, listener_position, max_distance);
+                        sink.set_volume(if in_range { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
+                    }
                 }
             }
         }

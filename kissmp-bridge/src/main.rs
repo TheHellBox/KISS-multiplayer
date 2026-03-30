@@ -388,6 +388,13 @@ async fn connect_to_server(
         }
     };
 
+    let input_devices_msg = bridge_json_to_client_bytes(json!({
+        "BridgeVoiceInputDevices": voice_chat::list_input_devices()
+    }));
+    if let Err(e) = server_commands_sender.send(input_devices_msg).await {
+        warn!("Failed to send voice input device list to game client: {}", e);
+    }
+
     tokio::spawn(async move {
         info!("Starting tasks");
         let result = tokio::try_join!(
@@ -407,7 +414,8 @@ async fn connect_to_server(
                 vc_playback_sender.clone(),
                 client_stream_reader,
                 vc_recording_sender,
-                client_event_sender
+                client_event_sender,
+                server_commands_sender.clone()
             ),
             server_outgoing(server_connection.connection.clone(), client_event_receiver),
             server_incoming(
@@ -576,6 +584,7 @@ async fn client_incoming(
     mut client_stream_reader: tokio::io::ReadHalf<TcpStream>,
     vc_recording_sender: std::sync::mpsc::Sender<voice_chat::VoiceChatRecordingEvent>,
     client_event_sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
+    server_commands_sender: tokio::sync::mpsc::Sender<Vec<u8>>,
 ) -> AHResult {
     let mut buffer = [0; 1];
     while let Ok(_) = client_stream_reader.read_exact(&mut buffer).await {
@@ -598,6 +607,35 @@ async fn client_incoming(
                 }
                 shared::ClientCommand::EndTalking => {
                     let _ = vc_recording_sender.send(voice_chat::VoiceChatRecordingEvent::End);
+                }
+                shared::ClientCommand::SetVoiceChatDistance(value) => {
+                    let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::SetDistance(value));
+                }
+                shared::ClientCommand::SetVoiceChatPlayerVolume(client_id, value) => {
+                    let _ = vc_playback_sender.send(
+                        voice_chat::VoiceChatPlaybackEvent::SetPlayerVolume(client_id, value),
+                    );
+                }
+                shared::ClientCommand::SetVoiceChatInputVolume(value) => {
+                    let _ = vc_recording_sender.send(
+                        voice_chat::VoiceChatRecordingEvent::SetInputVolume(value),
+                    );
+                }
+                shared::ClientCommand::SetVoiceChatInputDevice(device_name) => {
+                    let _ = vc_recording_sender.send(
+                        voice_chat::VoiceChatRecordingEvent::SetInputDevice(device_name),
+                    );
+                }
+                shared::ClientCommand::SetVoiceChatCurveProfile(profile) => {
+                    let _ = vc_playback_sender.send(
+                        voice_chat::VoiceChatPlaybackEvent::SetCurveProfile(profile),
+                    );
+                }
+                shared::ClientCommand::RequestVoiceChatInputDevices => {
+                    let devices_msg = bridge_json_to_client_bytes(json!({
+                        "BridgeVoiceInputDevices": voice_chat::list_input_devices()
+                    }));
+                    let _ = server_commands_sender.send(devices_msg).await;
                 }
                 _ => client_event_sender.send((reliable, decoded)).unwrap(),
             };

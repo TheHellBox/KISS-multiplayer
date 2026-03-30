@@ -44,6 +44,13 @@ M.show_drivers = imgui.BoolPtr(true)
 M.window_opacity = imgui.FloatPtr(0.8)
 M.enable_view_distance = imgui.BoolPtr(true)
 M.view_distance = imgui.IntPtr(300)
+M.voice_range = imgui.FloatPtr(120)
+M.voice_input_volume = imgui.FloatPtr(1.0)
+M.voice_input_device = ""
+M.voice_input_devices = {}
+M.voice_player_volumes = {}
+M.voice_curve_profile = "Balanced"
+M.voice_curve_profiles = {"Realistic", "Balanced", "Arcade"}
 
 local function show_ui()
   M.gui.showWindow("KissMP")
