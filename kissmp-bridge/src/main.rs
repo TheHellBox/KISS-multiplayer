@@ -4,7 +4,7 @@ pub mod voice_chat;
 
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use quinn::IdleTimeout;
+use quinn::{IdleTimeout, VarInt};
 use rustls::{Certificate, ServerName};
 use serde_json::json;
 use std::convert::TryFrom;
@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 #[macro_use]
@@ -20,11 +20,14 @@ extern crate log;
 
 const SERVER_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 const CONNECTED_BYTE: &[u8] = &[1];
+const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 struct ModDownloadState {
     file: tokio::fs::File,
     expected_size: u64,
     received: u64,
+    last_progress_sent_at: Instant,
+    last_progress_sent_value: f64,
 }
 
 fn bridge_json_to_client_bytes(value: serde_json::Value) -> Vec<u8> {
@@ -100,6 +103,8 @@ async fn handle_file_part_in_bridge(
                 file,
                 expected_size: file_size as u64,
                 received: 0,
+                last_progress_sent_at: Instant::now(),
+                last_progress_sent_value: 0.0,
             },
         );
         info!("Downloading mod {} to {}", safe_name, file_path.display());
@@ -117,13 +122,23 @@ async fn handle_file_part_in_bridge(
         } else {
             (state.received as f64 / state.expected_size as f64).min(1.0)
         };
-        let progress_msg = bridge_json_to_client_bytes(json!({
-            "BridgeModDownloadProgress": {
-                "name": safe_name.clone(),
-                "progress": progress
-            }
-        }));
-        server_commands_sender.send(progress_msg).await?;
+
+        let now = Instant::now();
+        let should_send_progress = progress >= 1.0
+            || now.duration_since(state.last_progress_sent_at) >= PROGRESS_UPDATE_INTERVAL
+            || (progress - state.last_progress_sent_value) >= 0.01;
+
+        if should_send_progress {
+            let progress_msg = bridge_json_to_client_bytes(json!({
+                "BridgeModDownloadProgress": {
+                    "name": safe_name.clone(),
+                    "progress": progress
+                }
+            }));
+            server_commands_sender.send(progress_msg).await?;
+            state.last_progress_sent_at = now;
+            state.last_progress_sent_value = progress;
+        }
 
         state.received >= state.expected_size
     };
@@ -257,6 +272,10 @@ async fn connect_to_server(
         let mut transport = quinn::TransportConfig::default();
         transport.max_idle_timeout(Some(IdleTimeout::try_from(SERVER_IDLE_TIMEOUT).unwrap()));
         transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
+        transport.stream_receive_window(VarInt::from_u32(8 * 1024 * 1024));
+        transport.receive_window(VarInt::from_u32(32 * 1024 * 1024));
+        transport.send_window(32 * 1024 * 1024);
+        transport.max_concurrent_uni_streams(VarInt::from_u32(256));
         client_cfg.transport = Arc::new(transport);
 
         let mut endpoint = quinn::Endpoint::client(
@@ -466,6 +485,47 @@ fn server_command_to_client_bytes(command: shared::ServerCommand) -> Vec<u8> {
 
 type AHResult = Result<(), anyhow::Error>;
 
+async fn handle_server_command_in_bridge(
+    server_commands_sender: &tokio::sync::mpsc::Sender<Vec<u8>>,
+    downloads: &mut HashMap<String, ModDownloadState>,
+    mods_dir: &Path,
+    vc_playback_sender: &std::sync::mpsc::Sender<voice_chat::VoiceChatPlaybackEvent>,
+    command: shared::ServerCommand,
+) -> AHResult {
+    match command {
+        shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
+            let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
+                client, pos, data,
+            ));
+        }
+        shared::ServerCommand::FilePart(name, data, _, file_size, _) => {
+            handle_file_part_in_bridge(
+                server_commands_sender,
+                downloads,
+                mods_dir,
+                name,
+                data,
+                file_size,
+            )
+            .await?;
+        }
+        _ => {
+            server_commands_sender
+                .send(server_command_to_client_bytes(command))
+                .await?;
+        }
+    }
+
+    Ok(())
+}
+
+fn is_stream_terminated(err: &anyhow::Error) -> bool {
+    if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+        return matches!(io_err.kind(), std::io::ErrorKind::UnexpectedEof);
+    }
+    false
+}
+
 async fn client_outgoing(
     mut server_commands_receiver: tokio::sync::mpsc::Receiver<Vec<u8>>,
     mut client_stream_writer: WriteHalf<TcpStream>,
@@ -484,14 +544,7 @@ async fn server_incoming(
     mods_dir: PathBuf,
 ) -> AHResult {
     let mut downloads: HashMap<String, ModDownloadState> = HashMap::new();
-
-    let mut reliable_commands = server_connection.uni_streams
-        .map(|stream| async { 
-            let mut stream = stream?;
-            read_pascal_bytes(&mut stream).await 
-        })
-        .buffered(256)
-        .fuse();
+    let mut reliable_streams = server_connection.uni_streams.fuse();
 
     let mut unreliable_commands = server_connection
         .datagrams
@@ -500,33 +553,32 @@ async fn server_incoming(
 
     loop {
         tokio::select! {
-            command = reliable_commands.next() => match command {
-                Some(Ok(bytes)) => {
-                    let command = bincode::deserialize::<shared::ServerCommand>(&bytes)?;
-                    match command {
-                        shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
-                            let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
-                                client, pos, data,
-                            ));
+            stream = reliable_streams.next() => match stream {
+                Some(Ok(mut stream)) => {
+                    loop {
+                        match read_pascal_bytes(&mut stream).await {
+                            Ok(bytes) => {
+                                let command = bincode::deserialize::<shared::ServerCommand>(&bytes)?;
+                                handle_server_command_in_bridge(
+                                    &server_commands_sender,
+                                    &mut downloads,
+                                    &mods_dir,
+                                    &vc_playback_sender,
+                                    command,
+                                )
+                                .await?;
+                            }
+                            Err(e) => {
+                                if !is_stream_terminated(&e) {
+                                    warn!("Error reading reliable command stream: {}", e);
+                                }
+                                break;
+                            }
                         }
-                        shared::ServerCommand::FilePart(name, data, _, file_size, _) => {
-                            handle_file_part_in_bridge(
-                                &server_commands_sender,
-                                &mut downloads,
-                                &mods_dir,
-                                name,
-                                data,
-                                file_size,
-                            )
-                            .await?;
-                        }
-                        _ => server_commands_sender
-                            .send(server_command_to_client_bytes(command))
-                            .await?,
                     }
                 }
                 Some(Err(e)) => {
-                    warn!("Error reading reliable command: {}", e);
+                    warn!("Error accepting reliable stream: {}", e);
                     break;
                 }
                 None => break,
@@ -534,27 +586,14 @@ async fn server_incoming(
             command = unreliable_commands.next() => match command {
                 Some(Ok(bytes)) => {
                     if let Ok(command) = bincode::deserialize::<shared::ServerCommand>(&bytes) {
-                        match command {
-                            shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
-                                let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
-                                    client, pos, data,
-                                ));
-                            }
-                            shared::ServerCommand::FilePart(name, data, _, file_size, _) => {
-                                handle_file_part_in_bridge(
-                                    &server_commands_sender,
-                                    &mut downloads,
-                                    &mods_dir,
-                                    name,
-                                    data,
-                                    file_size,
-                                )
-                                .await?;
-                            }
-                            _ => server_commands_sender
-                                .send(server_command_to_client_bytes(command))
-                                .await?,
-                        }
+                        handle_server_command_in_bridge(
+                            &server_commands_sender,
+                            &mut downloads,
+                            &mods_dir,
+                            &vc_playback_sender,
+                            command,
+                        )
+                        .await?;
                     }
                 }
                 Some(Err(e)) => {

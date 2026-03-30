@@ -37,6 +37,7 @@ local MAX_BINARY_BYTES_PER_UPDATE = 2 * 1024 * 1024
 local BINARY_FRAME_TIME_BUDGET_MIN = 0.002
 local BINARY_FRAME_TIME_BUDGET_MAX = 0.006
 local BINARY_FRAME_TIME_BUDGET_RATIO = 0.25
+local DOWNLOAD_SPEED_SAMPLE_MIN = 0.2
 
 local message_handlers = {}
 
@@ -190,6 +191,43 @@ local function handle_bridge_mod_downloaded(name)
     end
 end
 
+local function update_download_speed(status, received_bytes)
+    if not status then
+        return
+    end
+
+    local now = socket.gettime()
+    local received = math.max(received_bytes or 0, 0)
+
+    status.received_bytes = received
+    status.speed_bps = status.speed_bps or 0
+
+    if not status.last_speed_ts then
+        status.last_speed_ts = now
+        status.last_speed_bytes = received
+        return
+    end
+
+    local dt = now - status.last_speed_ts
+    if dt <= 0 then
+        return
+    end
+
+    local delta = received - (status.last_speed_bytes or 0)
+    if delta < 0 then
+        status.last_speed_ts = now
+        status.last_speed_bytes = received
+        return
+    end
+
+    if dt >= DOWNLOAD_SPEED_SAMPLE_MIN then
+        local instant_bps = delta / dt
+        status.speed_bps = (status.speed_bps * 0.65) + (instant_bps * 0.35)
+        status.last_speed_ts = now
+        status.last_speed_bytes = received
+    end
+end
+
 local function handle_bridge_mod_download_progress(data)
     if not data or not data.name then
         return
@@ -200,11 +238,18 @@ local function handle_bridge_mod_download_progress(data)
         status = {
             name = data.name,
             progress = 0,
+            received_bytes = 0,
+            speed_bps = 0,
         }
         M.downloads_status[data.name] = status
     end
 
     status.progress = math.min(math.max(data.progress or 0, 0), 1)
+    local mod = kissmods.mods[data.name]
+    if mod and mod.size then
+        update_download_speed(status, mod.size * status.progress)
+    end
+
     M.downloading = true
     kissui.show_download = true
 end
@@ -409,7 +454,7 @@ local function connect(addr, player_name, is_public)
             name = player_name,
             secret = generate_secret(server_info.server_identifier),
             steamid64 = steamid64,
-            client_version = { 0, 7 }
+            client_version = { 0, 8 }
         }
     }
     send_data(client_info, true)
@@ -432,7 +477,7 @@ local function connect(addr, player_name, is_public)
                     tostring(mod.size or 0)
             ))
             table.insert(missing_mods, mod.name)
-            M.downloads_status[mod.name] = { name = mod.name, progress = 0 }
+            M.downloads_status[mod.name] = { name = mod.name, progress = 0, received_bytes = 0, speed_bps = 0 }
         else
             print(string.format(
                     "[KISSMP][MOD-CHECK] keep=%s status=ok reason=%s hash=%s",
@@ -583,6 +628,8 @@ local function onUpdate(dt)
         status = {
           name = name,
           progress = 0,
+          received_bytes = 0,
+          speed_bps = 0,
         }
         M.downloads_status[name] = status
       end
@@ -594,6 +641,7 @@ local function onUpdate(dt)
             M.downloads[name]:write(file_data)
       meta.received = meta.received + read_size
       status.progress = math.min(meta.received / math.max(file_length, 1), 1)
+      update_download_speed(status, meta.received)
 
       binary_chunks_processed = binary_chunks_processed + 1
       binary_bytes_processed = binary_bytes_processed + read_size

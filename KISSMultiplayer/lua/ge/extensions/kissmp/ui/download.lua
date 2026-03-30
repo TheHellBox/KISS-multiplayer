@@ -5,6 +5,38 @@ local function bytes_to_mb(bytes)
   return (bytes / 1024) / 1024
 end
 
+local function format_speed(bytes_per_second)
+  local bps = math.max(bytes_per_second or 0, 0)
+  if bps >= (1024 * 1024) then
+    return string.format("%.2f MB/s", bps / (1024 * 1024))
+  end
+  if bps >= 1024 then
+    return string.format("%.1f KB/s", bps / 1024)
+  end
+  return string.format("%.0f B/s", bps)
+end
+
+local function format_eta(seconds)
+  if not seconds or seconds <= 0 then
+    return "ETA --"
+  end
+
+  local s = math.floor(seconds + 0.5)
+  if s < 60 then
+    return string.format("ETA %ds", s)
+  end
+
+  local minutes = math.floor(s / 60)
+  local rem_seconds = s % 60
+  if minutes < 60 then
+    return string.format("ETA %dm %02ds", minutes, rem_seconds)
+  end
+
+  local hours = math.floor(minutes / 60)
+  local rem_minutes = minutes % 60
+  return string.format("ETA %dh %02dm", hours, rem_minutes)
+end
+
 local function draw(gui)
   if not kissui.show_download then return end
 
@@ -18,6 +50,7 @@ local function draw(gui)
     -- Draw a list of all the downloads, and finish by drawing a total/max size
     local total_size = 0
     local downloaded_size = 0
+    local total_speed_bps = 0
 
     local content_width = imgui.GetWindowContentRegionWidth()
     local split_width = content_width * 0.495
@@ -25,10 +58,20 @@ local function draw(gui)
     imgui.PushItemWidth(content_width / 2)
     if network.downloads_status then
       for _, download_status in pairs(network.downloads_status) do
-        local text_size = imgui.CalcTextSize(download_status.name)
+        local mod = kissmods.mods[download_status.name]
+
+        local eta_text = format_eta(nil)
+        if mod and mod.size and (download_status.speed_bps or 0) > 0 then
+          local received_bytes = mod.size * math.min(math.max(download_status.progress or 0, 0), 1)
+          local remaining_bytes = math.max(mod.size - received_bytes, 0)
+          eta_text = format_eta(remaining_bytes / download_status.speed_bps)
+        end
+
+        local row_text = string.format("%s (%s | %s)", download_status.name, format_speed(download_status.speed_bps), eta_text)
+        local text_size = imgui.CalcTextSize(row_text)
         local extra_size = split_width - text_size.x
 
-        imgui.Text(download_status.name)
+        imgui.Text(row_text)
         if extra_size > 0 then
           imgui.SameLine()
           imgui.Dummy(imgui.ImVec2(extra_size, -1))
@@ -36,17 +79,29 @@ local function draw(gui)
         imgui.SameLine()
         imgui.ProgressBar(download_status.progress, imgui.ImVec2(split_width, 0))
 
-        local mod = kissmods.mods[download_status.name]
-        total_size = total_size + mod.size
-        downloaded_size = downloaded_size + (mod.size * download_status.progress)
+        if mod and mod.size then
+          total_size = total_size + mod.size
+          downloaded_size = downloaded_size + (mod.size * download_status.progress)
+        end
+        total_speed_bps = total_speed_bps + (download_status.speed_bps or 0)
       end
     end
     imgui.EndChild()
 
     total_size = bytes_to_mb(total_size)
     downloaded_size = bytes_to_mb(downloaded_size)
-    local progress = downloaded_size / total_size
-    local progress_text = tostring(math.floor(downloaded_size)) .. "MB / " .. tostring(math.floor(total_size)) .. "MB"
+    local progress = 0
+    if total_size > 0 then
+      progress = downloaded_size / total_size
+    end
+
+    local total_eta_text = format_eta(nil)
+    if total_speed_bps > 0 and total_size > 0 then
+      local remaining_bytes = math.max((total_size - downloaded_size) * 1024 * 1024, 0)
+      total_eta_text = format_eta(remaining_bytes / total_speed_bps)
+    end
+
+    local progress_text = tostring(math.floor(downloaded_size)) .. "MB / " .. tostring(math.floor(total_size)) .. "MB | " .. format_speed(total_speed_bps) .. " | " .. total_eta_text
 
     content_width = imgui.GetWindowContentRegionWidth()
     split_width = content_width * 0.495
@@ -64,6 +119,7 @@ local function draw(gui)
       kissui.show_download = false
       network.disconnect()
     end
+    imgui.ProgressBar(progress, imgui.ImVec2(content_width, 0))
   end
   imgui.End()
   imgui.PopStyleVar()

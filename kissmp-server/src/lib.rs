@@ -1,6 +1,6 @@
 #[recursion_limit = "1024"]
 use ipnetwork::Ipv4Network;
-use quinn::IdleTimeout;
+use quinn::{IdleTimeout, VarInt};
 use shared::vehicle;
 
 pub mod config;
@@ -91,15 +91,51 @@ pub struct Server {
     upnp_port: Option<u16>,
     public_address: Option<String>,
     mods: Option<Vec<String>>,
+    mod_transfer_chunk_size: usize,
     tick: u64,
 }
 
 impl Server {
+    async fn drive_connection_sender(
+        connection: quinn::Connection,
+        ordered_rx: mpsc::Receiver<ServerCommand>,
+        unreliable_rx: mpsc::Receiver<ServerCommand>,
+        server_info: Vec<u8>,
+        id: u32,
+        mod_transfer_chunk_size: usize,
+    ) {
+        let mut stream = match connection.open_uni().await {
+            Ok(stream) => stream,
+            Err(e) => {
+                error!("Failed to open server info stream: {}", e);
+                return;
+            }
+        };
+        info!("[DEBUG] Sender task started for {}", id);
+        if let Err(e) = send(&mut stream, &server_info).await {
+            error!("Failed to send server info: {}", e);
+            return;
+        }
+        info!("[DEBUG] Server info sent to {}", id);
+
+        if let Err(e) = Self::drive_send(
+            connection,
+            ordered_rx,
+            unreliable_rx,
+            mod_transfer_chunk_size,
+        )
+        .await
+        {
+            error!("Connection drive_send error: {}", e);
+        }
+    }
+
     pub fn from_config(config: config::Config) -> Self {
         let (lua, receiver) = lua::setup_lua();
         let (watcher_tx, watcher_rx) = std::sync::mpsc::channel();
         let lua_watcher =
             notify::Watcher::new(watcher_tx, std::time::Duration::from_secs(2)).unwrap();
+        let mod_transfer_chunk_size = (config.mod_transfer_chunk_size_kib.clamp(512, 1024) as usize) * 1024;
         Self {
             connections: HashMap::with_capacity(8),
             reqwest_client: reqwest::Client::new(),
@@ -125,6 +161,7 @@ impl Server {
             master_p2p_host: config.master_p2p_host,
             public_address: None,
             mods: config.mods,
+            mod_transfer_chunk_size,
             tick: 0,
         }
     }
@@ -185,6 +222,10 @@ impl Server {
             IdleTimeout::try_from(std::time::Duration::from_secs(60)).unwrap(),
         ));
         transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
+        transport.stream_receive_window(VarInt::from_u32(8 * 1024 * 1024));
+        transport.receive_window(VarInt::from_u32(32 * 1024 * 1024));
+        transport.send_window(32 * 1024 * 1024);
+        transport.max_concurrent_uni_streams(VarInt::from_u32(256));
         server_config.transport = std::sync::Arc::new(transport);
 
         let (_endpoint, incoming) = quinn::Endpoint::server(server_config, addr).unwrap();
@@ -431,28 +472,15 @@ impl Server {
                 server_identifier: self.server_identifier.clone(),
             }))
             .unwrap();
-        // Sender
-        tokio::spawn(async move {
-            let mut stream = match connection.open_uni().await {
-                Ok(stream) => stream,
-                Err(e) => {
-                    error!("Failed to open server info stream: {}", e);
-                    return;
-                }
-            };
-            info!("[DEBUG] Sender task started for {}", id);
-            if let Err(e) = send(&mut stream, &server_info).await {
-                error!("Failed to send server info: {}", e);
-                return;
-            }
-            info!("[DEBUG] Server info sent to {}", id);
-            // debug!("Sent server info to client");
-
-            // Start driving connection
-            if let Err(e) = Self::drive_send(connection, ordered_rx, unreliable_rx).await {
-                error!("Connection drive_send error: {}", e);
-            }
-        });
+        let mod_transfer_chunk_size = self.mod_transfer_chunk_size;
+        tokio::spawn(Self::drive_connection_sender(
+            connection,
+            ordered_rx,
+            unreliable_rx,
+            server_info,
+            id,
+            mod_transfer_chunk_size,
+        ));
         Ok(())
     }
 
@@ -460,6 +488,7 @@ impl Server {
         connection: quinn::Connection,
         ordered: mpsc::Receiver<ServerCommand>,
         unreliable: mpsc::Receiver<ServerCommand>,
+        mod_transfer_chunk_size: usize,
     ) -> anyhow::Result<()> {
         let mut ordered = ReceiverStream::new(ordered).fuse();
         let mut unreliable = ReceiverStream::new(unreliable).fuse();
@@ -472,7 +501,12 @@ impl Server {
                         match command {
                             ServerCommand::TransferFile(file) => {
                                 //println!("Transfer");
-                                let _ = file_transfer::transfer_file(connection.clone(), std::path::Path::new(&file)).await;
+                                let _ = file_transfer::transfer_file(
+                                    connection.clone(),
+                                    std::path::Path::new(&file),
+                                    mod_transfer_chunk_size,
+                                )
+                                .await;
                             }
                             _ => {
                                 let mut stream = connection.open_uni().await;
