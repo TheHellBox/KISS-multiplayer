@@ -65,6 +65,30 @@ local function set_frequency(frequency)
   network.send_data({ SetVoiceChatFrequency = value }, true)
 end
 
+local function set_noise_suppression(enabled)
+  network.send_data({ SetVoiceChatNoiseSuppression = enabled and true or false }, true)
+end
+
+local function set_echo_suppression(enabled)
+  network.send_data({ SetVoiceChatEchoSuppression = enabled and true or false }, true)
+end
+
+local function set_noise_gate_strength(level)
+  local value = tonumber(level) or 0.5
+  value = math.max(0, math.min(1, value))
+  network.send_data({ SetVoiceChatNoiseSuppressionLevel = value }, true)
+end
+
+local function set_echo_ducking_strength(level)
+  local value = tonumber(level) or 0.8
+  value = math.max(0, math.min(1, value))
+  network.send_data({ SetVoiceChatEchoSuppressionLevel = value }, true)
+end
+
+-- Backwards compatibility aliases.
+local set_noise_suppression_level = set_noise_gate_strength
+local set_echo_suppression_level = set_echo_ducking_strength
+
 local function get_tx_status()
   if not kissui.voice_walkie_enabled[0] then
     return "TX: Walkie OFF"
@@ -100,6 +124,10 @@ local function apply_settings()
   set_input_device(kissui.voice_input_device)
   set_curve_profile(kissui.voice_curve_profile)
   set_frequency(kissui.voice_frequency[0])
+  set_noise_suppression(kissui.voice_noise_suppression[0])
+  set_echo_suppression(kissui.voice_echo_suppression[0])
+  set_noise_gate_strength(kissui.voice_noise_gate_strength[0])
+  set_echo_ducking_strength(kissui.voice_echo_ducking_strength[0])
   for player_id, volume in pairs(kissui.voice_player_volumes) do
     set_player_volume(player_id, volume)
   end
@@ -115,6 +143,12 @@ M.set_input_volume = set_input_volume
 M.set_input_device = set_input_device
 M.set_curve_profile = set_curve_profile
 M.set_frequency = set_frequency
+M.set_noise_suppression = set_noise_suppression
+M.set_echo_suppression = set_echo_suppression
+M.set_noise_gate_strength = set_noise_gate_strength
+M.set_echo_ducking_strength = set_echo_ducking_strength
+M.set_noise_suppression_level = set_noise_suppression_level
+M.set_echo_suppression_level = set_echo_suppression_level
 M.get_tx_status = get_tx_status
 M.get_rx_status = get_rx_status
 M.request_input_devices = request_input_devices

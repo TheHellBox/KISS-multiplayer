@@ -42,6 +42,24 @@ local function draw_voice_settings()
     kissvoicechat.set_input_volume(kissui.voice_input_volume[0])
   end
 
+  if imgui.Checkbox("Noise Gate###voice_noise_suppression", kissui.voice_noise_suppression) then
+    kissconfig.save_config()
+    kissvoicechat.set_noise_suppression(kissui.voice_noise_suppression[0])
+  end
+  if imgui.SliderFloat("Noise Gate Strength###voice_noise_suppression_level", kissui.voice_noise_gate_strength, 0, 1) then
+    kissconfig.save_config()
+    kissvoicechat.set_noise_gate_strength(kissui.voice_noise_gate_strength[0])
+  end
+
+  if imgui.Checkbox("Echo Ducking###voice_echo_suppression", kissui.voice_echo_suppression) then
+    kissconfig.save_config()
+    kissvoicechat.set_echo_suppression(kissui.voice_echo_suppression[0])
+  end
+  if imgui.SliderFloat("Echo Ducking Strength###voice_echo_suppression_level", kissui.voice_echo_ducking_strength, 0, 1) then
+    kissconfig.save_config()
+    kissvoicechat.set_echo_ducking_strength(kissui.voice_echo_ducking_strength[0])
+  end
+
   local device_preview = kissui.voice_input_device
   if device_preview == "" then
     device_preview = "Default"

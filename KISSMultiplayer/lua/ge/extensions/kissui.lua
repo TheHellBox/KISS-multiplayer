@@ -53,6 +53,14 @@ M.voice_curve_profile = "Balanced"
 M.voice_curve_profiles = {"Realistic", "Balanced", "Arcade"}
 M.voice_walkie_enabled = imgui.BoolPtr(true)
 M.voice_frequency = imgui.IntPtr(0)
+M.voice_noise_suppression = imgui.BoolPtr(true)
+M.voice_echo_suppression = imgui.BoolPtr(true)
+M.voice_noise_gate_strength = imgui.FloatPtr(0.5)
+M.voice_echo_ducking_strength = imgui.FloatPtr(0.8)
+
+-- Backwards compatibility aliases for older code/config keys.
+M.voice_noise_suppression_level = M.voice_noise_gate_strength
+M.voice_echo_suppression_level = M.voice_echo_ducking_strength
 
 local function show_ui()
   M.gui.showWindow("KissMP")

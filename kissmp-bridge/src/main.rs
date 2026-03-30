@@ -11,6 +11,7 @@ use std::convert::TryFrom;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf};
@@ -360,12 +361,16 @@ async fn connect_to_server(
         tokio::sync::mpsc::channel::<Vec<u8>>(4096);
     let (vc_recording_sender, vc_recording_receiver) = std::sync::mpsc::channel();
     let (vc_playback_sender, vc_playback_receiver) = std::sync::mpsc::channel();
+    let remote_voice_activity = Arc::new(AtomicBool::new(false));
 
     // TODO: Use a struct that can hold either a JoinHandle or a bare future so
     // additional tasks that do not depend on using tokio::spawn can be added.
     let mut non_critical_tasks = FuturesUnordered::new();
 
-    match voice_chat::try_create_vc_playback_task(vc_playback_receiver) {
+    match voice_chat::try_create_vc_playback_task(
+        vc_playback_receiver,
+        remote_voice_activity.clone(),
+    ) {
         Ok(handle) => {
             non_critical_tasks.push(handle);
             info!("Voice chat playback task created successfully");
@@ -378,6 +383,7 @@ async fn connect_to_server(
     match voice_chat::try_create_vc_recording_task(
         client_event_sender.clone(),
         vc_recording_receiver,
+        remote_voice_activity,
     ) {
         Ok(handle) => {
             non_critical_tasks.push(handle);

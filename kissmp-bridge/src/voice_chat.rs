@@ -6,6 +6,8 @@ use indoc::formatdoc;
 use tokio::task::JoinHandle;
 use std::format;
 use indoc::indoc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 const SPATIAL_DISTANCE_DIVIDER: f32 = 3.0;
 const BASE_OUTPUT_VOLUME: f32 = 2.0;
@@ -14,6 +16,12 @@ const MIN_MAX_DISTANCE: f32 = 5.0;
 const MAX_MAX_DISTANCE: f32 = 1000.0;
 const MIN_GAIN: f32 = 0.0;
 const MAX_GAIN: f32 = 3.0;
+const DEFAULT_NOISE_SUPPRESSION_LEVEL: f32 = 0.5;
+const DEFAULT_ECHO_SUPPRESSION_LEVEL: f32 = 0.8;
+const MIN_NOISE_GATE_THRESHOLD: f32 = 0.002;
+const MAX_NOISE_GATE_THRESHOLD: f32 = 0.020;
+const MIN_ECHO_DUCKING_GAIN: f32 = 0.15;
+const MAX_ECHO_DUCKING_GAIN: f32 = 1.0;
 const SAMPLE_RATE: cpal::SampleRate = cpal::SampleRate(16000);
 const BUFFER_LEN: usize = 1920;
 const SAMPLE_FORMATS: &[cpal::SampleFormat] = &[
@@ -63,6 +71,33 @@ pub enum VoiceChatRecordingEvent {
     End,
     SetInputVolume(f32),
     SetInputDevice(String),
+    SetNoiseSuppression(bool),
+    SetEchoSuppression(bool),
+    SetNoiseSuppressionLevel(f32),
+    SetEchoSuppressionLevel(f32),
+}
+
+#[derive(Clone, Copy)]
+struct RecordingProcessingSettings {
+    input_gain: f32,
+    noise_suppression: bool,
+    echo_suppression: bool,
+    noise_suppression_level: f32,
+    echo_suppression_level: f32,
+}
+
+fn clamp_unit(value: f32) -> f32 {
+    clamp(value, 0.0, 1.0)
+}
+
+fn noise_gate_threshold(level: f32) -> f32 {
+    let level = clamp_unit(level);
+    MIN_NOISE_GATE_THRESHOLD + (MAX_NOISE_GATE_THRESHOLD - MIN_NOISE_GATE_THRESHOLD) * level
+}
+
+fn echo_ducking_gain(level: f32) -> f32 {
+    let level = clamp_unit(level);
+    MAX_ECHO_DUCKING_GAIN - (MAX_ECHO_DUCKING_GAIN - MIN_ECHO_DUCKING_GAIN) * level
 }
 
 pub fn list_input_devices() -> Vec<String> {
@@ -221,17 +256,25 @@ fn configure_recording_device(
 pub fn try_create_vc_recording_task(
     sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
     receiver: std::sync::mpsc::Receiver<VoiceChatRecordingEvent>,
+    remote_voice_activity: Arc<AtomicBool>,
 ) -> Result<JoinHandle<Result<(), anyhow::Error>>, anyhow::Error> {
     Ok(tokio::task::spawn_blocking(move || {
-        let send = std::sync::Arc::new(std::sync::Mutex::new(false));
-        let buffer = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
-        let input_gain = std::sync::Arc::new(std::sync::Mutex::new(1.0f32));
+        let send = Arc::new(Mutex::new(false));
+        let buffer = Arc::new(Mutex::new(vec![]));
+        let processing_settings = Arc::new(Mutex::new(RecordingProcessingSettings {
+            input_gain: 1.0,
+            noise_suppression: true,
+            echo_suppression: true,
+            noise_suppression_level: DEFAULT_NOISE_SUPPRESSION_LEVEL,
+            echo_suppression_level: DEFAULT_ECHO_SUPPRESSION_LEVEL,
+        }));
         let mut selected_device: Option<String> = None;
         let mut stream = build_input_stream(
             &selected_device,
             send.clone(),
             buffer.clone(),
-            input_gain.clone(),
+            processing_settings.clone(),
+            remote_voice_activity.clone(),
             sender.clone(),
         )?;
 
@@ -249,8 +292,8 @@ pub fn try_create_vc_recording_task(
                     *send = false;
                 }
                 VoiceChatRecordingEvent::SetInputVolume(value) => {
-                    let mut gain = input_gain.lock().unwrap();
-                    *gain = clamp(value, MIN_GAIN, MAX_GAIN);
+                    let mut settings = processing_settings.lock().unwrap();
+                    settings.input_gain = clamp(value, MIN_GAIN, MAX_GAIN);
                 }
                 VoiceChatRecordingEvent::SetInputDevice(name) => {
                     let trimmed = name.trim();
@@ -263,7 +306,8 @@ pub fn try_create_vc_recording_task(
                         &selected_device,
                         send.clone(),
                         buffer.clone(),
-                        input_gain.clone(),
+                        processing_settings.clone(),
+                        remote_voice_activity.clone(),
                         sender.clone(),
                     ) {
                         Ok(new_stream) => {
@@ -279,6 +323,22 @@ pub fn try_create_vc_recording_task(
                         }
                     }
                 }
+                VoiceChatRecordingEvent::SetNoiseSuppression(enabled) => {
+                    let mut settings = processing_settings.lock().unwrap();
+                    settings.noise_suppression = enabled;
+                }
+                VoiceChatRecordingEvent::SetEchoSuppression(enabled) => {
+                    let mut settings = processing_settings.lock().unwrap();
+                    settings.echo_suppression = enabled;
+                }
+                VoiceChatRecordingEvent::SetNoiseSuppressionLevel(level) => {
+                    let mut settings = processing_settings.lock().unwrap();
+                    settings.noise_suppression_level = clamp_unit(level);
+                }
+                VoiceChatRecordingEvent::SetEchoSuppressionLevel(level) => {
+                    let mut settings = processing_settings.lock().unwrap();
+                    settings.echo_suppression_level = clamp_unit(level);
+                }
             }
         }
         debug!("Recording closed");
@@ -288,9 +348,10 @@ pub fn try_create_vc_recording_task(
 
 fn build_input_stream(
     selected_device: &Option<String>,
-    send: std::sync::Arc<std::sync::Mutex<bool>>,
-    buffer: std::sync::Arc<std::sync::Mutex<Vec<i16>>>,
-    input_gain: std::sync::Arc<std::sync::Mutex<f32>>,
+    send: Arc<Mutex<bool>>,
+    buffer: Arc<Mutex<Vec<i16>>>,
+    processing_settings: Arc<Mutex<RecordingProcessingSettings>>,
+    remote_voice_activity: Arc<AtomicBool>,
     sender: tokio::sync::mpsc::UnboundedSender<(bool, shared::ClientCommand)>,
 ) -> Result<cpal::Stream, anyhow::Error> {
     let device = resolve_input_device(selected_device)?;
@@ -325,14 +386,18 @@ fn build_input_stream(
                 if !*send.lock().unwrap() {
                     return;
                 }
-                let gain = *input_gain.lock().unwrap();
                 let samples: Vec<i16> = data
                     .iter()
-                    .map(|x| scale_sample(cpal::Sample::to_i16(x), gain))
+                    .map(|x| cpal::Sample::to_i16(x))
                     .collect();
+                let processed = process_input_samples(
+                    &samples,
+                    *processing_settings.lock().unwrap(),
+                    remote_voice_activity.load(Ordering::Relaxed),
+                );
                 encode_and_send_samples(
                     &mut buffer.lock().unwrap(),
-                    &samples,
+                    &processed,
                     &sender,
                     &encoder,
                     channels,
@@ -349,11 +414,14 @@ fn build_input_stream(
                 if !*send.lock().unwrap() {
                     return;
                 }
-                let gain = *input_gain.lock().unwrap();
-                let samples: Vec<i16> = data.iter().map(|x| scale_sample(*x, gain)).collect();
+                let processed = process_input_samples(
+                    data,
+                    *processing_settings.lock().unwrap(),
+                    remote_voice_activity.load(Ordering::Relaxed),
+                );
                 encode_and_send_samples(
                     &mut buffer.lock().unwrap(),
-                    &samples,
+                    &processed,
                     &sender,
                     &encoder,
                     channels,
@@ -370,14 +438,18 @@ fn build_input_stream(
                 if !*send.lock().unwrap() {
                     return;
                 }
-                let gain = *input_gain.lock().unwrap();
                 let samples: Vec<i16> = data
                     .iter()
-                    .map(|x| scale_sample(cpal::Sample::to_i16(x), gain))
+                    .map(|x| cpal::Sample::to_i16(x))
                     .collect();
+                let processed = process_input_samples(
+                    &samples,
+                    *processing_settings.lock().unwrap(),
+                    remote_voice_activity.load(Ordering::Relaxed),
+                );
                 encode_and_send_samples(
                     &mut buffer.lock().unwrap(),
-                    &samples,
+                    &processed,
                     &sender,
                     &encoder,
                     channels,
@@ -394,6 +466,31 @@ fn build_input_stream(
 fn scale_sample(sample: i16, gain: f32) -> i16 {
     let scaled = (sample as f32) * clamp(gain, MIN_GAIN, MAX_GAIN);
     scaled.max(i16::MIN as f32).min(i16::MAX as f32) as i16
+}
+
+fn process_input_samples(
+    samples: &[i16],
+    settings: RecordingProcessingSettings,
+    remote_voice_active: bool,
+) -> Vec<i16> {
+    let mut gain = clamp(settings.input_gain, MIN_GAIN, MAX_GAIN);
+    if settings.echo_suppression && remote_voice_active {
+        gain *= echo_ducking_gain(settings.echo_suppression_level);
+    }
+
+    if settings.noise_suppression {
+        let mut sum_sq = 0.0f32;
+        for sample in samples {
+            let normalized = (*sample as f32) / (i16::MAX as f32);
+            sum_sq += normalized * normalized;
+        }
+        let rms = (sum_sq / (samples.len().max(1) as f32)).sqrt();
+        if rms < noise_gate_threshold(settings.noise_suppression_level) {
+            return vec![0; samples.len()];
+        }
+    }
+
+    samples.iter().map(|sample| scale_sample(*sample, gain)).collect()
 }
 
 pub fn encode_and_send_samples(
@@ -436,7 +533,8 @@ pub fn encode_and_send_samples(
 }
 
 pub fn try_create_vc_playback_task(
-    receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEvent>
+    receiver: std::sync::mpsc::Receiver<VoiceChatPlaybackEvent>,
+    remote_voice_activity: Arc<AtomicBool>,
 ) -> Result<JoinHandle<Result<(), anyhow::Error>>, anyhow::Error> {
     use rodio::Source;
     let mut decoder = audiopus::coder::Decoder::new(
@@ -462,9 +560,22 @@ pub fn try_create_vc_playback_task(
         let mut own_frequency: u16 = 0;
         let mut player_frequencies: std::collections::HashMap<u32, u16> = std::collections::HashMap::new();
         let mut player_volumes: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
-        while let Ok(event) = receiver.recv() {
+        let mut remote_voice_last_active = std::time::Instant::now() - std::time::Duration::from_secs(1);
+        loop {
+            if remote_voice_last_active.elapsed() > std::time::Duration::from_millis(250) {
+                remote_voice_activity.store(false, Ordering::Relaxed);
+            }
+
+            let event = match receiver.recv_timeout(std::time::Duration::from_millis(50)) {
+                Ok(event) => event,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            };
+
             match event {
                 VoiceChatPlaybackEvent::Packet(client, position, encoded) => {
+                    remote_voice_last_active = std::time::Instant::now();
+                    remote_voice_activity.store(true, Ordering::Relaxed);
                     let (sink, updated_at, emitter_pos) = {
                         sinks.entry(client).or_insert_with(|| {
                             let sink = rodio::SpatialSink::try_new(
