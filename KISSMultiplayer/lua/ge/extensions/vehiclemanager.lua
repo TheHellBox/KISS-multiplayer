@@ -7,6 +7,7 @@ local generation = 0
 local meta_timer = 0
 local colors_buffer = {}
 local plates_buffer = {}
+local slowmo_factor_buffer = {}
 local first_vehicle = true
 local slowmo_factor = 0
 
@@ -116,6 +117,11 @@ local function send_vehicle_meta_updates()
         changed = changed or not colors_eq(colors, colors_buffer[id])
       end
       colors_buffer[id] = colors
+
+      if slowmo_factor_buffer[id] then
+        changed = changed or slowmo_factor_buffer[id] ~= slowmo_factor
+      end
+      slowmo_factor_buffer[id] = slowmo_factor
       
       if changed then
         local data = {
@@ -388,7 +394,6 @@ local function update_vehicle_meta(data)
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
   local plate = data.plate
-  local slowmo_factor = data.slowmo_factor
   
   local color = data.colors_table[1]
   local palete_0 = data.colors_table[2]
@@ -415,7 +420,7 @@ local function update_vehicle_meta(data)
   vehicle:setField('partConfig', '', serialize(vd.config))
   
   -- Apply pause
-  kisstransform.set_paused(id, slowmo_factor == 0)
+  kisstransform.set_paused(id, data.slowmo_factor == 0)
 end
 
 local function electrics_diff_update(data)
