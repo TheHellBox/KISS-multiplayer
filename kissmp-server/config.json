@@ -1,0 +1,15 @@
+{
+  "server_name": "Vanilla KissMP Server",
+  "description": "Vanilla KissMP Server",
+  "map": "/levels/smallgrid/info.json",
+  "max_players": 8,
+  "tickrate": 60,
+  "port": 3698,
+  "max_vehicles_per_client": 3,
+  "mod_transfer_chunk_size_kib": 512,
+  "show_in_server_list": false,
+  "upnp_enabled": false,
+  "master_url": "http://kissmp.online:3692",
+  "master_p2p_host": "kissmp.online:3691",
+  "server_identifier": ""
+}

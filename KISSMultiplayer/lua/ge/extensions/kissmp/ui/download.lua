@@ -45,45 +45,44 @@ local function draw(gui)
   imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(300, 300))
   imgui.SetNextWindowViewport(imgui.GetMainViewport().ID)
   if imgui.Begin("Downloading Required Mods") then
-    imgui.BeginChild1("DownloadsScrolling", imgui.ImVec2(0, -30), true)
+    -- Reserve footer space so summary/progress/cancel stay visible.
+    local footer_height = 110
+    imgui.BeginChild1("DownloadsScrolling", imgui.ImVec2(0, -footer_height), true)
 
     -- Draw a list of all the downloads, and finish by drawing a total/max size
     local total_size = 0
     local downloaded_size = 0
     local total_speed_bps = 0
 
-    local content_width = imgui.GetWindowContentRegionWidth()
-    local split_width = content_width * 0.495
-
-    imgui.PushItemWidth(content_width / 2)
     if network.downloads_status then
       for _, download_status in pairs(network.downloads_status) do
         local mod = kissmods.mods[download_status.name]
+        local is_completed = download_status.completed == true
 
         local eta_text = format_eta(nil)
-        if mod and mod.size and (download_status.speed_bps or 0) > 0 then
+        if (not is_completed) and mod and mod.size and (download_status.speed_bps or 0) > 0 then
           local received_bytes = mod.size * math.min(math.max(download_status.progress or 0, 0), 1)
           local remaining_bytes = math.max(mod.size - received_bytes, 0)
           eta_text = format_eta(remaining_bytes / download_status.speed_bps)
         end
 
-        local row_text = string.format("%s (%s | %s)", download_status.name, format_speed(download_status.speed_bps), eta_text)
-        local text_size = imgui.CalcTextSize(row_text)
-        local extra_size = split_width - text_size.x
-
-        imgui.Text(row_text)
-        if extra_size > 0 then
-          imgui.SameLine()
-          imgui.Dummy(imgui.ImVec2(extra_size, -1))
+        local row_text = nil
+        if is_completed then
+          row_text = string.format("%s (Done)", download_status.name)
+        else
+          row_text = string.format("%s (%s | %s)", download_status.name, format_speed(download_status.speed_bps), eta_text)
         end
-        imgui.SameLine()
-        imgui.ProgressBar(download_status.progress, imgui.ImVec2(split_width, 0))
+        imgui.Text(row_text)
+        local row_bar_width = math.max(imgui.GetContentRegionAvailWidth(), 1)
+        imgui.ProgressBar(download_status.progress, imgui.ImVec2(row_bar_width, 0))
 
         if mod and mod.size then
           total_size = total_size + mod.size
           downloaded_size = downloaded_size + (mod.size * download_status.progress)
         end
-        total_speed_bps = total_speed_bps + (download_status.speed_bps or 0)
+        if not is_completed then
+          total_speed_bps = total_speed_bps + (download_status.speed_bps or 0)
+        end
       end
     end
     imgui.EndChild()
@@ -103,23 +102,14 @@ local function draw(gui)
 
     local progress_text = tostring(math.floor(downloaded_size)) .. "MB / " .. tostring(math.floor(total_size)) .. "MB | " .. format_speed(total_speed_bps) .. " | " .. total_eta_text
 
-    content_width = imgui.GetWindowContentRegionWidth()
-    split_width = content_width * 0.495
-    local text_size = imgui.CalcTextSize(progress_text)
-    local extra_size = split_width - text_size.x
-
     imgui.Text(progress_text)
-    if extra_size > 0 then
-      imgui.SameLine()
-      imgui.Dummy(imgui.ImVec2(extra_size, -1))
-    end
-    imgui.SameLine()
-    if imgui.Button("Cancel###cancel_download", imgui.ImVec2(split_width, -1)) then
+    local total_bar_width = math.max(imgui.GetContentRegionAvailWidth(), 1)
+    imgui.ProgressBar(progress, imgui.ImVec2(total_bar_width, 0))
+    if imgui.Button("Cancel###cancel_download", imgui.ImVec2(total_bar_width, -1)) then
       network.cancel_download()
       kissui.show_download = false
       network.disconnect()
     end
-    imgui.ProgressBar(progress, imgui.ImVec2(content_width, 0))
   end
   imgui.End()
   imgui.PopStyleVar()

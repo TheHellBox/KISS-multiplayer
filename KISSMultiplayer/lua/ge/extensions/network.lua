@@ -181,8 +181,23 @@ local function handle_bridge_mod_downloaded(name)
     end
 
     kissmods.mount_mod(name)
-    M.downloads_status[name] = nil
-    M.connection.mods_left = M.connection.mods_left - 1
+    local status = M.downloads_status[name]
+    if not status then
+        status = {
+            name = name,
+            progress = 1,
+            received_bytes = 0,
+            speed_bps = 0,
+            completed = true,
+        }
+        M.downloads_status[name] = status
+    end
+
+    status.progress = 1
+    status.speed_bps = 0
+    status.completed = true
+
+    M.connection.mods_left = math.max((M.connection.mods_left or 0) - 1, 0)
 
     if M.connection.mods_left <= 0 then
         M.downloading = false
@@ -240,11 +255,13 @@ local function handle_bridge_mod_download_progress(data)
             progress = 0,
             received_bytes = 0,
             speed_bps = 0,
+            completed = false,
         }
         M.downloads_status[data.name] = status
     end
 
     status.progress = math.min(math.max(data.progress or 0, 0), 1)
+    status.completed = false
     local mod = kissmods.mods[data.name]
     if mod and mod.size then
         update_download_speed(status, mod.size * status.progress)
@@ -477,7 +494,7 @@ local function connect(addr, player_name, is_public)
                     tostring(mod.size or 0)
             ))
             table.insert(missing_mods, mod.name)
-            M.downloads_status[mod.name] = { name = mod.name, progress = 0, received_bytes = 0, speed_bps = 0 }
+            M.downloads_status[mod.name] = { name = mod.name, progress = 0, received_bytes = 0, speed_bps = 0, completed = false }
         else
             print(string.format(
                     "[KISSMP][MOD-CHECK] keep=%s status=ok reason=%s hash=%s",
@@ -630,6 +647,7 @@ local function onUpdate(dt)
           progress = 0,
           received_bytes = 0,
           speed_bps = 0,
+          completed = false,
         }
         M.downloads_status[name] = status
       end
@@ -641,21 +659,24 @@ local function onUpdate(dt)
             M.downloads[name]:write(file_data)
       meta.received = meta.received + read_size
       status.progress = math.min(meta.received / math.max(file_length, 1), 1)
+      status.completed = false
       update_download_speed(status, meta.received)
 
       binary_chunks_processed = binary_chunks_processed + 1
       binary_bytes_processed = binary_bytes_processed + read_size
 
       if meta.received >= file_length then
-                M.downloading = false
-                kissui.show_download = false
                 kissmods.mount_mod(name)
                 M.downloads[name]:close()
                 M.downloads[name] = nil
         M.downloads_meta[name] = nil
-        M.downloads_status[name] = nil
-                M.connection.mods_left = M.connection.mods_left - 1
+        status.progress = 1
+        status.speed_bps = 0
+        status.completed = true
+                M.connection.mods_left = math.max((M.connection.mods_left or 0) - 1, 0)
         if M.connection.mods_left == 0 then
+          M.downloading = false
+          kissui.show_download = false
           on_finished_download()
         end
             end
