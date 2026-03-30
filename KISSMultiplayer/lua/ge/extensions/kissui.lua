@@ -51,6 +51,8 @@ M.voice_input_devices = {}
 M.voice_player_volumes = {}
 M.voice_curve_profile = "Balanced"
 M.voice_curve_profiles = {"Realistic", "Balanced", "Arcade"}
+M.voice_walkie_enabled = imgui.BoolPtr(true)
+M.voice_frequency = imgui.IntPtr(0)
 
 local function show_ui()
   M.gui.showWindow("KissMP")

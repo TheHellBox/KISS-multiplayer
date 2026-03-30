@@ -8,10 +8,15 @@ impl Server {
             ClientConnected(connection) => {
                 let player_name = connection.client_info_public.name.clone();
                 self.connections.insert(client_id, connection);
+                self.voice_frequencies.entry(client_id).or_insert(0);
                 // Kinda ugly, but idk how to deal with lifetimes otherwise
                 let mut client_info_list = vec![];
                 for (_, connection) in self.connections.clone() {
                     client_info_list.push(connection.client_info_public.clone())
+                }
+                let mut voice_frequency_list = vec![];
+                for (id, freq) in self.voice_frequencies.clone() {
+                    voice_frequency_list.push((id, freq));
                 }
                 let connection = self.connections.get_mut(&client_id).unwrap();
                 if let Some(public_address) = &self.public_address {
@@ -32,6 +37,12 @@ impl Server {
                     let _ = connection
                         .ordered
                         .send(ServerCommand::PlayerInfoUpdate(info))
+                        .await;
+                }
+                for (id, freq) in voice_frequency_list {
+                    let _ = connection
+                        .ordered
+                        .send(ServerCommand::VoiceChatFrequencyUpdate(id, freq))
                         .await;
                 }
                 for (_, client) in &mut self.connections {
@@ -62,6 +73,7 @@ impl Server {
                     .conn
                     .close(0u32.into(), b"");
                 self.connections.remove(&client_id);
+                self.voice_frequencies.remove(&client_id);
                 if let Some(client_vehicles) = self.vehicle_ids.clone().get(&client_id) {
                     for (_, id) in client_vehicles {
                         self.remove_vehicle(*id, Some(client_id)).await;
@@ -280,6 +292,15 @@ impl Server {
                                 continue;
                             }
                             let _ = client.conn.send_datagram(data.clone().into());
+                        }
+                    }
+                    SetVoiceChatFrequency(frequency) => {
+                        self.voice_frequencies.insert(client_id, frequency);
+                        for (_, client) in &mut self.connections {
+                            let _ = client
+                                .ordered
+                                .send(ServerCommand::VoiceChatFrequencyUpdate(client_id, frequency))
+                                .await;
                         }
                     }
                     DataChunk { chunk_index, total_chunks, data } => {

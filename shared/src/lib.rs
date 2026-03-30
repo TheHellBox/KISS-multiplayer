@@ -93,6 +93,8 @@ pub enum ClientCommand {
     // Only used by bridge
     SetVoiceChatCurveProfile(String),
     // Only used by bridge
+    SetVoiceChatFrequency(u16),
+    // Only used by bridge
     RequestVoiceChatInputDevices,
     DataChunk {
         chunk_index: u32,
@@ -121,6 +123,7 @@ pub enum ServerCommand {
     ServerInfo(ServerInfo),
     FilePart(String, Vec<u8>, u32, u32, u32),
     VoiceChatPacket(u32, [f32; 3], Vec<u8>),
+    VoiceChatFrequencyUpdate(u32, u16),
     Pong(f64),
 
     // public server commands

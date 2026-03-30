@@ -6,6 +6,20 @@ local function draw_voice_settings()
   imgui.Separator()
   imgui.Text("Voice Chat")
 
+  if imgui.Checkbox("Walkie-Talkie Enabled", kissui.voice_walkie_enabled) then
+    kissconfig.save_config()
+    kissvoicechat.set_frequency(kissui.voice_frequency[0])
+  end
+
+  if imgui.InputInt("Walkie-Talkie Frequency (0 = Off)###voice_frequency", kissui.voice_frequency) then
+    kissui.voice_frequency[0] = math.max(0, math.min(65535, kissui.voice_frequency[0]))
+    kissconfig.save_config()
+    kissvoicechat.set_frequency(kissui.voice_frequency[0])
+  end
+  imgui.Text("Players on the same frequency can hear each other globally")
+  imgui.Text(kissvoicechat.get_tx_status())
+  imgui.Text(kissvoicechat.get_rx_status())
+
   if imgui.SliderFloat("Range###voice_range", kissui.voice_range, 5, 1000) then
     kissconfig.save_config()
     kissvoicechat.set_distance(kissui.voice_range[0])

@@ -517,6 +517,24 @@ async fn server_incoming(
                                 client, pos, data,
                             ));
                         }
+                        shared::ServerCommand::VoiceChatFrequencyUpdate(client, frequency) => {
+                            let _ = vc_playback_sender.send(
+                                voice_chat::VoiceChatPlaybackEvent::SetPlayerFrequency(
+                                    client,
+                                    frequency,
+                                ),
+                            );
+                        }
+                        shared::ServerCommand::PlayerDisconnected(client) => {
+                            let _ = vc_playback_sender.send(
+                                voice_chat::VoiceChatPlaybackEvent::SetPlayerFrequency(client, 0),
+                            );
+                            server_commands_sender
+                                .send(server_command_to_client_bytes(
+                                    shared::ServerCommand::PlayerDisconnected(client),
+                                ))
+                                .await?;
+                        }
                         shared::ServerCommand::FilePart(name, data, _, file_size, _) => {
                             handle_file_part_in_bridge(
                                 &server_commands_sender,
@@ -547,6 +565,24 @@ async fn server_incoming(
                                 let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
                                     client, pos, data,
                                 ));
+                            }
+                            shared::ServerCommand::VoiceChatFrequencyUpdate(client, frequency) => {
+                                let _ = vc_playback_sender.send(
+                                    voice_chat::VoiceChatPlaybackEvent::SetPlayerFrequency(
+                                        client,
+                                        frequency,
+                                    ),
+                                );
+                            }
+                            shared::ServerCommand::PlayerDisconnected(client) => {
+                                let _ = vc_playback_sender.send(
+                                    voice_chat::VoiceChatPlaybackEvent::SetPlayerFrequency(client, 0),
+                                );
+                                server_commands_sender
+                                    .send(server_command_to_client_bytes(
+                                        shared::ServerCommand::PlayerDisconnected(client),
+                                    ))
+                                    .await?;
                             }
                             shared::ServerCommand::FilePart(name, data, _, file_size, _) => {
                                 handle_file_part_in_bridge(
@@ -630,6 +666,15 @@ async fn client_incoming(
                     let _ = vc_playback_sender.send(
                         voice_chat::VoiceChatPlaybackEvent::SetCurveProfile(profile),
                     );
+                }
+                shared::ClientCommand::SetVoiceChatFrequency(frequency) => {
+                    let _ = vc_playback_sender.send(
+                        voice_chat::VoiceChatPlaybackEvent::SetOwnFrequency(frequency),
+                    );
+                    let _ = client_event_sender.send((
+                        true,
+                        shared::ClientCommand::SetVoiceChatFrequency(frequency),
+                    ));
                 }
                 shared::ClientCommand::RequestVoiceChatInputDevices => {
                     let devices_msg = bridge_json_to_client_bytes(json!({

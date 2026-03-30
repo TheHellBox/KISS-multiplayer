@@ -1,9 +1,22 @@
 local M = {}
 M.el = vec3(0.08, 0, 0)
 M.er = vec3(-0.08, 0, 0)
+M.is_talking = false
+
+local function get_effective_frequency(frequency)
+  local value = tonumber(frequency) or tonumber(kissui.voice_frequency[0]) or 0
+  value = math.max(0, math.min(65535, math.floor(value)))
+  if not kissui.voice_walkie_enabled[0] then
+    return 0
+  end
+  return value
+end
 
 local function onUpdate()
-  if not network.connection.connected then return end
+  if not network.connection.connected then
+    M.is_talking = false
+    return
+  end
   local position = vec3(getCameraPosition() or vec3())
   local ear_left = M.el:rotated(quat(getCameraQuat()))
   local ear_right = M.er:rotated(quat(getCameraQuat()))
@@ -17,11 +30,13 @@ local function onUpdate()
 end
 
 local function start_vc()
+  M.is_talking = true
   network.send_data('"StartTalking"')
 end
 
 
 local function end_vc()
+  M.is_talking = false
   network.send_data('"EndTalking"')
 end
 
@@ -45,6 +60,36 @@ local function set_curve_profile(profile)
   network.send_data({ SetVoiceChatCurveProfile = profile or "Balanced" })
 end
 
+local function set_frequency(frequency)
+  local value = get_effective_frequency(frequency)
+  network.send_data({ SetVoiceChatFrequency = value }, true)
+end
+
+local function get_tx_status()
+  if not kissui.voice_walkie_enabled[0] then
+    return "TX: Walkie OFF"
+  end
+  local frequency = get_effective_frequency(kissui.voice_frequency[0])
+  if frequency == 0 then
+    return "TX: No channel set"
+  end
+  if M.is_talking then
+    return "TX: Channel " .. tostring(frequency) .. " (Sending)"
+  end
+  return "TX: Channel " .. tostring(frequency) .. " (Standby)"
+end
+
+local function get_rx_status()
+  if not kissui.voice_walkie_enabled[0] then
+    return "RX: Proximity only"
+  end
+  local frequency = get_effective_frequency(kissui.voice_frequency[0])
+  if frequency == 0 then
+    return "RX: Proximity only"
+  end
+  return "RX: Proximity + Channel " .. tostring(frequency)
+end
+
 local function request_input_devices()
   network.send_data('"RequestVoiceChatInputDevices"', true)
 end
@@ -54,6 +99,7 @@ local function apply_settings()
   set_input_volume(kissui.voice_input_volume[0])
   set_input_device(kissui.voice_input_device)
   set_curve_profile(kissui.voice_curve_profile)
+  set_frequency(kissui.voice_frequency[0])
   for player_id, volume in pairs(kissui.voice_player_volumes) do
     set_player_volume(player_id, volume)
   end
@@ -68,6 +114,9 @@ M.set_player_volume = set_player_volume
 M.set_input_volume = set_input_volume
 M.set_input_device = set_input_device
 M.set_curve_profile = set_curve_profile
+M.set_frequency = set_frequency
+M.get_tx_status = get_tx_status
+M.get_rx_status = get_rx_status
 M.request_input_devices = request_input_devices
 M.apply_settings = apply_settings
 

@@ -29,6 +29,8 @@ pub enum VoiceChatPlaybackEvent {
     SetDistance(f32),
     SetPlayerVolume(u32, f32),
     SetCurveProfile(String),
+    SetOwnFrequency(u16),
+    SetPlayerFrequency(u32, u16),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -106,6 +108,17 @@ fn to_spatial_position(position: [f32; 3], max_distance: f32, profile: VoiceCurv
         position[1] / divider,
         position[2] / divider,
     ]
+}
+
+fn can_hear(
+    emitter: [f32; 3],
+    listener: [f32; 3],
+    max_distance: f32,
+    own_frequency: u16,
+    sender_frequency: u16,
+) -> bool {
+    is_in_range(emitter, listener, max_distance)
+        || (own_frequency != 0 && sender_frequency != 0 && own_frequency == sender_frequency)
 }
 
 fn resolve_input_device(device_name: &Option<String>) -> Result<cpal::Device, anyhow::Error> {
@@ -446,6 +459,8 @@ pub fn try_create_vc_playback_task(
         let mut listener_right_ear = [0.0f32, 1.0f32, 0.0f32];
         let mut max_distance = DEFAULT_MAX_DISTANCE;
         let mut curve_profile = VoiceCurveProfile::Balanced;
+        let mut own_frequency: u16 = 0;
+        let mut player_frequencies: std::collections::HashMap<u32, u16> = std::collections::HashMap::new();
         let mut player_volumes: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
         while let Ok(event) = receiver.recv() {
             match event {
@@ -467,8 +482,15 @@ pub fn try_create_vc_playback_task(
                     *emitter_pos = position;
                     sink.set_emitter_position(to_spatial_position(position, max_distance, curve_profile));
                     let player_gain = clamp(*player_volumes.get(&client).unwrap_or(&1.0), MIN_GAIN, MAX_GAIN);
-                    let in_range = is_in_range(*emitter_pos, listener_position, max_distance);
-                    sink.set_volume(if in_range { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
+                    let sender_frequency = *player_frequencies.get(&client).unwrap_or(&0);
+                    let audible = can_hear(
+                        *emitter_pos,
+                        listener_position,
+                        max_distance,
+                        own_frequency,
+                        sender_frequency,
+                    );
+                    sink.set_volume(if audible { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
                     let mut samples: Vec<i16> = Vec::with_capacity(BUFFER_LEN);
                     samples.resize(BUFFER_LEN, 0);
                     let res = decoder
@@ -498,8 +520,15 @@ pub fn try_create_vc_playback_task(
                     });
                     for (client_id, (sink, _, emitter_pos)) in sinks.iter_mut() {
                         let player_gain = clamp(*player_volumes.get(client_id).unwrap_or(&1.0), MIN_GAIN, MAX_GAIN);
-                        let in_range = is_in_range(*emitter_pos, listener_position, max_distance);
-                        sink.set_volume(if in_range { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
+                        let sender_frequency = *player_frequencies.get(client_id).unwrap_or(&0);
+                        let audible = can_hear(
+                            *emitter_pos,
+                            listener_position,
+                            max_distance,
+                            own_frequency,
+                            sender_frequency,
+                        );
+                        sink.set_volume(if audible { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
                     }
                 }
                 VoiceChatPlaybackEvent::SetDistance(value) => {
@@ -509,15 +538,29 @@ pub fn try_create_vc_playback_task(
                         sink.set_left_ear_position(to_spatial_position(listener_left_ear, max_distance, curve_profile));
                         sink.set_right_ear_position(to_spatial_position(listener_right_ear, max_distance, curve_profile));
                         let player_gain = clamp(*player_volumes.get(client_id).unwrap_or(&1.0), MIN_GAIN, MAX_GAIN);
-                        let in_range = is_in_range(*emitter_pos, listener_position, max_distance);
-                        sink.set_volume(if in_range { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
+                        let sender_frequency = *player_frequencies.get(client_id).unwrap_or(&0);
+                        let audible = can_hear(
+                            *emitter_pos,
+                            listener_position,
+                            max_distance,
+                            own_frequency,
+                            sender_frequency,
+                        );
+                        sink.set_volume(if audible { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
                     }
                 }
                 VoiceChatPlaybackEvent::SetPlayerVolume(client_id, value) => {
                     player_volumes.insert(client_id, clamp(value, MIN_GAIN, MAX_GAIN));
                     if let Some((sink, _, emitter_pos)) = sinks.get_mut(&client_id) {
-                        let in_range = is_in_range(*emitter_pos, listener_position, max_distance);
-                        sink.set_volume(if in_range {
+                        let sender_frequency = *player_frequencies.get(&client_id).unwrap_or(&0);
+                        let audible = can_hear(
+                            *emitter_pos,
+                            listener_position,
+                            max_distance,
+                            own_frequency,
+                            sender_frequency,
+                        );
+                        sink.set_volume(if audible {
                             BASE_OUTPUT_VOLUME * clamp(value, MIN_GAIN, MAX_GAIN)
                         } else {
                             0.0
@@ -531,8 +574,44 @@ pub fn try_create_vc_playback_task(
                         sink.set_left_ear_position(to_spatial_position(listener_left_ear, max_distance, curve_profile));
                         sink.set_right_ear_position(to_spatial_position(listener_right_ear, max_distance, curve_profile));
                         let player_gain = clamp(*player_volumes.get(client_id).unwrap_or(&1.0), MIN_GAIN, MAX_GAIN);
-                        let in_range = is_in_range(*emitter_pos, listener_position, max_distance);
-                        sink.set_volume(if in_range { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
+                        let sender_frequency = *player_frequencies.get(client_id).unwrap_or(&0);
+                        let audible = can_hear(
+                            *emitter_pos,
+                            listener_position,
+                            max_distance,
+                            own_frequency,
+                            sender_frequency,
+                        );
+                        sink.set_volume(if audible { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
+                    }
+                }
+                VoiceChatPlaybackEvent::SetOwnFrequency(frequency) => {
+                    own_frequency = frequency;
+                    for (client_id, (sink, _, emitter_pos)) in sinks.iter_mut() {
+                        let player_gain = clamp(*player_volumes.get(client_id).unwrap_or(&1.0), MIN_GAIN, MAX_GAIN);
+                        let sender_frequency = *player_frequencies.get(client_id).unwrap_or(&0);
+                        let audible = can_hear(
+                            *emitter_pos,
+                            listener_position,
+                            max_distance,
+                            own_frequency,
+                            sender_frequency,
+                        );
+                        sink.set_volume(if audible { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
+                    }
+                }
+                VoiceChatPlaybackEvent::SetPlayerFrequency(client_id, frequency) => {
+                    player_frequencies.insert(client_id, frequency);
+                    if let Some((sink, _, emitter_pos)) = sinks.get_mut(&client_id) {
+                        let player_gain = clamp(*player_volumes.get(&client_id).unwrap_or(&1.0), MIN_GAIN, MAX_GAIN);
+                        let audible = can_hear(
+                            *emitter_pos,
+                            listener_position,
+                            max_distance,
+                            own_frequency,
+                            frequency,
+                        );
+                        sink.set_volume(if audible { BASE_OUTPUT_VOLUME * player_gain } else { 0.0 });
                     }
                 }
             }

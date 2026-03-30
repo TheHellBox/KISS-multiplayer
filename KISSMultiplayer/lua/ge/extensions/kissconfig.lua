@@ -28,6 +28,8 @@ local function save_config()
     voice_input_volume = kissui.voice_input_volume[0],
     voice_input_device = kissui.voice_input_device or "",
     voice_curve_profile = kissui.voice_curve_profile or "Balanced",
+    voice_walkie_enabled = kissui.voice_walkie_enabled[0],
+    voice_frequency = kissui.voice_frequency[0],
     voice_player_volumes = kissui.voice_player_volumes or {},
     base_secret_v2 = secret
   }
@@ -88,6 +90,13 @@ local function load_config()
     else
       kissui.voice_curve_profile = "Balanced"
     end
+  end
+  if config.voice_walkie_enabled ~= nil then
+    kissui.voice_walkie_enabled[0] = config.voice_walkie_enabled
+  end
+  if config.voice_frequency ~= nil then
+    local freq = tonumber(config.voice_frequency) or 0
+    kissui.voice_frequency[0] = math.max(0, math.min(65535, math.floor(freq)))
   end
   if type(config.voice_player_volumes) == "table" then
     kissui.voice_player_volumes = {}
