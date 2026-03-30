@@ -3,6 +3,8 @@ local parts_config = v.config
 local nodes = {}
 local ref_nodes = {}
 
+M.is_paused = false
+
 local last_node = 1
 local nodes_per_frame = 32
 
@@ -144,11 +146,17 @@ local function send_vehicle_config()
   obj:queueGameEngineLua("vehiclemanager.send_vehicle_config_inner("..obj:getID()..", \'"..jsonEncode(config).."\', \'"..jsonEncode(data).."\')")
 end
 
+local function set_paused(bool)
+  M.is_paused = bool
+  obj:setGhostEnabled(M.is_paused)
+end
+
 M.update_transform_info = update_transform_info
 M.apply_linear_velocity_ang_torque = apply_linear_velocity_ang_torque
 M.update_eligible_nodes = update_eligible_nodes
 M.apply_linear_velocity = apply_linear_velocity
 M.onExtensionLoaded = onExtensionLoaded
+M.set_paused = set_paused
 M.set_reference = set_reference
 M.save_state = save_state
 M.send_vehicle_config = send_vehicle_config

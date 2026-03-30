@@ -49,7 +49,7 @@ local function deactivate_all_mods()
     FS:unmount(mod_path)
   end
   for k, mod_path in pairs(FS:directoryList("/mods/unpacked/", "*", 1)) do
-    if not is_app_mod(mod_path) then
+    if not mod_path:match("KISSMultiplayer") and not is_app_mod(mod_path) then
       FS:unmount(mod_path.."/")
     end
   end
