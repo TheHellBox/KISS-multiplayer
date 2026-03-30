@@ -38,6 +38,9 @@ local time_offset_smoother = {
   current_sample = 1,
 }
 
+local ogPushPauseRequest = nil
+local ogPopPauseRequest = nil
+
 time_offset_smoother.get = function(new_sample)
   if time_offset_smoother.current_sample < 30 then
     time_offset_smoother.samples[time_offset_smoother.current_sample] = new_sample
@@ -85,6 +88,9 @@ local function disconnect(data)
   --Lua:requestReload()
   --kissutils.hooks.clear()
   returnToMainMenu()
+
+  simTimeAuthority.pushPauseRequest = ogPushPauseRequest
+  simTimeAuthority.popPauseRequest = ogPopPauseRequest
 end
 
 local function handle_disconnected(data)
@@ -379,6 +385,12 @@ local function connect(addr, player_name, is_public)
   end
   kissrichpresence.update()
   kissui.chat.add_message("Connected!")
+
+  ogPushPauseRequest = simTimeAuthority.pushPauseRequest
+  ogPopPauseRequest = simTimeAuthority.popPauseRequest
+
+  simTimeAuthority.pushPauseRequest = function() end
+  simTimeAuthority.popPauseRequest = function() end
 end
 
 local function send_messagepack(data_type, reliable, data)
