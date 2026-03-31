@@ -1,7 +1,7 @@
 use crate::*;
 use tokio::io::AsyncReadExt;
 
-const CHUNK_SIZE: usize = 65536;
+const CHUNK_SIZE: usize = 262144;
 
 // FIXME
 pub async fn transfer_file(

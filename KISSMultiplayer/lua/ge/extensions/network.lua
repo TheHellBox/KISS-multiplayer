@@ -6,6 +6,7 @@ M.is_server_public = false
 M.downloads = {}
 M.downloading = false
 M.downloads_status = {}
+M.downloads_received = {}
 
 local current_download = nil
 
@@ -414,6 +415,7 @@ local function cancel_download()
   -- Clear the tables so dead file handles aren't reused
   M.downloads = {}
   M.downloads_status = {}
+  M.downloads_received = {}
   M.downloading = false
 end
 
@@ -460,13 +462,18 @@ local function onUpdate(dt)
       local read_size = bytesToU32(read_size_b)
       local file_length = chunk_a
       local file_data, _, _ = M.connection.tcp:receive(read_size)
-      
+
+      if not M.downloads_received[name] then
+        M.downloads_received[name] = 0
+      end
+      M.downloads_received[name] = M.downloads_received[name] + read_size
+
       M.downloads_status[name] = {
         name = name,
         progress = 0
       }
-      M.downloads_status[name].progress = chunk_n * FILE_TRANSFER_CHUNK_SIZE / file_length
-      
+      M.downloads_status[name].progress = M.downloads_received[name] / file_length
+
       local file = M.downloads[name]
       if not file then
         file = kissmods.open_file(name)
@@ -476,10 +483,8 @@ local function onUpdate(dt)
       if file and file_data then
         file:write(file_data)
       end
-      
-      if read_size < FILE_TRANSFER_CHUNK_SIZE then
-        M.downloading = false
-        kissui.show_download = false
+
+      if M.downloads_received[name] >= file_length then
         kissmods.mount_mod(name)
         
         if M.downloads[name] then
@@ -487,10 +492,13 @@ local function onUpdate(dt)
           M.downloads[name] = nil
         end
         M.downloads_status[name] = nil
+        M.downloads_received[name] = nil
         M.connection.mods_left = M.connection.mods_left - 1
       end
       
       if M.connection.mods_left <= 0 then
+        M.downloading = false
+        kissui.show_download = false
         on_finished_download()
       end
       M.connection.tcp:settimeout(0.0)
