@@ -326,8 +326,8 @@ local function update_vehicle(data)
 
   kisstransform.update_vehicle_transform(data)
   if not kisstransform.inactive[id] then
-    vehicle:queueLuaCommand("kiss_input.apply(\'"..jsonEncode(data.electrics).."\')")
-    vehicle:queueLuaCommand("kiss_gearbox.apply(\'"..jsonEncode(data.gearbox).."\')")
+    vehicle:queueLuaCommand("kiss_input.apply(" .. string.format("%q", jsonEncode(data.electrics)) .. ")")
+    vehicle:queueLuaCommand("kiss_gearbox.apply(" .. string.format("%q", jsonEncode(data.gearbox)) .. ")")
   end
 end
 
@@ -415,7 +415,7 @@ local function electrics_diff_update(data)
     local vehicle = be:getObjectByID(id)
     if not vehicle then return end
     local data = jsonEncode(data[2].diff)
-    vehicle:queueLuaCommand("kiss_electrics.apply_diff(\'"..data.."\')")
+    vehicle:queueLuaCommand("kiss_electrics.apply_diff(" .. string.format("%q", data) .. ")")
   end
 end
 

@@ -95,7 +95,7 @@ local function update_transform_info()
     vel_roll  = obj:getRollAngularVelocity(),
     vel_yaw   = obj:getYawAngularVelocity(),
   }
-  obj:queueGameEngineLua("kisstransform.push_transform("..obj:getID()..", \'"..jsonEncode(transform).."\')")
+  obj:queueGameEngineLua("kisstransform.push_transform("..obj:getID()..", " .. string.format("%q", jsonEncode(transform)) .. ")")
 end
 
 local function apply_linear_velocity(x, y, z)
@@ -141,7 +141,7 @@ local function send_vehicle_config()
     position = {p.x, p.y, p.z},
     rotation = {r.x, r.y, r.z, r.w},
   }
-  obj:queueGameEngineLua("vehiclemanager.send_vehicle_config_inner("..obj:getID()..", \'"..jsonEncode(config).."\', \'"..jsonEncode(data).."\')")
+  obj:queueGameEngineLua("vehiclemanager.send_vehicle_config_inner("..obj:getID()..", " .. string.format("%q", jsonEncode(config)) .. ", " .. string.format("%q", jsonEncode(data)) .. ")")
 end
 
 M.update_transform_info = update_transform_info
