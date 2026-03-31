@@ -14,6 +14,7 @@ M.rot_threshold = 2.5
 M.velocity_error_limit = 10
 
 M.hidden = {}
+M.paused = {}
 
 local function update(dt)
   if not network.connection.connected then return end
@@ -70,10 +71,20 @@ local function push_transform(id, t)
   M.local_transforms[id] = jsonDecode(t)
 end
 
+local function set_paused(id, paused)
+  M.paused[id] = paused
+  local vehicle = be:getObjectByID(id)
+  if vehicle then
+    vehicle:setMeshAlpha(paused and 0.5 or 1, "")
+    vehicle:queueLuaCommand("kiss_vehicle.set_paused("..tostring(paused)..")")
+  end
+end
+
 M.send_transform_updates = send_transform_updates
 M.send_vehicle_transform = send_vehicle_transform
 M.update_vehicle_transform = update_vehicle_transform
 M.push_transform = push_transform
+M.set_paused = set_paused
 M.onUpdate = update
 
 return M
