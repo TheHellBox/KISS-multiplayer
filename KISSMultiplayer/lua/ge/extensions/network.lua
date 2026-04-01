@@ -486,6 +486,12 @@ local function onUpdate(dt)
       end
 
     elseif string.byte(msg_type) == 0 then -- Binary data
+      if M.is_server_public then
+        kissui.chat.add_message("Connection rejected: Server tried to download a mod.", kissui.COLOR_RED)
+        disconnect()
+        return
+      end
+
       if M.download_start_time == 0 then
         M.download_start_time = socket.gettime()
       end
