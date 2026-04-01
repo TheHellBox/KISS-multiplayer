@@ -7,8 +7,8 @@ use std::io::Write;
 use chrono::Local;
 pub use log::{info, warn, error};
 
-pub const VERSION: (u32, u32) = (0, 7);
-pub const VERSION_STR: &str = "0.7.1";
+mod version_gen;
+pub use version_gen::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientInfoPrivate {
