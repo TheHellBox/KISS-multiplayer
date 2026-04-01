@@ -359,6 +359,7 @@ local function connect(addr, player_name, is_public)
 
   local missing_mods = {}
   local mod_names = {}
+  local available_mods = {}
   local total_missing_bytes = 0
   for _, mod in pairs(kissmods.mods) do
     table.insert(mod_names, mod.name)
@@ -366,6 +367,8 @@ local function connect(addr, player_name, is_public)
       table.insert(missing_mods, mod.name)
       M.downloads_status[mod.name] = {name = mod.name, progress = 0}
       total_missing_bytes = total_missing_bytes + (mod.size or 0)
+    else
+      table.insert(available_mods, mod.name)
     end
   end
   M.connection.mods_left = #missing_mods
@@ -373,6 +376,9 @@ local function connect(addr, player_name, is_public)
   M.downloaded_bytes = 0
  
   kissmods.deactivate_all_mods()
+  if #available_mods > 0 then
+    kissmods.mount_mods(available_mods)
+  end
   for k, v in pairs(missing_mods) do
     print(k.." "..v)
   end
