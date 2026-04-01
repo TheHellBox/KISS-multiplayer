@@ -1,6 +1,6 @@
 local M = {}
 
-local version = require("lua/ge/extensions/version")
+local version = require("lua/ge/extensions/kissmp/version")
 M.VERSION_STR = version.VERSION_STR
 M.is_server_public = false
 
