@@ -30,7 +30,6 @@ pub struct VehicleData {
     pub owner: Option<u32>,
     pub position: [f32; 3],
     pub rotation: [f32; 4],
-    pub slowmo_factor: f32,
 }
 
 // A single packet that contains all of the vehicle updates.
