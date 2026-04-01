@@ -44,11 +44,21 @@ local function draw(gui)
     end
     imgui.EndChild()
 
-    total_size = bytes_to_mb(total_size)
-    downloaded_size = bytes_to_mb(downloaded_size)
+    local total_size_bytes = network.download_total_bytes or 0
+    local downloaded_size_bytes = network.downloaded_bytes or 0
+    if total_size_bytes <= 0 then
+      total_size_bytes = total_size
+      downloaded_size_bytes = downloaded_size
+    end
+
+    total_size = bytes_to_mb(total_size_bytes)
+    downloaded_size = bytes_to_mb(downloaded_size_bytes)
     local progress_text = tostring(math.floor(downloaded_size)) .. "MB / " .. tostring(math.floor(total_size)) .. "MB"
 
-    local elapsed = socket.gettime() - (network.download_start_time or 0)
+    local elapsed = 0
+    if (network.download_start_time or 0) > 0 then
+      elapsed = socket.gettime() - network.download_start_time
+    end
     if elapsed <= 0 then elapsed = 0.001 end
     local progress_speed = downloaded_size / elapsed
     local speed_text = tostring(math.floor(progress_speed)) .. "MB/s"
