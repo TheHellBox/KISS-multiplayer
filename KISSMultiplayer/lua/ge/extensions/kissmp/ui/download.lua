@@ -5,6 +5,18 @@ local function bytes_to_mb(bytes)
   return (bytes / 1024) / 1024
 end
 
+local function format_eta(seconds)
+  if seconds < 0 then seconds = 0 end
+  local hours = math.floor(seconds / 3600)
+  local minutes = math.floor((seconds % 3600) / 60)
+  local secs = math.floor(seconds % 60)
+
+  if hours > 0 then
+    return string.format("%02d:%02d:%02d", hours, minutes, secs)
+  end
+  return string.format("%02d:%02d", minutes, secs)
+end
+
 local function draw(gui)
   if not kissui.show_download then return end
 
@@ -63,9 +75,15 @@ local function draw(gui)
     local progress_speed = downloaded_size / elapsed
     local speed_text = tostring(math.floor(progress_speed)) .. "MB/s"
 
+    local eta_text = "--:--"
+    if progress_speed > 0 and downloaded_size < total_size then
+      local eta_seconds = (total_size - downloaded_size) / progress_speed
+      eta_text = format_eta(eta_seconds)
+    end
+
     content_width = imgui.GetWindowContentRegionWidth()
     split_width = content_width * 0.450
-    progress_text = progress_text .. " (" .. speed_text .. ")"
+    progress_text = progress_text .. " (" .. speed_text .. ", ETA " .. eta_text .. ")"
     local text_size = imgui.CalcTextSize(progress_text)
     local extra_size = split_width - text_size.x
 
