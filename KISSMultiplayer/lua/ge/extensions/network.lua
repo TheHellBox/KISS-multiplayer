@@ -447,6 +447,12 @@ local function onUpdate(dt)
         end
       end
     elseif string.byte(msg_type) == 0 then -- Binary data
+      if M.is_server_public then
+        kissui.chat.add_message("Connection rejected: Server tried to download a mod.", kissui.COLOR_RED)
+        disconnect()
+        return
+      end
+
       local name_b = M.connection.tcp:receive(4)
       if not name_b then break end
 
