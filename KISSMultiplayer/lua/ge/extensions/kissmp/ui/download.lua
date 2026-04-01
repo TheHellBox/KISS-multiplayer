@@ -37,19 +37,25 @@ local function draw(gui)
         imgui.ProgressBar(download_status.progress, imgui.ImVec2(split_width, 0))
 
         local mod = kissmods.mods[download_status.name]
-        total_size = total_size + mod.size
-        downloaded_size = downloaded_size + (mod.size * download_status.progress)
+        local mod_size = (mod and mod.size) or 0
+        total_size = total_size + mod_size
+        downloaded_size = downloaded_size + (mod_size * download_status.progress)
       end
     end
     imgui.EndChild()
 
     total_size = bytes_to_mb(total_size)
     downloaded_size = bytes_to_mb(downloaded_size)
-    local progress = downloaded_size / total_size
     local progress_text = tostring(math.floor(downloaded_size)) .. "MB / " .. tostring(math.floor(total_size)) .. "MB"
 
+    local elapsed = socket.gettime() - (network.download_start_time or 0)
+    if elapsed <= 0 then elapsed = 0.001 end
+    local progress_speed = downloaded_size / elapsed
+    local speed_text = tostring(math.floor(progress_speed)) .. "MB/s"
+
     content_width = imgui.GetWindowContentRegionWidth()
-    split_width = content_width * 0.495
+    split_width = content_width * 0.450
+    progress_text = progress_text .. " (" .. speed_text .. ")"
     local text_size = imgui.CalcTextSize(progress_text)
     local extra_size = split_width - text_size.x
 

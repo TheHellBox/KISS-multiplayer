@@ -7,6 +7,7 @@ M.downloads = {}
 M.downloading = false
 M.downloads_status = {}
 M.downloads_received = {}
+M.download_start_time = 0
 
 local current_download = nil
 
@@ -281,6 +282,7 @@ local function connect(addr, player_name, is_public)
     disconnect()
   end
   M.players = {}
+  M.download_start_time = 0
 
   print("Connecting...")
   addr = sanitize_addr(addr)
@@ -389,6 +391,7 @@ local function send_messagepack(data_type, reliable, data)
 end
 
 local function on_finished_download()
+  M.download_start_time = 0
   vehiclemanager.loading_map = true
   change_map(M.connection.server_info.map)
 end
@@ -417,6 +420,7 @@ local function cancel_download()
   M.downloads_status = {}
   M.downloads_received = {}
   M.downloading = false
+  M.download_start_time = 0
 end
 
 local function onUpdate(dt)
@@ -447,6 +451,9 @@ local function onUpdate(dt)
         end
       end
     elseif string.byte(msg_type) == 0 then -- Binary data
+      if M.download_start_time == 0 then
+        M.download_start_time = socket.gettime()
+      end
       local name_b = M.connection.tcp:receive(4)
       if not name_b then break end
 
@@ -508,6 +515,7 @@ local function onUpdate(dt)
       local len = bytesToU32(len_b)
       local reason, _, _ = M.connection.tcp:receive(len)
       disconnect(reason)
+      break
     end
   end
 end
