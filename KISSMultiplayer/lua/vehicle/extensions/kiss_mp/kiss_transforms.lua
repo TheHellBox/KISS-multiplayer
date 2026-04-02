@@ -38,7 +38,15 @@ local function predict(dt)
 
   --M.target_transform.angular_velocity = M.received_transform.angular_velocity + M.received_transform.angular_acceleration * M.received_transform.time_past
   --local rotation_delta = M.target_transform.angular_velocity * M.received_transform.time_past
-  M.target_transform.rotation = quat(M.received_transform.rotation)-- * quatFromEuler(rotation_delta.x, rotation_delta.y, rotation_delta.z)
+  
+  local rotation_delta = (M.received_transform.angular_velocity + M.received_transform.angular_acceleration * M.received_transform.time_past) * M.received_transform.time_past
+  
+  if rotation_delta:length() > 0 then
+    local axis = rotation_delta:normalized()
+	local half_angle = rotation_delta:length() * 0.5
+	local q_delta = quat(axis.x * math.sin(half_angle), axis.y * math.sin(half_angle), axis.z * math.sin(half_angle), math.cos(half_angle))
+    M.target_transform.rotation = quat(M.received_transform.rotation) * q_delta
+  end
 end
 
 local function try_rude()
