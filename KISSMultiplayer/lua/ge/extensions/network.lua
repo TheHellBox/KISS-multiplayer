@@ -10,6 +10,7 @@ M.downloads_received = {}
 M.download_start_time = 0
 M.download_total_bytes = 0
 M.downloaded_bytes = 0
+M.download_queue = {}
 
 local current_download = nil
 
@@ -83,6 +84,7 @@ local function disconnect(data)
   M.download_start_time = 0
   M.download_total_bytes = 0
   M.downloaded_bytes = 0
+  M.download_queue = {}
   M.players = {}
   kissplayers.players = {}
   kissplayers.player_transforms = {}
@@ -291,6 +293,7 @@ local function connect(addr, player_name, is_public)
   end
   M.players = {}
   M.download_start_time = 0
+  M.download_queue = {}
   M.download_total_bytes = 0
   M.downloaded_bytes = 0
 
@@ -389,7 +392,11 @@ local function connect(addr, player_name, is_public)
       disconnect()
       return
     else
-      send_data({ RequestMods = missing_mods }, true)
+      M.download_queue = missing_mods
+      local next_mod = table.remove(M.download_queue, 1)
+      if next_mod then
+        send_data({ RequestMods = { next_mod } }, true)
+      end
     end
   end
   vehiclemanager.loading_map = true
@@ -443,6 +450,7 @@ local function cancel_download()
   M.download_start_time = 0
   M.download_total_bytes = 0
   M.downloaded_bytes = 0
+  M.download_queue = {}
 end
 
 local function onUpdate(dt)
@@ -560,6 +568,13 @@ local function onUpdate(dt)
         M.downloads_status[name] = nil
         M.downloads_received[name] = nil
         M.connection.mods_left = M.connection.mods_left - 1
+
+        if M.connection.mods_left > 0 then
+          local next_mod = table.remove(M.download_queue, 1)
+          if next_mod then
+            send_data({ RequestMods = { next_mod } }, true)
+          end
+        end
       end
       
       if M.connection.mods_left <= 0 then
