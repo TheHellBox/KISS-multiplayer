@@ -58,7 +58,6 @@ local function find_map_real_path(map_path)
       break
     end
   end
-  print(found_file)
   return FS:virtual2Native(found_file)
 end
 
@@ -74,17 +73,14 @@ local function change_map(map_info, title)
 
   --
   local map_path = map_info.misFilePath
-  print(map_path)
   M.map = map_path
   M.map_name = title or map_info.levelName
 
   local native = find_map_real_path(map_path)
-  print(native)
   local _, zip_end = string.find(native, ".zip")
   local _, is_mod = string.find(native, "mods")
   if zip_end and is_mod then
     local mod_file = string.sub(native, 1, zip_end)
-    print(mod_file)
     local virtual = to_non_lowered(FS:native2Virtual(mod_file))
     
     pre_forced_mods_state[virtual] = (M.mods[virtual] ~= nil)

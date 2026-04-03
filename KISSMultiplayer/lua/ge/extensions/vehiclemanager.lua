@@ -188,7 +188,7 @@ local transform_pos = vec3()
 local function spawn_vehicle(data)
   local model_info = core_vehicles.getModel(data.name)
   if tableSize(model_info) == 0 then
-    print("Rejected modded vehicle spawn " .. data.name)
+    log("W", "kissmp.vehiclemanager.spawn_vehicle", "Rejected modded vehicle spawn "..data.name)
     return
   end
 
@@ -207,16 +207,16 @@ local function spawn_vehicle(data)
   end
 
   if M.loading_map or M.delay_spawns then
-    print("Buffering vehicle")
+    log("D", "kissmp.vehiclemanager.spawn_vehicle", "Buffering vehicle")
     M.vehicle_buffer[data.server_id] = data
     return
   elseif away and view_distance then
-    print("Buffering vehicle")
+    log("D", "kissmp.vehiclemanager.spawn_vehicle", "Buffering vehicle")
     M.vehicle_buffer[data.server_id] = data
     return
   end
   if data.owner == network.get_client_id() then
-    print("Vehicle belongs to local client, setting ownership")
+    log("I", "kissmp.vehiclemanager.spawn_vehicle", "Vehicle belongs to local client, setting ownership")
     M.id_map[data.server_id] = data.in_game_id
     M.ownership[data.in_game_id] = data.server_id
     M.server_ids[data.in_game_id] = data.server_id
@@ -232,12 +232,11 @@ local function spawn_vehicle(data)
   local cp1 = data.palete_1
   local name = data.name
   if name == "unicycle" then
-    print("Attempt to spawn player")
     kissplayers.spawn_player(data)
     return
   end
   
-  print("Attempt to spawn vehicle "..name)
+  log("D", "kissmp.vehiclemanager.spawn_vehicle", "Attempt to spawn vehicle "..name)
   local options = { 
     vehicleName = "mp_veh",
     pos = vec3(data.position),

@@ -130,10 +130,10 @@ local function check_lua(l)
 end
 
 local function handle_lua(data)
-  if M.is_server_public then 
-      print("Blocked arbitrary Lua command from public server.")
-      return 
-    end
+  if M.is_server_public then
+    log("W", "kissmp.network.handle_lua", "Blocked arbitrary GE Lua command from public server.")
+    return
+  end
 
   if check_lua(data) then
     Lua:queueLuaCommand(data)
@@ -141,9 +141,9 @@ local function handle_lua(data)
 end
 
 local function handle_vehicle_lua(data)
-  if M.is_server_public then 
-    print("Blocked arbitrary vehicle Lua command from public server.")
-    return 
+  if M.is_server_public then
+    log("W", "kissmp.network.handle_vehicle_lua", "Blocked arbitrary vehicle Lua command from public server.")
+    return
   end
 
   local id = data[1]
@@ -200,7 +200,7 @@ end
 
 local function send_data(raw_data, reliable)
   if type(raw_data) == "number" then
-    print("NOT IMPLEMENTED. PLEASE REPORT TO KISSMP DEVELOPERS. CODE: "..raw_data)
+    log("E", "kissmp.network.send_data", "Sending raw data is not implemented. Please report to KissMP developers. Code: "..raw_data)
     return
   end
   if not M.connection.connected then return -1 end
@@ -213,7 +213,6 @@ local function send_data(raw_data, reliable)
   local data_size = #data
   -- Auto-chunk if data is too large
   if data_size > CHUNK_SIZE then
-    print("Large data detected: " .. data_size .. " bytes, sending in chunks")
     local num_chunks = math.ceil(data_size / CHUNK_SIZE)
     
     for i = 0, num_chunks - 1 do
@@ -232,21 +231,14 @@ local function send_data(raw_data, reliable)
       local len = ffi.string(ffi.new("uint32_t[?]", 1, {#chunk_data}), 4)
       M.connection.tcp:send(string.char(1)..len)
       M.connection.tcp:send(chunk_data)
-      
-      print("Sent chunk " .. (i + 1) .. "/" .. num_chunks)
     end
     
-    print("All chunks sent successfully")
     return 0
   end
   
   -- Send normally
   local len = ffi.string(ffi.new("uint32_t[?]", 1, {data_size}), 4)
-  if reliable then
-    reliable = 1
-  else
-    reliable = 0
-  end
+  reliable = reliable and 1 or 0
   M.connection.tcp:send(string.char(reliable)..len)
   M.connection.tcp:send(data)
   return 0
@@ -286,8 +278,8 @@ local function connect(addr, player_name, is_public)
   end
   M.players = {}
 
-  print("Connecting...")
   addr = sanitize_addr(addr)
+  log("I", "kissmp.network.connect", "Connecting to "..addr.."...")
   kissui.chat.add_message("Connecting to "..addr.."...")
   M.connection.tcp = socket.tcp()
   M.connection.tcp:settimeout(3.0)
@@ -316,14 +308,13 @@ local function connect(addr, player_name, is_public)
   len = bytesToU32(len)
 
   local received, _, _ = M.connection.tcp:receive(len)
-  print(received)
   local server_info = jsonDecode(received).ServerInfo
   if not server_info then
-    print("Failed to fetch server info")
+    log("E", "kissmp.network.connect", "Failed to fetch server info. Aborting.")
     return
   end
-  print("Server name: "..server_info.name)
-  print("Player count: "..server_info.player_count)
+  log("I", "kissmp.network.connect", "Server name: "..server_info.name)
+  log("I", "kissmp.network.connect", "Player count: "..server_info.player_count)
 
   M.connection.tcp:settimeout(0.0)
   M.connection.connected = true
@@ -362,7 +353,7 @@ local function connect(addr, player_name, is_public)
  
   kissmods.deactivate_all_mods()
   for k, v in pairs(missing_mods) do
-    print(k.." "..v)
+    log("I", "kissmp.network.connect", "Missing Mod "..k..": "..v)
   end
   if #missing_mods > 0 then
     -- Do not allow public servers to force mod downloads

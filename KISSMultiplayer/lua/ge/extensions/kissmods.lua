@@ -127,7 +127,6 @@ local function open_file(name)
     FS:directoryCreate("/kissmp_mods/")
   end
   local path = "/kissmp_mods/"..name
-  print(path)
   local file = io.open(path, "wb")
   return file
 end
