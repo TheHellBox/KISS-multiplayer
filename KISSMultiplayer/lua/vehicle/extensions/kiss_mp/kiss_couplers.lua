@@ -1,4 +1,7 @@
 local M = {}
+
+local string_buffer = require("string.buffer")
+
 local ownership = false
 local ignore_attachment = false
 local ignore_detachment = false
@@ -33,7 +36,9 @@ local function onCouplerAttached(node_id, obj2_id, obj2_node_id)
     node_a_id = node_id,
     node_b_id = obj2_node_id
   }
-  obj:queueGameEngineLua("vehiclemanager.attach_coupler_inner(\'"..jsonEncode(data).."\')")
+  obj:queueGameEngineLua(string.format(
+    "vehiclemanager.attach_coupler_inner(%q)",
+    string_buffer.encode(data)))
 end
 
 local function onCouplerDetached(node_id, obj2_id, obj2_node_id)
@@ -49,7 +54,9 @@ local function onCouplerDetached(node_id, obj2_id, obj2_node_id)
     node_a_id = node_id,
     node_b_id = obj2_node_id
   }
-   obj:queueGameEngineLua("vehiclemanager.detach_coupler_inner(\'"..jsonEncode(data).."\')")
+  obj:queueGameEngineLua(string.format(
+    "vehiclemanager.detach_coupler_inner(%q)",
+    string_buffer.encode(data)))
 end
 
 local function kissUpdateOwnership(owned)

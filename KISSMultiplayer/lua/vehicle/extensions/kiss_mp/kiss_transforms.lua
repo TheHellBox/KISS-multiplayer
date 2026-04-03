@@ -1,4 +1,7 @@
 local M = {}
+
+local string_buffer = require("string.buffer")
+
 local cooldown_timer = 2
 
 M.received_transform = {
@@ -115,8 +118,8 @@ local function update(dt)
   end
 end
 
-local function set_target_transform(raw)
-  local transform = jsonDecode(raw)
+local function set_target_transform(buffer_data)
+  local transform = string_buffer.decode(buffer_data)
   local time_dif = clamp((transform.sent_at - M.received_transform.sent_at), 0.01, 0.1)
 
   M.received_transform.acceleration = (vec3(transform.velocity) - M.received_transform.velocity) / time_dif

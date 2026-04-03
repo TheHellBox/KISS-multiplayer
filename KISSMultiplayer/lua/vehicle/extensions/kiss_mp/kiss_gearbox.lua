@@ -1,5 +1,7 @@
 local M = {}
 
+local string_buffer = require("string.buffer")
+
 local mainController = nil
 local gearbox = nil
 
@@ -62,8 +64,8 @@ local function get_gearbox_data()
   return data
 end
 
-local function apply(data)
-  local data = jsonDecode(data)
+local function apply(buffer_data)
+  local data = string_buffer.decode(buffer_data)
   set_gear_indices(data.gear_indices)
 end
 

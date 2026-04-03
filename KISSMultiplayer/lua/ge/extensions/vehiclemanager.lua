@@ -1,6 +1,6 @@
 local M = {}
 
-local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
+local string_buffer = require("string.buffer")
 
 local timer = 0
 local generation = 0
@@ -149,11 +149,11 @@ local function send_vehicle_config(vehicle_id)
   end
 end
 
-local function send_vehicle_config_inner(id, parts_config, data)
+local function send_vehicle_config_inner(id, parts_config_json, buffer_data)
+  local data = string_buffer.decode(buffer_data)
   for k, v in pairs(M.id_map) do
     if v == id and not M.ownership[id] then return end
   end
-  local data = jsonDecode(data)
   local vehicle = be:getObjectByID(id)
   local metal_data = vehicle:getMetallicPaintData()
   local color = vehicle.color
@@ -163,7 +163,7 @@ local function send_vehicle_config_inner(id, parts_config, data)
   local position = vec3(data.position)
   local rotation = quat(data.rotation)
   local vehicle_data = {}
-  vehicle_data.parts_config = parts_config
+  vehicle_data.parts_config = parts_config_json
   vehicle_data.in_game_id = id
   vehicle_data.color = color_to_table(color, metal_data[1])
   vehicle_data.palete_0 = color_to_table(palete_0, metal_data[2])
@@ -326,8 +326,11 @@ local function update_vehicle(data)
 
   kisstransform.update_vehicle_transform(data)
   if not kisstransform.inactive[id] then
-    vehicle:queueLuaCommand("kiss_input.apply(" .. string.format("%q", jsonEncode(data.electrics)) .. ")")
-    vehicle:queueLuaCommand("kiss_gearbox.apply(" .. string.format("%q", jsonEncode(data.gearbox)) .. ")")
+    vehicle:queueLuaCommand(string.format(
+      [[kiss_input.apply(%q)
+        kiss_gearbox.apply(%q)]],
+      string_buffer.encode(data.electrics),
+      string_buffer.encode(data.gearbox)))
   end
 end
 
@@ -414,13 +417,15 @@ local function electrics_diff_update(data)
   if id and not M.ownership[id] then
     local vehicle = be:getObjectByID(id)
     if not vehicle then return end
-    local data = jsonEncode(data[2].diff)
-    vehicle:queueLuaCommand("kiss_electrics.apply_diff(" .. string.format("%q", data) .. ")")
+    local data = data[2].diff
+    vehicle:queueLuaCommand(string.format(
+      "kiss_electrics.apply_diff(%q)",
+      string_buffer.encode(data)))
   end
 end
 
-local function attach_coupler_inner(data)
-  local data = jsonDecode(data)
+local function attach_coupler_inner(buffer_data)
+  local data = string_buffer.decode(buffer_data)
   data.obj_a = M.server_ids[data.obj_a]
   data.obj_b = M.server_ids[data.obj_b]
   network.send_data(
@@ -431,8 +436,8 @@ local function attach_coupler_inner(data)
   )
 end
 
-local function detach_coupler_inner(data)
-  local data = jsonDecode(data)
+local function detach_coupler_inner(buffer_data)
+  local data = string_buffer.decode(buffer_data)
   data.obj_a = M.server_ids[data.obj_a]
   data.obj_b = M.server_ids[data.obj_b]
   network.send_data(
