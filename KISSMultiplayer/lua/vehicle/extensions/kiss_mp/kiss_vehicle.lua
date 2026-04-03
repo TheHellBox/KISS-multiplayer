@@ -2,7 +2,6 @@ local M = {}
 
 local string_buffer = require("string.buffer")
 
-local parts_config = v.config
 local nodes = {}
 local ref_nodes = {}
 
@@ -161,7 +160,6 @@ M.apply_linear_velocity_ang_torque = apply_linear_velocity_ang_torque
 M.update_eligible_nodes = update_eligible_nodes
 M.apply_linear_velocity = apply_linear_velocity
 M.onExtensionLoaded = onExtensionLoaded
-M.set_reference = set_reference
-M.save_state = save_state
 M.send_vehicle_config = send_vehicle_config
+
 return M

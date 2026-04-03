@@ -2,9 +2,6 @@ local M = {}
 
 local string_buffer = require("string.buffer")
 
-local generation = 0
-local timer = 0
-
 M.raw_transforms = {}
 M.received_transforms = {}
 M.local_transforms = {}
