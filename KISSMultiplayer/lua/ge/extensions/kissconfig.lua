@@ -26,21 +26,17 @@ local function save_config()
     view_distance = kissui.view_distance[0],
     base_secret_v2 = secret
   }
-  local file = io.open("./settings/kissmp_config.json", "w")
-  file:write(jsonEncode(result))
-  io.close(file)
+  jsonWriteFile("/settings/kissmp_config.json", result, true)
 end
 
 local function load_config()
-  local file = io.open("./settings/kissmp_config.json", "r")
-  if not file then
+  if not FS:fileExists("/settings/kissmp_config.json") then
     if Steam and Steam.isWorking and Steam.accountLoggedIn then
       kissui.player_name = imgui.ArrayChar(32, Steam.playerName)
     end
     return
   end
-  local content = file:read("*a")
-  local config = jsonDecode(content or "")
+  local config = jsonReadFile("/settings/kissmp_config.json")
   if not config then return end
 
   if config.name ~= nil then
@@ -67,7 +63,6 @@ local function load_config()
   if config.base_secret_v2 ~= nil then
     network.base_secret = config.base_secret_v2
   end
-  io.close(file)
 end
 
 local function init()

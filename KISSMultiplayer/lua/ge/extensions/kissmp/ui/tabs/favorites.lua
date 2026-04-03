@@ -26,18 +26,14 @@ local function spairs(t, order)
 end
 
 local function save_favorites()
-  local file = io.open("./settings/kissmp_favorites.json", "w")
-  file:write(jsonEncode(M.favorite_servers))
-  io.close(file)
+  jsonWriteFile("/settings/kissmp_favorites.json", M.favorite_servers, true)
 end
 
 local function load_favorites(m)
   local kissui = kissui or m
-  local file = io.open("./settings/kissmp_favorites.json", "r")
-  if file then
-    local content = file:read("*a")
-    M.favorite_servers = jsonDecode(content) or {}
-    io.close(file)
+  local jsonData = jsonReadFile("/settings/kissmp_favorites.json")
+  if jsonData then
+    M.favorite_servers = jsonData
   end
 end
 
