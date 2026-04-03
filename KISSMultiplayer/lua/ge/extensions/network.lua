@@ -149,7 +149,7 @@ local function handle_vehicle_lua(data)
   local id = data[1]
   local lua = data[2]
   local id = vehiclemanager.id_map[id or -1] or 0
-  local vehicle = be:getObjectByID(id)
+  local vehicle = getObjectByID(id)
   if vehicle and check_lua(lua) then
     vehicle:queueLuaCommand(lua)
   end

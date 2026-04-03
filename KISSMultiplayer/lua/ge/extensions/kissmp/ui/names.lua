@@ -4,7 +4,7 @@ local function draw()
   for id, player in pairs(network.players) do
     if id ~= network.connection.client_id and player.current_vehicle then
       local vehicle_id = vehiclemanager.id_map[player.current_vehicle] or -1
-      local vehicle = be:getObjectByID(vehicle_id)
+      local vehicle = getObjectByID(vehicle_id)
       local vehicle_position = vec3()
       if (not vehicle) or (kisstransform.inactive[vehicle_id]) then
         if kissplayers.players[player.current_vehicle] then

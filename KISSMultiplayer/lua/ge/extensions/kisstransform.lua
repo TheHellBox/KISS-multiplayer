@@ -17,11 +17,10 @@ M.hidden = {}
 
 local function update(dt)
   if not network.connection.connected then return end
-    -- Get rotation/angular velocity from vehicle lua
-  for i = 0, be:getObjectCount() do
-    local vehicle = be:getObject(i)
-    if vehicle and (not M.inactive[vehicle:getID()]) then
-      vehicle:queueLuaCommand("kiss_vehicle.update_transform_info()")
+  -- Get rotation/angular velocity from vehicle lua
+  for vid, v in vehiclesIterator() do
+    if not M.inactive[vid] then
+      v:queueLuaCommand("kiss_vehicle.update_transform_info()")
     end
   end
 
@@ -29,7 +28,7 @@ local function update(dt)
   local apply_velocity = not bullettime.getPause()
   for id, transform in pairs(M.received_transforms) do
     --apply_transform(dt, id, transform, apply_velocity)
-    local vehicle = be:getObjectByID(id)
+    local vehicle = getObjectByID(id)
     local p = vec3(transform.position)
     if vehicle and apply_velocity and (not vehiclemanager.ownership[id]) then
       if ((p:distance(vec3(getCameraPosition())) > kissui.view_distance[0])) and kissui.enable_view_distance[0] then
@@ -59,7 +58,7 @@ local function update_vehicle_transform(data)
   M.raw_positions[transform.owner or -1] = transform.position
   M.received_transforms[id] = transform
 
-  local vehicle = be:getObjectByID(id)
+  local vehicle = getObjectByID(id)
   if vehicle and (not M.inactive[id]) then
     transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
     vehicle:queueLuaCommand("kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
