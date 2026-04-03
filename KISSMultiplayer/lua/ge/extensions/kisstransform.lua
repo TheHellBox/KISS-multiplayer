@@ -1,5 +1,10 @@
 local M = {}
 
+local string_buffer = require("string.buffer")
+
+local generation = 0
+local timer = 0
+
 M.raw_transforms = {}
 M.received_transforms = {}
 M.local_transforms = {}
@@ -42,8 +47,9 @@ local function update(dt)
           vehicle:setActive(1)
           M.inactive[id] = false
         end
-        vehicle:queueLuaCommand("kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
-        vehicle:queueLuaCommand("kiss_transforms.update("..dt..")")
+        vehicle:queueLuaCommand(string.format(
+          "kiss_transforms.update(%f)",
+          dt))
       end
     end
   end
@@ -60,14 +66,16 @@ local function update_vehicle_transform(data)
   M.received_transforms[id] = transform
 
   local vehicle = getObjectByID(id)
+  transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
   if vehicle and (not M.inactive[id]) then
-    transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
-    vehicle:queueLuaCommand("kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
+    vehicle:queueLuaCommand(string.format(
+      "kiss_transforms.set_target_transform(%q)",
+      string_buffer.encode(transform)))
   end
 end
 
 local function push_transform(id, t)
-  M.local_transforms[id] = jsonDecode(t)
+  M.local_transforms[id] = string_buffer.decode(t)
 end
 
 M.update_vehicle_transform = update_vehicle_transform

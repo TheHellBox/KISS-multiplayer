@@ -1,7 +1,9 @@
 local M = {}
 
-local function apply(data)
-  local data = jsonDecode(data)
+local string_buffer = require("string.buffer")
+
+local function apply(buffer_data)
+  local data = string_buffer.decode(buffer_data)
   input.event("throttle", data.throttle_input, 1)
   input.event("brake", data.brake_input, 2)
   input.event("parkingbrake", data.parkingbrake, 2)

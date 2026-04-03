@@ -1,5 +1,8 @@
 local M = {}
 
+local string_buffer = require("string.buffer")
+
+local parts_config = v.config
 local nodes = {}
 local ref_nodes = {}
 
@@ -92,7 +95,9 @@ local function update_transform_info()
     vel_roll  = obj:getRollAngularVelocity(),
     vel_yaw   = obj:getYawAngularVelocity(),
   }
-  obj:queueGameEngineLua("kisstransform.push_transform("..obj:getID()..", " .. string.format("%q", jsonEncode(transform)) .. ")")
+  obj:queueGameEngineLua(string.format(
+    "kisstransform.push_transform(%d, %q)",
+    obj:getID(), string_buffer.encode(transform)))
 end
 
 local velocity = vec3(x, y, z)
@@ -146,7 +151,9 @@ local function send_vehicle_config()
     position = {obj:getPositionXYZ()},
     rotation = {obj:getRotation()},
   }
-  obj:queueGameEngineLua("vehiclemanager.send_vehicle_config_inner("..obj:getID()..", " .. string.format("%q", jsonEncode(config)) .. ", " .. string.format("%q", jsonEncode(data)) .. ")")
+  obj:queueGameEngineLua(string.format(
+    "vehiclemanager.send_vehicle_config_inner(%d, %q, %q)",
+    obj:getID(), jsonEncode(config), string_buffer.encode(data)))
 end
 
 M.update_transform_info = update_transform_info

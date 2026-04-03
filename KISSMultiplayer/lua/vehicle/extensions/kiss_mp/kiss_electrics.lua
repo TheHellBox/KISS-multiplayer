@@ -1,4 +1,7 @@
 local M = {}
+
+local string_buffer = require("string.buffer")
+
 local prev_electrics = {}
 local prev_signal_electrics = {}
 local last_engine_state = true
@@ -143,8 +146,9 @@ local function send()
     ElectricsUndefinedUpdate = {obj:getID(), data}
   }
   if diff_count > 0 then
-    print("=== ELECTRICS BEING SENT ===\n" .. jsonEncode(data)) 
-    obj:queueGameEngineLua("network.send_data(\'"..jsonEncode(data).."\', true)")
+    obj:queueGameEngineLua(string.format(
+      "network.send_data(%q, true)",
+      jsonEncode(data)))
   end
 end
 
@@ -189,8 +193,8 @@ local function update_advanced_coupler_state(coupler_control_controller, value)
   end
 end
 
-local function apply_diff(data)
-  local diff = jsonDecode(data)
+local function apply_diff(buffer_data)
+  local diff = string_buffer.decode(buffer_data)
   apply_diff_signals(diff)
   for k, v in pairs(diff) do
     electrics.values[k] = v
