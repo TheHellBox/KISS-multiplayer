@@ -7,8 +7,23 @@ use std::io::Write;
 use chrono::Local;
 pub use log::{info, warn, error};
 
-pub const VERSION: (u32, u32) = (0, 7);
-pub const VERSION_STR: &str = "0.7.1";
+// Convert Cargo string numbers into u32 integers
+const fn parse_env_u32(s: &str) -> u32 {
+    let mut res = 0;
+    let mut i = 0;
+    let bytes = s.as_bytes();
+    while i < bytes.len() {
+        res = res * 10 + (bytes[i] - b'0') as u32;
+        i += 1;
+    }
+    res
+}
+
+pub const VERSION: (u32, u32) = (
+    parse_env_u32(env!("CARGO_PKG_VERSION_MAJOR")),
+    parse_env_u32(env!("CARGO_PKG_VERSION_MINOR"))
+);
+pub const VERSION_STR: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientInfoPrivate {

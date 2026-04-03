@@ -1,7 +1,8 @@
 local M = {}
 local imgui = ui_imgui
 local http = require("socket.http")
-local VERSION_PRTL = "0.7.1"
+local version = require("lua/ge/extensions/kissmp/version")
+local VERSION_PRTL = version.VERSION_STR
 
 local filter_servers_notfull = imgui.BoolPtr(false)
 local filter_servers_notempty = imgui.BoolPtr(false)
