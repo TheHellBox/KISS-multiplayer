@@ -168,6 +168,9 @@ end
 local function handle_player_disconnected(data)
   local id = data
   M.players[id] = nil
+  if kissplayers.players_in_cars[id] then
+    kissplayers.delete_player_head(id)
+  end
 end
 
 local function handle_chat(data)
