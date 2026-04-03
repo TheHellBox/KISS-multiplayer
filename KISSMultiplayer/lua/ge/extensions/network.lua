@@ -102,7 +102,7 @@ local function handle_file_transfer(data)
   local file_len = bytesToU32(data:sub(1, 4))
   local file_name = data:sub(5, #data)
   local chunks = math.floor(file_len / FILE_TRANSFER_CHUNK_SIZE)
-  
+
   current_download = {
     file_len = file_len,
     file_name = file_name,
@@ -214,12 +214,12 @@ local function send_data(raw_data, reliable)
   -- Auto-chunk if data is too large
   if data_size > CHUNK_SIZE then
     local num_chunks = math.ceil(data_size / CHUNK_SIZE)
-    
+
     for i = 0, num_chunks - 1 do
       local start_pos = i * CHUNK_SIZE + 1
       local end_pos = math.min((i + 1) * CHUNK_SIZE, data_size)
       local chunk = data:sub(start_pos, end_pos)
-      
+
       local chunk_data = jsonEncode({
         DataChunk = {
           chunk_index = i,
@@ -232,10 +232,10 @@ local function send_data(raw_data, reliable)
       M.connection.tcp:send(string.char(1)..len)
       M.connection.tcp:send(chunk_data)
     end
-    
+
     return 0
   end
-  
+
   -- Send normally
   local len = ffi.string(ffi.new("uint32_t[?]", 1, {data_size}), 4)
   reliable = reliable and 1 or 0
@@ -301,7 +301,7 @@ local function connect(addr, player_name, is_public)
     return
   end
 
-    -- Ignore message type
+  -- Ignore message type
   M.connection.tcp:receive(1)
 
   local len, _, _ = M.connection.tcp:receive(4)
@@ -350,7 +350,7 @@ local function connect(addr, player_name, is_public)
     end
   end
   M.connection.mods_left = #missing_mods
- 
+
   kissmods.deactivate_all_mods()
   for k, v in pairs(missing_mods) do
     log("I", "kissmp.network.connect", "Missing Mod "..k..": "..v)
@@ -480,14 +480,14 @@ local function onUpdate(dt)
         file = kissmods.open_file(name)
         M.downloads[name] = file
       end
-      
+
       if file and file_data then
         file:write(file_data)
       end
 
       if M.downloads_received[name] >= file_length then
         kissmods.mount_mod(name)
-        
+
         if M.downloads[name] then
           M.downloads[name]:close()
           M.downloads[name] = nil
@@ -496,7 +496,7 @@ local function onUpdate(dt)
         M.downloads_received[name] = nil
         M.connection.mods_left = M.connection.mods_left - 1
       end
-      
+
       if M.connection.mods_left <= 0 then
         M.downloading = false
         kissui.show_download = false

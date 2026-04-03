@@ -1,7 +1,4 @@
 local M = {}
-local http = require("socket.http")
-
-local bor = bit.bor
 
 local main_window = require("kissmp.ui.main")
 M.chat = require("kissmp.ui.chat")
@@ -78,10 +75,6 @@ local function open_ui()
   M.gui.registerWindow("Incorrect install detected", imgui.ImVec2(256, 128))
   M.gui.hideWindow("Add Favorite")
   show_ui()
-end
-
-local function bytes_to_mb(bytes)
-  return (bytes / 1024) / 1024
 end
 
 local function draw_incorrect_install()

@@ -1,8 +1,5 @@
 local M = {}
 
-local generation = 0
-local timer = 0
-
 M.raw_transforms = {}
 M.received_transforms = {}
 M.local_transforms = {}
@@ -73,8 +70,6 @@ local function push_transform(id, t)
   M.local_transforms[id] = jsonDecode(t)
 end
 
-M.send_transform_updates = send_transform_updates
-M.send_vehicle_transform = send_vehicle_transform
 M.update_vehicle_transform = update_vehicle_transform
 M.push_transform = push_transform
 M.onUpdate = update

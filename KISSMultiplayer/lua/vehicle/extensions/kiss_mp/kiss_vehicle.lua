@@ -1,5 +1,5 @@
 local M = {}
-local parts_config = v.config
+
 local nodes = {}
 local ref_nodes = {}
 
@@ -70,13 +70,13 @@ end
 local function update_transform_info()
   local r = quat(obj:getRotation())
   local p = obj:getPosition()
-  
+
   local throttle_input = electrics.values.throttle_input or 0
   local brake_input = electrics.values.brake_input or 0
   if electrics.values.gearboxMode == "arcade" and electrics.values.gearIndex < 0 then
     throttle_input, brake_input = brake_input, throttle_input
   end
-  
+
   local input = {
     vehicle_id = obj:getID() or 0,
     throttle_input = throttle_input,

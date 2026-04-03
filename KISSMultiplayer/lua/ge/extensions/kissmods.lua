@@ -12,12 +12,6 @@ local function is_special_mod(mod_path)
   return false
 end
 
-local function get_mod_name(name)
-  local name = string.lower(name)
-  name = name:gsub('.zip$', '')
-  return "kissmp_mods"..name
-end
-
 local function deactivate_mod(name)
   local filename = "/kissmp_mods/"..name
   if FS:isMounted(filename) then
@@ -31,7 +25,7 @@ local function is_app_mod(path)
   if string.sub(path, -4) ~= ".zip" then
       pattern = "([^/]+)$"
   end
-  
+
   path = string.match(path, pattern)
   local mod = core_modmanager.getModDB(path)
   if not mod then return false end
@@ -62,7 +56,7 @@ local function mount_mod(name)
   if FS:fileExists("/kissmp_mods/"..name) then
     FS:mount("/kissmp_mods/"..name)
   else
-    files = FS:findFiles("/mods/", name, 1000)
+    local files = FS:findFiles("/mods/", name, 1000)
     if files[1] then
       FS:mount(files[1])
     else
@@ -89,7 +83,7 @@ local function update_status(mod)
   for _, v in pairs(search_results2) do
     table.insert(search_results, v)
   end
-  
+
   if not search_results[1] then
     mod.status = "missing"
   else

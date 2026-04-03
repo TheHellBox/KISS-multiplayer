@@ -5,12 +5,12 @@ local ignore_detachment = false
 
 local ignored_couplers = {}
 
-local function ignore_coupler_node(node) 
+local function ignore_coupler_node(node)
   ignored_couplers[node] = true
 end
 
 local function attach_coupler(node)
-  local node = v.data.nodes[node]
+  node = v.data.nodes[node]
   obj:attachCoupler(node.cid, node.couplerTag or "", node.couplerStrength or 1000000, node.couplerRadius or 0.2, 0, node.couplerLatchSpeed or 0.3, node.couplerTargets or 0)
   ignore_attachment = true
 end

@@ -94,7 +94,7 @@ local function send_vehicle_meta_updates()
     if vehicle then
       local changed = false
       local id = vehicle:getID()
-      
+
       local metal_data = vehicle:getMetallicPaintData()
       local color = vehicle.color
       local palete_0 = vehicle.colorPalette0
@@ -105,17 +105,17 @@ local function send_vehicle_meta_updates()
         color_to_table(palete_0, metal_data[2]),
         color_to_table(palete_1, metal_data[3])
       }
-      
+
       if plates_buffer[id] then
         changed = changed or plates_buffer[id] ~= plate
       end
       plates_buffer[id] = plate
-      
+
       if colors_buffer[id] then
         changed = changed or not colors_eq(colors, colors_buffer[id])
       end
       colors_buffer[id] = colors
-      
+
       if changed then
         local data = {
           VehicleMetaUpdate = {
@@ -131,15 +131,15 @@ local function send_vehicle_meta_updates()
 end
 
 local function update_ownership_limits()
-    local owned_vehicle_count = 0
-    for _, _ in pairs(M.ownership) do
-      owned_vehicle_count = owned_vehicle_count + 1
-    end
-    if owned_vehicle_count >= network.connection.server_info.max_vehicles_per_client then
-      enable_spawning(false)
-    else
-      enable_spawning(true)
-    end
+  local owned_vehicle_count = 0
+  for _, _ in pairs(M.ownership) do
+    owned_vehicle_count = owned_vehicle_count + 1
+  end
+  if owned_vehicle_count >= network.connection.server_info.max_vehicles_per_client then
+    enable_spawning(false)
+  else
+    enable_spawning(true)
+  end
 end
 
 local function send_vehicle_config(vehicle_id)
@@ -235,9 +235,9 @@ local function spawn_vehicle(data)
     kissplayers.spawn_player(data)
     return
   end
-  
+
   log("D", "kissmp.vehiclemanager.spawn_vehicle", "Attempt to spawn vehicle "..name)
-  local options = { 
+  local options = {
     vehicleName = "mp_veh",
     pos = vec3(data.position),
     rot = quat(data.rotation),
@@ -248,7 +248,7 @@ local function spawn_vehicle(data)
     autoEnterVehicle = false
   }
   options = sanitizeVehicleSpawnOptions(name, options)
-  
+
   local spawned = spawn.spawnVehicle(name, options.config, options.pos, options.rot, options)
   if not spawned then return end
   local p = data.position
@@ -318,7 +318,7 @@ end
 
 local function update_vehicle(data)
   kisstransform.raw_transforms[data.vehicle_id] = data.transform
-    -- If vehicle is a unicycle(Walking mode character), sync it differently
+  -- If vehicle is a unicycle(Walking mode character), sync it differently
   local character = kissplayers.players[data.vehicle_id]
   if character then
     local character_transforms = kissplayers.player_transforms[data.vehicle_id]
@@ -339,7 +339,7 @@ local function update_vehicle(data)
     character_transforms.time_past = clamp(get_current_time() - data.sent_at, 0, 0.3) + 0.0001
     return
   end
- 
+
   local id = M.id_map[data.vehicle_id]
   if not id then return end
   if M.ownership[id] then return end
@@ -381,10 +381,10 @@ end
 local function reset_vehicle(data)
   local id = data.vehicle_id
   id = M.id_map[id] or -1
-  
+
   local position = data.position
   local rotation = data.rotation
-  
+
   local vehicle = getObjectByID(id)
   if not vehicle then return end
   if vehicle then
@@ -407,7 +407,7 @@ local function update_vehicle_meta(data)
   local vehicle = getObjectByID(id)
   if not vehicle then return end
   local plate = data.plate
-  
+
   local color = data.colors_table[1]
   local palete_0 = data.colors_table[2]
   local palete_1 = data.colors_table[3]
@@ -424,7 +424,7 @@ local function update_vehicle_meta(data)
   -- Apply colors
   local vd = extensions.core_vehicle_manager.getVehicleData(id)
   if not vd or not vd.config or not vd.config.paints then return end
-  
+
   for i=1,3 do
     local ct = color_tables[i]
     vd.config.paints[i] =  table_to_paint(ct)
@@ -590,7 +590,7 @@ local function onVehicleResetted(id)
   if M.ownership[id] then
     local vehicle = getObjectByID(id)
     local data = { vehicle_id = id, position = {vehicle:getPositionXYZ()}, rotation = vehicle:getRefNodeRotation():toTable()}
-    
+
     network.send_data(
       {
         ResetVehicle = data,
