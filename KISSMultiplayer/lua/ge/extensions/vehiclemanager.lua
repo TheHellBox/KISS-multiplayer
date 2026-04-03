@@ -182,6 +182,9 @@ local function send_vehicle_config_inner(id, parts_config, data)
   )
 end
 
+local camera_pos = vec3()
+local transform_pos = vec3()
+
 local function spawn_vehicle(data)
   local model_info = core_vehicles.getModel(data.name)
   if tableSize(model_info) == 0 then
@@ -190,16 +193,24 @@ local function spawn_vehicle(data)
   end
 
   local away = true
-  if kisstransform.raw_transforms[data.server_id] then
-    away = (vec3(kisstransform.raw_transforms[data.server_id].position):distance(vec3(getCameraPosition())) > kissui.view_distance[0])
-  else
-    away = (vec3(data.position):distance(vec3(getCameraPosition())) > kissui.view_distance[0])
+  local view_distance = kissui.enable_view_distance[0] and kissui.view_distance[0] * kissui.view_distance[0] or nil
+  if view_distance then
+    if kisstransform.raw_transforms[data.server_id] then
+      local position = kisstransform.raw_transforms[data.server_id].position
+      transform_pos:set(position[1], position[2], position[3])
+      away = transform_pos:squaredDistance(camera_pos) > view_distance
+    else
+      local position = data.position
+      transform_pos:set(position[1], position[2], position[3])
+      away = transform_pos:squaredDistance(camera_pos) > view_distance
+    end
   end
+
   if M.loading_map or M.delay_spawns then
     print("Buffering vehicle")
     M.vehicle_buffer[data.server_id] = data
     return
-  elseif away and kissui.enable_view_distance[0] then
+  elseif away and view_distance then
     print("Buffering vehicle")
     M.vehicle_buffer[data.server_id] = data
     return
@@ -256,6 +267,7 @@ end
 
 local function onUpdate(dt)
   if not network.connection.connected then return end
+  camera_pos:set(core_camera.getPositionXYZ())
   if (getMissionFilename():lower() ~= network.connection.server_info.map:lower()) and (getMissionPath():lower() ~= network.connection.server_info.map:lower()) and not M.loading_map then
     network.disconnect()
   end
@@ -289,10 +301,12 @@ local function onUpdate(dt)
     end
   end
   if not (M.loading_map or M.delay_spawns) then
+    local view_distance = kissui.enable_view_distance[0] and kissui.view_distance[0] * kissui.view_distance[0] or nil
     local to_remove = {}
     for k, vehicle in pairs(M.vehicle_buffer) do
       local t = kisstransform.raw_transforms[k]
-      if t and not ((vec3(t.position):distance(vec3(getCameraPosition())) > kissui.view_distance[0]) and kissui.enable_view_distance[0]) then
+      transform_pos:set(t.position[1], t.position[2], t.position[3])
+      if t and not (view_distance and transform_pos:squaredDistance(camera_pos) > view_distance) then
         spawn_vehicle(vehicle)
         table.insert(to_remove, k)
       end
@@ -308,10 +322,22 @@ local function update_vehicle(data)
     -- If vehicle is a unicycle(Walking mode character), sync it differently
   local character = kissplayers.players[data.vehicle_id]
   if character then
-    kissplayers.player_transforms[data.vehicle_id].target_position = vec3(data.transform.position)
-    kissplayers.player_transforms[data.vehicle_id].rotation = data.transform.rotation
-    kissplayers.player_transforms[data.vehicle_id].velocity = vec3(data.transform.velocity)
-    kissplayers.player_transforms[data.vehicle_id].time_past = clamp(get_current_time() - data.sent_at, 0, 0.3) + 0.0001
+    local character_transforms = kissplayers.player_transforms[data.vehicle_id]
+    if not character_transforms then
+      character_transforms = {
+        target_position = vec3(),
+        rotation = {},
+        velocity = vec3()
+      }
+      kissplayers.player_transforms[data.vehicle_id] = character_transforms
+    end
+
+    local temp = data.transform.position
+    character_transforms.target_position:set(temp[1], temp[2], temp[3])
+    character_transforms.rotation = data.transform.rotation
+    temp = data.transform.velocity
+    character_transforms.velocity:set(temp[1], temp[2], temp[3])
+    character_transforms.time_past = clamp(get_current_time() - data.sent_at, 0, 0.3) + 0.0001
     return
   end
  
@@ -442,6 +468,11 @@ local function detach_coupler_inner(data)
   )
 end
 
+local tempVec1 = vec3()
+local tempVec2 = vec3()
+local nodeAPos = vec3()
+local nodeBPos = vec3()
+local distanceThreshold = 15 * 15
 local function attach_coupler(data)
   local obj_a = M.id_map[data.obj_a]
   local obj_b = M.id_map[data.obj_b]
@@ -449,13 +480,24 @@ local function attach_coupler(data)
     if M.ownership[obj_a] then return end
     local vehicle = getObjectByID(obj_a)
     local vehicle_b = getObjectByID(obj_b)
-    if not vehicle then return end
-    if not vehicle_b then return end
-    if vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
-    local node_a_pos = vec3(vehicle:getPosition()) + vec3(vehicle:getNodePosition(data.node_a_id))
-    local node_b_pos = vec3(vehicle_b:getPosition()) + vec3(vehicle_b:getNodePosition(data.node_b_id))
-    local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
-    vehicle_b:setPositionNoPhysicsReset(vec3(pos.x, pos.y, pos.z))
+    if not vehicle or not vehicle_b then return end
+
+    tempVec1:set(vehicle:getPositionXYZ())
+    tempVec2:set(vehicle_b:getPositionXYZ())
+    if tempVec1:squaredDistance(tempVec2) > distanceThreshold then return end
+
+    --[[
+    local node_a_pos = vehicle:getNodeAbsPosition(data.node_a_id)
+    local node_b_pos = vehicle_b:getNodeAbsPosition(data.node_b_id)
+    local pos = vehicle_b:getPosition() + (node_a_pos - node_b_pos)
+    ]]
+
+    nodeAPos:set(vehicle:getNodeAbsPositionXYZ(data.node_a_id))
+    nodeBPos:set(vehicle_b:getNodeAbsPositionXYZ(data.node_b_id))
+    tempVec2:setAdd(nodeAPos)
+    tempVec2:setSub(nodeBPos)
+
+    vehicle_b:setPositionNoPhysicsReset(tempVec2)
     vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data.node_b_id..")")
     onCouplerAttached(obj_a, obj_b, data.node_a_id, data.node_b_id)
   end
@@ -468,9 +510,12 @@ local function detach_coupler(data)
     if M.ownership[obj_a] then return end
     local vehicle = getObjectByID(obj_a)
     local vehicle_b = getObjectByID(obj_b)
-    if not vehicle then return end
-    if not vehicle_b then return end
-    if vehicle_ ~= vehicle_b and vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
+    if not vehicle or not vehicle_b then return end
+
+    tempVec1:set(vehicle:getPositionXYZ())
+    tempVec2:set(vehicle_b:getPositionXYZ())
+    if tempVec1:squaredDistance(tempVec2) > distanceThreshold then return end
+
     vehicle:queueLuaCommand("kiss_couplers.detach_coupler("..data.node_a_id..")")
     onCouplerDetached(obj_a, obj_b, data.node_a_id, data.node_b_id)
     onCouplerDetach(obj_a, data.node_a_id)
@@ -482,7 +527,8 @@ local function set_position(data)
   local id = M.id_map[data[1] or -1] or -1
   local vehicle = getObjectByID(id)
   if vehicle then
-    vehicle:setPositionNoPhysicsReset(vec3(data[2][1], data[2][2], data[2][3]))
+    tempVec1:set(data[2][1], data[2][2], data[2][3])
+    vehicle:setPositionNoPhysicsReset(tempVec1)
   end
 end
 
@@ -505,9 +551,10 @@ end
 local function onVehicleSpawned(id)
   if not network.connection.connected then return end
   local vehicle = getObjectByID(id)
-  local position = vehicle:getPosition()
+  tempVec1:set(vehicle:getPositionXYZ())
   if first_vehicle then
-    vehicle:setPosition(vec3(position.x + math.random(-5, 5), position.y + math.random(-5, 5), position.z))
+    tempVec2:set(tempVec1.x + math.random(-5, 5), tempVec1.y + math.random(-5, 5), tempVec1.z)
+    vehicle:setPosition(tempVec2)
     vehicle:queueLuaCommand("recovery.saveHome()")
     first_vehicle = false
   end
@@ -543,9 +590,7 @@ local function onVehicleResetted(id)
   if not network.connection.connected then return end
   if M.ownership[id] then
     local vehicle = getObjectByID(id)
-    local rotation = quat(vehicle:getRefNodeMatrix():toQuatF())
-    local position = vec3(vehicle:getPosition())
-    local data = { vehicle_id = id, position = {position.x, position.y, position.z}, rotation = {rotation.x, rotation.y, rotation.z, rotation.w}}
+    local data = { vehicle_id = id, position = {vehicle:getPositionXYZ()}, rotation = vehicle:getRefNodeRotation():toTable()}
     
     network.send_data(
       {
