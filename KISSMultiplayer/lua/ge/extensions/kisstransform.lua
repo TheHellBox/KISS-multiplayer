@@ -45,9 +45,8 @@ local function update(dt)
           M.inactive[id] = false
         end
         vehicle:queueLuaCommand(string.format(
-          [[kiss_transforms.set_target_transform(%q)
-            kiss_transforms.update(%f)]],
-          string_buffer.encode(transform), dt))
+          "kiss_transforms.update(%f)",
+          dt))
       end
     end
   end
