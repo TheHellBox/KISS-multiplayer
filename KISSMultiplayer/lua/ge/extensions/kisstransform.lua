@@ -64,8 +64,8 @@ local function update_vehicle_transform(data)
   M.received_transforms[id] = transform
 
   local vehicle = be:getObjectByID(id)
+  transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
   if vehicle and (not M.inactive[id]) then
-    transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
     vehicle:queueLuaCommand(string.format(
       "kiss_transforms.set_target_transform(%q)",
       string_buffer.encode(transform)))
