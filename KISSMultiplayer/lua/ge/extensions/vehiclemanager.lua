@@ -455,7 +455,7 @@ local function attach_coupler(data)
     local node_a_pos = vec3(vehicle:getPosition()) + vec3(vehicle:getNodePosition(data.node_a_id))
     local node_b_pos = vec3(vehicle_b:getPosition()) + vec3(vehicle_b:getNodePosition(data.node_b_id))
     local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
-    vehicle_b:setPositionNoPhysicsReset(Point3F(pos.x, pos.y, pos.z))
+    vehicle_b:setPositionNoPhysicsReset(vec3(pos.x, pos.y, pos.z))
     vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data.node_b_id..")")
     onCouplerAttached(obj_a, obj_b, data.node_a_id, data.node_b_id)
   end
@@ -482,7 +482,7 @@ local function set_position(data)
   local id = M.id_map[data[1] or -1] or -1
   local vehicle = getObjectByID(id)
   if vehicle then
-    vehicle:setPositionNoPhysicsReset(Point3F(data[2][1], data[2][2], data[2][3]))
+    vehicle:setPositionNoPhysicsReset(vec3(data[2][1], data[2][2], data[2][3]))
   end
 end
 
@@ -507,7 +507,7 @@ local function onVehicleSpawned(id)
   local vehicle = getObjectByID(id)
   local position = vehicle:getPosition()
   if first_vehicle then
-    vehicle:setPosition(Point3F(position.x + math.random(-5, 5), position.y + math.random(-5, 5), position.z))
+    vehicle:setPosition(vec3(position.x + math.random(-5, 5), position.y + math.random(-5, 5), position.z))
     vehicle:queueLuaCommand("recovery.saveHome()")
     first_vehicle = false
   end
