@@ -1,32 +1,15 @@
 print("Executing KissMP modScript...")
 loadJsonMaterialsFile("art/shapes/kissmp_playermodels/main.materials.json")
 
-load("kissplayers")
-registerCoreModule("kissplayers")
-
-load("vehiclemanager")
-registerCoreModule("vehiclemanager")
-
-load("kisstransform")
-registerCoreModule("kisstransform")
-
-load("kissui")
-registerCoreModule("kissui")
-
-load("kissmods")
-registerCoreModule("kissmods")
-
-load("kissrichpresence")
-registerCoreModule("kissrichpresence")
-
-load("network")
-registerCoreModule("network")
-
-load("kissconfig")
-registerCoreModule("kissconfig")
-
-load("kissvoicechat")
-registerCoreModule("kissvoicechat")
+setExtensionUnloadMode("kissplayers", "manual")
+setExtensionUnloadMode("vehiclemanager", "manual")
+setExtensionUnloadMode("kisstransform", "manual")
+setExtensionUnloadMode("kissui", "manual")
+setExtensionUnloadMode("kissmods", "manual")
+setExtensionUnloadMode("kissrichpresence", "manual")
+setExtensionUnloadMode("network", "manual")
+setExtensionUnloadMode("kissconfig", "manual")
+setExtensionUnloadMode("kissvoicechat", "manual")
 
 --load("kissutils")
 --registerCoreModule("kissutils")
