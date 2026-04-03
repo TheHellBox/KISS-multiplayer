@@ -15,6 +15,8 @@ M.velocity_error_limit = 10
 
 M.hidden = {}
 
+local transform_pos = vec3()
+local camera_pos = vec3()
 local function update(dt)
   if not network.connection.connected then return end
   -- Get rotation/angular velocity from vehicle lua
@@ -26,13 +28,15 @@ local function update(dt)
 
   -- Don't apply velocity while paused. If we do, velocity gets stored up and released when the game resumes.
   local apply_velocity = not bullettime.getPause()
+  camera_pos:set(core_camera.getPositionXYZ())
+  local view_distance = kissui.enable_view_distance[0] and kissui.view_distance[0] * kissui.view_distance[0] or nil
   for id, transform in pairs(M.received_transforms) do
     --apply_transform(dt, id, transform, apply_velocity)
     local vehicle = getObjectByID(id)
-    local p = vec3(transform.position)
+    transform_pos:set(transform.position[1], transform.position[2], transform.position[3])
     if vehicle and apply_velocity and (not vehiclemanager.ownership[id]) then
-      if ((p:distance(vec3(getCameraPosition())) > kissui.view_distance[0])) and kissui.enable_view_distance[0] then
-        if (not M.inactive[id]) then
+      if view_distance and (transform_pos:squaredDistance(camera_pos) > view_distance) then
+        if not M.inactive[id] then
           vehicle:setActive(0)
           M.inactive[id] = true
         end

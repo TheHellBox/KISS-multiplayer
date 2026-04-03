@@ -1,27 +1,30 @@
 local M = {}
 
+local camera_pos = vec3()
+local vehicle_position = vec3()
+
 local function draw()
+  camera_pos:set(core_camera.getPositionXYZ())
   for id, player in pairs(network.players) do
     if id ~= network.connection.client_id and player.current_vehicle then
       local vehicle_id = vehiclemanager.id_map[player.current_vehicle] or -1
       local vehicle = getObjectByID(vehicle_id)
-      local vehicle_position = vec3()
-      if (not vehicle) or (kisstransform.inactive[vehicle_id]) then
+      if not vehicle or kisstransform.inactive[vehicle_id] then
         if kissplayers.players[player.current_vehicle] then
-          vehicle_position = vec3(kissplayers.players[player.current_vehicle]:getPosition())
+          vehicle_position:set(kissplayers.players[player.current_vehicle]:getPositionXYZ())
         elseif kisstransform.raw_transforms[player.current_vehicle] then
-          vehicle_position = vec3(kisstransform.raw_transforms[player.current_vehicle].position)
+          local position = kisstransform.raw_transforms[player.current_vehicle].position
+          vehicle_position:set(position[1], position[2], position[3])
         end
       else
-        vehicle_position = vec3(vehicle:getPosition())
+        vehicle_position:set(vehicle:getPositionXYZ())
       end
-      
-      local local_position = getCameraPosition()
-      local distance = vehicle_position:distance(vec3(local_position)) or 0
+
+      local distance = vehicle_position:distance(camera_pos) or 0
       vehicle_position.z = vehicle_position.z + 1.6
       debugDrawer:drawTextAdvanced(
-        Point3F(vehicle_position.x, vehicle_position.y, vehicle_position.z),
-        String(player.name.." ("..tostring(math.floor(distance)).."m)"),
+        vehicle_position,
+        player.name.." ("..tostring(math.floor(distance)).."m)",
         ColorF(1, 1, 1, 1),
         true,
         false,
