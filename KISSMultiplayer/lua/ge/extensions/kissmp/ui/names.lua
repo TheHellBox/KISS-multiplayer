@@ -3,6 +3,9 @@ local M = {}
 local camera_pos = vec3()
 local vehicle_position = vec3()
 
+local text_color = ColorF(1, 1, 1, 1)
+local background_color = ColorI(0, 0, 0, 255)
+
 local function draw()
   camera_pos:set(core_camera.getPositionXYZ())
   for id, player in pairs(network.players) do
@@ -25,10 +28,10 @@ local function draw()
       debugDrawer:drawTextAdvanced(
         vehicle_position,
         player.name.." ("..tostring(math.floor(distance)).."m)",
-        ColorF(1, 1, 1, 1),
+        text_color,
         true,
         false,
-        ColorI(0, 0, 0, 255),
+        background_color,
         false,
         false
       )

@@ -58,6 +58,7 @@ local function draw_player_list()
   imgui.EndGroup()
 end
 
+local message_color = imgui.ImVec4(0,0,0,0)
 local function draw()
   if not kissui.gui.isWindowVisible("Chat") then return end
   imgui.PushStyleVar2(imgui.StyleVar_WindowMinSize, imgui.ImVec2(100, 100))
@@ -90,12 +91,13 @@ local function draw()
     for _, message in pairs(M.chat) do
       imgui.PushTextWrapPos(0)
       if message.user_name ~= nil then
-        local color = imgui.ImVec4(message.user_color[1], message.user_color[2], message.user_color[3], message.user_color[4])
-        imgui.TextColored(color, "%s", (message.user_name:sub(1, 16))..":")
+        message_color.x, message_color.y, message_color.z, message_color.w = message.user_color[1], message.user_color[2], message.user_color[3], message.user_color[4]
+        imgui.TextColored(message_color, "%s", (message.user_name:sub(1, 16))..":")
         imgui.SameLine()
       end
       if message.has_color then
-        imgui.TextColored(imgui.ImVec4(message.color.r or 1, message.color.g or 1, message.color.b or 1, message.color.a or 1), "%s", message.text)
+        message_color.x, message_color.y, message_color.z, message_color.w = message.color.r or 1, message.color.g or 1, message.color.b or 1, message.color.a or 1
+        imgui.TextColored(message_color, "%s", message.text)
       else
         imgui.Text("%s", message.text)
       end
