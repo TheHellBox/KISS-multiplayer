@@ -31,7 +31,7 @@ local function onCouplerAttached(node_id, obj2_id, obj2_node_id)
     return
   end
   local data = {
-    obj_a = obj:getID(),
+    obj_a = objectId,
     obj_b = obj2_id,
     node_a_id = node_id,
     node_b_id = obj2_node_id
@@ -49,7 +49,7 @@ local function onCouplerDetached(node_id, obj2_id, obj2_node_id)
     return
   end
   local data = {
-    obj_a = obj:getID(),
+    obj_a = objectId,
     obj_b = obj2_id,
     node_a_id = node_id,
     node_b_id = obj2_node_id

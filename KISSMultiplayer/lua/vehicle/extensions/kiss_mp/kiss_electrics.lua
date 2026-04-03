@@ -143,7 +143,7 @@ local function send()
     end
   end
   local data = {
-    ElectricsUndefinedUpdate = {obj:getID(), data}
+    ElectricsUndefinedUpdate = {objectId, data}
   }
   if diff_count > 0 then
     obj:queueGameEngineLua(string.format(

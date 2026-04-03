@@ -55,7 +55,7 @@ end
 
 local function get_gearbox_data()
   local data = {
-    vehicle_id = obj:getID(),
+    vehicle_id = objectId,
     lock_coef = gearbox and gearbox.lockCoef or 0,
     mode = gearbox and gearbox.mode or "none",
     gear_indices = get_gear_indices(),

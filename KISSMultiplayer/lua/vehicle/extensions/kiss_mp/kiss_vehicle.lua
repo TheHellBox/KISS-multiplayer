@@ -78,7 +78,7 @@ local function update_transform_info()
   end
 
   local input = {
-    vehicle_id = obj:getID() or 0,
+    vehicle_id = objectId,
     throttle_input = throttle_input,
     brake_input =  brake_input,
     clutch = electrics.values.clutch_input or 0,
@@ -97,7 +97,7 @@ local function update_transform_info()
   }
   obj:queueGameEngineLua(string.format(
     "kisstransform.push_transform(%d, %q)",
-    obj:getID(), string_buffer.encode(transform)))
+    objectId, string_buffer.encode(transform)))
 end
 
 local velocity = vec3(x, y, z)
@@ -153,7 +153,7 @@ local function send_vehicle_config()
   }
   obj:queueGameEngineLua(string.format(
     "vehiclemanager.send_vehicle_config_inner(%d, %q, %q)",
-    obj:getID(), jsonEncode(config), string_buffer.encode(data)))
+    objectId, jsonEncode(config), string_buffer.encode(data)))
 end
 
 M.update_transform_info = update_transform_info

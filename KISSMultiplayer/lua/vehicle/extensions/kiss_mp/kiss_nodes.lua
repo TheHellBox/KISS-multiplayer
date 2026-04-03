@@ -2,7 +2,7 @@ local M = {}
 
 local function send()
   local nodes_table = {
-    vehicle_id = obj:getID(),
+    vehicle_id = objectId,
     nodes = {}
   }
   for k, node in pairs(v.data.nodes) do
