@@ -23,6 +23,7 @@ end
 local function onCouplerAttached(node_id, obj2_id, obj2_node_id)
   if not ownership then return end
   if ignored_couplers[node_id] then return end
+  if obj2_id == obj:getID() then return end -- Ignore self-coupling (e.g. fifth wheel hitch without trailer)
   if ignore_attachment then
     ignore_attachment = false
     return
@@ -39,6 +40,7 @@ end
 local function onCouplerDetached(node_id, obj2_id, obj2_node_id)
   if not ownership then return end
   if ignored_couplers[node_id] then return end
+  if obj2_id == obj:getID() then return end -- Ignore self-decoupling
   if ignore_detachment then
     ignore_detachment = false
     return

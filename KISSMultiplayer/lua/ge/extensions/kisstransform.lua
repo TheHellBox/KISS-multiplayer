@@ -42,8 +42,30 @@ local function update(dt)
           vehicle:setActive(1)
           M.inactive[id] = false
         end
-        vehicle:queueLuaCommand("kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
-        vehicle:queueLuaCommand("kiss_transforms.update("..dt..")")
+
+        local truck_id = vehiclemanager.coupled_to[id]
+        if truck_id then
+          -- Red sphere above = this vehicle is in coupled_to
+          local cpos = vehicle:getPosition()
+          debugDrawer:drawSphere(vec3(cpos.x, cpos.y, cpos.z + 3):toPoint3F(), 0.5, ColorF(1, 0, 0, 0.8))
+          -- Coupled vehicle (trailer): relative-angle sync only
+          local truck = be:getObjectByID(truck_id)
+          local truck_transform = M.received_transforms[truck_id]
+          if truck and truck_transform and truck_transform.rotation then
+            local truck_rot_local = truck:getRotation()
+            vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
+            vehicle:queueLuaCommand(string.format(
+              "if kiss_transforms then kiss_transforms.update_coupled(%f, %q, %q) end",
+              dt,
+              jsonEncode(truck_transform.rotation),
+              jsonEncode({truck_rot_local.x, truck_rot_local.y, truck_rot_local.z, truck_rot_local.w})
+            ))
+          end
+        else
+          -- Normal vehicle: full PD sync
+          vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
+          vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.update("..dt..") end")
+        end
       end
     end
   end
@@ -62,7 +84,7 @@ local function update_vehicle_transform(data)
   local vehicle = be:getObjectByID(id)
   if vehicle and (not M.inactive[id]) then
     transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
-    vehicle:queueLuaCommand("kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
+    vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
   end
 end
 

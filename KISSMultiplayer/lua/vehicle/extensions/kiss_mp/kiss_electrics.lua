@@ -179,11 +179,22 @@ local function set_drive_mode(electric_name, drive_mode_controller, desired_valu
   end
 end
 
+local coupled_state = false
+
+local function set_coupled(is_coupled)
+  coupled_state = is_coupled
+end
+
 local function update_advanced_coupler_state(coupler_control_controller, value)
   -- the value indicates "notattached"
   local is_open = value > 0.5
   if not is_open then
-    coupler_control_controller.tryAttachGroupImpulse()
+    -- Only try to attach if this vehicle is actually coupled to something,
+    -- otherwise the fifth wheel coupler grabs nearby objects (ground, own nodes)
+    -- and physically locks the vehicle
+    if coupled_state then
+      coupler_control_controller.tryAttachGroupImpulse()
+    end
   else
     coupler_control_controller.detachGroup()
   end
@@ -261,6 +272,12 @@ local function onExtensionLoaded()
         -- register handler for syncing advanced couplers
         local electric = controller_data.name .. "_notAttached"
         local coupler_control_controller = controller.getController(controller_data.name)
+        table.insert(coupler_controllers, coupler_control_controller)
+        -- Force-detach on remote vehicles at init to prevent the controller
+        -- from auto-attaching to nearby objects (ground, own nodes) on spawn
+        if not ownership then
+          coupler_control_controller.detachGroup()
+        end
         electrics_handlers[electric] = function(v) update_advanced_coupler_state(coupler_control_controller, v) end
         
         -- ignore the related couplers, we'll manage them now
@@ -305,8 +322,17 @@ local function onExtensionLoaded()
   end
 end
 
+local coupler_controllers = {}
+
 local function kissUpdateOwnership(owned)
   ownership = owned
+  -- Force-detach all advanced coupler controllers on remote vehicles
+  -- to prevent them from auto-attaching to nearby objects
+  if not owned then
+    for _, ctrl in pairs(coupler_controllers) do
+      ctrl.detachGroup()
+    end
+  end
 end
 
 
@@ -315,6 +341,7 @@ M.send = send
 M.apply = apply
 M.apply_diff = apply_diff
 M.ignore_key = ignore_key
+M.set_coupled = set_coupled
 
 M.kissUpdateOwnership = kissUpdateOwnership
 
