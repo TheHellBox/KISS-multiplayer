@@ -94,7 +94,6 @@ local function draw(gui)
     end
     imgui.SameLine()
     if imgui.Button("Cancel###cancel_download", imgui.ImVec2(split_width, -1)) then
-      network.cancel_download()
       kissui.show_download = false
       network.disconnect()
     end
