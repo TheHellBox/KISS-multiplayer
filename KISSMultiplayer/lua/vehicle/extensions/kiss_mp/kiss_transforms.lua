@@ -255,7 +255,9 @@ local function update_coupled(dt, truck_target_rot_raw, truck_local_rot_raw)
   local correction = target_relative * current_relative:inversed()
   local correction_euler = correction:toEulerYXZ()
 
-  local ang_force_strength = 5
+  -- Scale forces by mass so heavier trailers get proportionally more force
+  local mass_scale = obj:getTotalMass() / 20000
+  local ang_force_strength = 5 * mass_scale
   local angular_force = correction_euler * ang_force_strength * dt
 
   -- Clamp to prevent explosions
@@ -294,9 +296,9 @@ local function update_coupled(dt, truck_target_rot_raw, truck_local_rot_raw)
   -- Gentle linear nudge to help the coupler keep up — the coupler constraint alone
   -- can't effectively transfer PD velocity impulses from the truck
   local pos_delta = M.received_transform.position - vec3(obj:getPosition())
-  local linear_force = pos_delta * 1.0 * dt
-  if linear_force:length() > 2.0 then
-    linear_force = linear_force:normalized() * 2.0
+  local linear_force = pos_delta * 0.5 * mass_scale * dt
+  if linear_force:length() > 1.0 * mass_scale then
+    linear_force = linear_force:normalized() * 1.0 * mass_scale
   end
 
   if angular_force:length() > 0.05 or linear_force:length() > (dt * 5) then

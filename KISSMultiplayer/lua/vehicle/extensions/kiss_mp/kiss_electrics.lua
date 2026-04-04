@@ -180,6 +180,7 @@ local function set_drive_mode(electric_name, drive_mode_controller, desired_valu
 end
 
 local coupled_state = false
+local coupler_controllers = {}
 
 local function set_coupled(is_coupled)
   coupled_state = is_coupled
@@ -321,8 +322,6 @@ local function onExtensionLoaded()
     engine_timer = 0
   end
 end
-
-local coupler_controllers = {}
 
 local function kissUpdateOwnership(owned)
   ownership = owned
