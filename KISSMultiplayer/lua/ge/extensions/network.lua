@@ -8,8 +8,10 @@ M.downloads = {}
 M.downloading = false
 M.downloads_status = {}
 M.downloads_received = {}
-
-local current_download = nil
+M.download_start_time = 0
+M.download_total_bytes = 0
+M.downloaded_bytes = 0
+M.download_queue = {}
 
 local socket = require("socket")
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
@@ -25,12 +27,10 @@ M.connection = {
   heartbeat_time = 1,
   timer = 0,
   tickrate = 33,
-  mods_left = 0,
   ping = 0,
   time_offset = 0
 }
 
-local FILE_TRANSFER_CHUNK_SIZE = 16384;
 local CHUNK_SIZE = 65000  -- Safe size under 65536 limit
 
 local message_handlers = {}
@@ -67,6 +67,28 @@ local function bytesToU32(str)
   )
 end
 
+local function cancel_download()
+for name, file_handle in pairs(M.downloads) do
+     file_handle:close()
+     
+     -- Delete partial file
+     local file_path = "/kissmp_mods/" .. name
+     if FS:fileExists(file_path) then
+       FS:removeFile(file_path)
+     end
+  end
+
+  -- Clear the tables so dead file handles aren't reused
+  M.downloads = {}
+  M.downloads_status = {}
+  M.downloads_received = {}
+  M.downloading = false
+  M.download_start_time = 0
+  M.download_total_bytes = 0
+  M.downloaded_bytes = 0
+  M.download_queue = {}
+end
+
 local function disconnect(data)
   local text = "Disconnected!"
   if data then
@@ -74,7 +96,13 @@ local function disconnect(data)
   end
   kissui.chat.add_message(text)
   M.connection.connected = false
-  M.connection.tcp:close()
+  if M.connection.tcp then
+    M.connection.tcp:close()
+    M.connection.tcp = nil
+  end
+
+  cancel_download()
+
   M.players = {}
   kissplayers.players = {}
   kissplayers.player_transforms = {}
@@ -94,24 +122,6 @@ end
 
 local function handle_disconnected(data)
   disconnect(data)
-end
-
-local function handle_file_transfer(data)
-  kissui.show_download = true
-  -- local file_len = ffi.cast("uint32_t*", ffi.new("char[?]", 5, data:sub(1, 4)))[0]
-  local file_len = bytesToU32(data:sub(1, 4))
-  local file_name = data:sub(5, #data)
-  local chunks = math.floor(file_len / FILE_TRANSFER_CHUNK_SIZE)
-
-  current_download = {
-    file_len = file_len,
-    file_name = file_name,
-    chunks = chunks,
-    last_chunk = file_len - chunks * FILE_TRANSFER_CHUNK_SIZE,
-    current_chunk = 0,
-    file = kissmods.open_file(file_name)
-  }
-  M.downloading = true
 end
 
 local function handle_player_info(player_info)
@@ -277,6 +287,10 @@ local function connect(addr, player_name, is_public)
     disconnect()
   end
   M.players = {}
+  M.download_start_time = 0
+  M.download_queue = {}
+  M.download_total_bytes = 0
+  M.downloaded_bytes = 0
 
   addr = sanitize_addr(addr)
   log("I", "kissmp.network.connect", "Connecting to "..addr.."...")
@@ -342,16 +356,26 @@ local function connect(addr, player_name, is_public)
 
   local missing_mods = {}
   local mod_names = {}
+  local available_mods = {}
+  local total_missing_bytes = 0
   for _, mod in pairs(kissmods.mods) do
     table.insert(mod_names, mod.name)
     if mod.status ~= "ok" then
       table.insert(missing_mods, mod.name)
       M.downloads_status[mod.name] = {name = mod.name, progress = 0}
+      total_missing_bytes = total_missing_bytes + (mod.size or 0)
+    else
+      table.insert(available_mods, mod.name)
     end
   end
-  M.connection.mods_left = #missing_mods
 
+  M.download_total_bytes = total_missing_bytes
+  M.downloaded_bytes = 0
+ 
   kissmods.deactivate_all_mods()
+  if #available_mods > 0 then
+    kissmods.mount_mods(available_mods)
+  end
   for k, v in pairs(missing_mods) do
     log("I", "kissmp.network.connect", "Missing Mod "..k..": "..v)
   end
@@ -362,7 +386,11 @@ local function connect(addr, player_name, is_public)
       disconnect()
       return
     else
-      send_data({ RequestMods = missing_mods }, true)
+      M.download_queue = missing_mods
+      local next_mod = table.remove(M.download_queue, 1)
+      if next_mod then
+        send_data({ RequestMods = { next_mod } }, true)
+      end
     end
   end
   vehiclemanager.loading_map = true
@@ -384,6 +412,7 @@ local function send_messagepack(data_type, reliable, data)
 end
 
 local function on_finished_download()
+  M.download_start_time = 0
   vehiclemanager.loading_map = true
   change_map(M.connection.server_info.map)
 end
@@ -398,22 +427,6 @@ local function send_ping()
   )
 end
 
-local function cancel_download()
-  --[[if not current_download then return end
-  io.close(current_download.file)
-  current_download = nil
-    M.downloading = false]]--
-  for k, v in pairs(M.downloads) do
-     M.downloads[k]:close()
-  end
-
-  -- Clear the tables so dead file handles aren't reused
-  M.downloads = {}
-  M.downloads_status = {}
-  M.downloads_received = {}
-  M.downloading = false
-end
-
 local function onUpdate(dt)
   if not M.connection.connected then return end
   if M.connection.timer < M.connection.heartbeat_time then
@@ -423,24 +436,37 @@ local function onUpdate(dt)
     send_ping()
   end
 
-  while true do
+  local packets_processed = 0
+  local max_packets_per_update = 64
+
+  while packets_processed < max_packets_per_update do
     local msg_type = M.connection.tcp:receive(1)
     if not msg_type then break end
-    --print("msg_t"..string.byte(msg_type))
+    packets_processed = packets_processed + 1
+
     M.connection.tcp:settimeout(5.0)
-    -- JSON data
+
     if string.byte(msg_type) == 1 then
-      local data = M.connection.tcp:receive(4)
-      if not data then break end
-      local len = bytesToU32(data)
+      local len_b = M.connection.tcp:receive(4)
+      if not len_b then
+        M.connection.tcp:settimeout(0.0)
+        break
+      end
+
+      local len = bytesToU32(len_b)
       local data, _, _ = M.connection.tcp:receive(len)
       M.connection.tcp:settimeout(0.0)
+      if not data then break end
+
       local data_decoded = jsonDecode(data)
-      for k, v in pairs(data_decoded) do
-        if message_handlers[k] then
-          message_handlers[k](v)
+      if data_decoded then
+        for k, v in pairs(data_decoded) do
+          if message_handlers[k] then
+            message_handlers[k](v)
+          end
         end
       end
+
     elseif string.byte(msg_type) == 0 then -- Binary data
       if M.is_server_public then
         kissui.chat.add_message("Connection rejected: Server tried to download a mod.", kissui.COLOR_RED)
@@ -448,26 +474,47 @@ local function onUpdate(dt)
         return
       end
 
+      if M.download_start_time == 0 then
+        M.download_start_time = socket.gettime()
+      end
+
       local name_b = M.connection.tcp:receive(4)
-      if not name_b then break end
+      if not name_b then
+        M.connection.tcp:settimeout(0.0)
+        break
+      end
 
       M.downloading = true
       kissui.show_download = true
+
       local len_n = bytesToU32(name_b)
       local name, _, _ = M.connection.tcp:receive(len_n)
       local chunk_n_b = M.connection.tcp:receive(4)
       local chunk_a_b = M.connection.tcp:receive(4)
       local read_size_b = M.connection.tcp:receive(4)
+
+      if not name or not chunk_n_b or not chunk_a_b or not read_size_b then
+        M.connection.tcp:settimeout(0.0)
+        break
+      end
+
       local chunk_n = bytesToU32(chunk_n_b)
       local chunk_a = bytesToU32(chunk_a_b)
       local read_size = bytesToU32(read_size_b)
       local file_length = chunk_a
       local file_data, _, _ = M.connection.tcp:receive(read_size)
 
+      M.connection.tcp:settimeout(0.0)
+      if not file_data then break end
+
       if not M.downloads_received[name] then
         M.downloads_received[name] = 0
       end
       M.downloads_received[name] = M.downloads_received[name] + read_size
+      M.downloaded_bytes = M.downloaded_bytes + read_size
+      if M.download_total_bytes > 0 and M.downloaded_bytes > M.download_total_bytes then
+        M.downloaded_bytes = M.download_total_bytes
+      end
 
       M.downloads_status[name] = {
         name = name,
@@ -483,32 +530,50 @@ local function onUpdate(dt)
 
       if file and file_data then
         file:write(file_data)
+      else
+        kissui.chat.add_message("Error: Could not write file to disk. Check permissions or disk space.", kissui.COLOR_RED)
+        disconnect("File write error")
+        return
       end
 
       if M.downloads_received[name] >= file_length then
-        kissmods.mount_mod(name)
-
         if M.downloads[name] then
           M.downloads[name]:close()
           M.downloads[name] = nil
         end
+
+        kissmods.mount_mod(name)
         M.downloads_status[name] = nil
         M.downloads_received[name] = nil
-        M.connection.mods_left = M.connection.mods_left - 1
+
+        if #M.download_queue > 0 then
+          local next_mod = table.remove(M.download_queue, 1)
+          if next_mod then
+            send_data({ RequestMods = { next_mod } }, true)
+          end
+        else
+          M.downloading = false
+          kissui.show_download = false
+          M.downloaded_bytes = M.download_total_bytes
+          on_finished_download()
+        end
       end
 
-      if M.connection.mods_left <= 0 then
-        M.downloading = false
-        kissui.show_download = false
-        on_finished_download()
-      end
-      M.connection.tcp:settimeout(0.0)
-      break
     elseif string.byte(msg_type) == 2 then
       local len_b = M.connection.tcp:receive(4)
+      if not len_b then
+        M.connection.tcp:settimeout(0.0)
+        break
+      end
+
       local len = bytesToU32(len_b)
       local reason, _, _ = M.connection.tcp:receive(len)
+      M.connection.tcp:settimeout(0.0)
       disconnect(reason)
+      break
+
+    else
+      M.connection.tcp:settimeout(0.0)
     end
   end
 end
