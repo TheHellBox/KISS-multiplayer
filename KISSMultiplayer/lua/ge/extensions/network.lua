@@ -114,7 +114,6 @@ local function disconnect(data)
   --vehiclemanager.delay_spawns = false
   --kissui.force_disable_nametags = false
   --Lua:requestReload()
-  --kissutils.hooks.clear()
   if getMissionFilename() ~= "" then
     returnToMainMenu()
   end
@@ -402,15 +401,6 @@ local function connect(addr, player_name, is_public)
   kissui.chat.add_message("Connected!")
 end
 
-local function send_messagepack(data_type, reliable, data)
-  local data = data
-  if type(data) == "string" then
-    data = jsonDecode(data)
-  end
-  data = messagepack.pack(data)
-  send_data(data_type, reliable, data)
-end
-
 local function on_finished_download()
   M.download_start_time = 0
   vehiclemanager.loading_map = true
@@ -588,7 +578,6 @@ M.disconnect = disconnect
 M.cancel_download = cancel_download
 M.send_data = send_data
 M.onUpdate = onUpdate
-M.send_messagepack = send_messagepack
 M.onExtensionLoaded = onExtensionLoaded
 
 return M

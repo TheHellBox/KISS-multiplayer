@@ -10,6 +10,3 @@ setExtensionUnloadMode("kissrichpresence", "manual")
 setExtensionUnloadMode("network", "manual")
 setExtensionUnloadMode("kissconfig", "manual")
 setExtensionUnloadMode("kissvoicechat", "manual")
-
---load("kissutils")
---registerCoreModule("kissutils")
