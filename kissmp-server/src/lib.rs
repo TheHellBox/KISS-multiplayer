@@ -15,7 +15,7 @@ use server_vehicle::*;
 use shared::{ClientInfoPrivate, ClientInfoPublic, ServerCommand};
 use vehicle::*;
 
-use anyhow::Error;
+use anyhow::{Context, Error};
 use futures::FutureExt;
 use futures::{select, StreamExt, TryStreamExt};
 use log::{error, info, warn, debug};
@@ -670,7 +670,7 @@ pub fn list_mods(
                 };
                 match r {
                     Ok(p) => {
-                        if (!p.exists()) {
+                        if !p.exists() {
                             error!("Mod file {:?} not found", p);
                             continue;
                         }
