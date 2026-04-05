@@ -14,7 +14,7 @@ impl crate::Server {
             if let Some(owner_id) = vehicle.data.owner {
                 if let Some(client_vehicles) = self.vehicle_ids.get_mut(&owner_id) {
                     client_vehicles.remove(&vehicle.data.in_game_id);
-                    if client_vehicles.len() == 0 {
+                    if client_vehicles.is_empty() {
                         self.set_current_vehicle(owner_id, None).await;
                     }
                 }

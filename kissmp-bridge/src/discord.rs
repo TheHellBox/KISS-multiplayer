@@ -12,7 +12,7 @@ pub async fn spawn_discord_rpc(discord_rx: std::sync::mpsc::Receiver<crate::Disc
         let mut state = crate::DiscordState { server_name: None };
         loop {
             std::thread::sleep(std::time::Duration::from_millis(5000));
-            for new_state in discord_rx.try_recv() {
+            if let Ok(new_state) = discord_rx.try_recv() {
                 state = new_state;
             }
             if state.server_name.is_none() {
