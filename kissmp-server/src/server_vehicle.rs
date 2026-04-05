@@ -39,7 +39,7 @@ impl crate::Server {
     }    
     pub async fn reset_vehicle(&mut self, data: VehicleReset, client_id: Option<u32>) {
         for (cid, client) in &mut self.connections {
-            if client_id.is_some() && *cid == client_id.unwrap() {
+            if client_id == Some(*cid) {
                 continue;
             }
             let _ = client

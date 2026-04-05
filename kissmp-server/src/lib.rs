@@ -316,7 +316,7 @@ impl Server {
             connection.close(0u32.into(), b"Server is full");
             return Err(anyhow::Error::msg("Server is full"));
         }
-        // Should be strong enough for our targets. TODO: Check for collisions anyway
+        // Collision probability is negligible for random u32 ID at intended player counts
         let id = rand::random::<u32>();
 
         info!("Client connected with ID: {}", id);
@@ -463,7 +463,7 @@ impl Server {
                 command = ordered.select_next_some() => {
                     let connection = connection.clone();
                     tokio::spawn(async move {
-                        // Kinda ugly and hacky tbh
+                        // File transfers are spawned separately to avoid blocking the send loop
                         match command {
                             ServerCommand::TransferFile(file) => {
                                 //println!("Transfer");

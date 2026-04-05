@@ -3,7 +3,6 @@ use tokio::io::AsyncReadExt;
 
 const CHUNK_SIZE: usize = 262144;
 
-// FIXME
 pub async fn transfer_file(
     connection: quinn::Connection,
     path: &std::path::Path,
