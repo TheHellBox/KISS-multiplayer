@@ -89,11 +89,10 @@ local function send_vehicle_update(obj)
 end
 
 local function send_vehicle_meta_updates()
-  for i = 0, be:getObjectCount() do
-    local vehicle = be:getObject(i)
-    if vehicle then
+  for id in pairs(vehiclemanager.ownership) do
+    local vehicle = getObjectByID(id)
+    if vehicle and not kisstransform.inactive[id] then
       local changed = false
-      local id = vehicle:getID()
 
       local metal_data = vehicle:getMetallicPaintData()
       local color = vehicle.color
