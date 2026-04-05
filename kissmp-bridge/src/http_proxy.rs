@@ -14,10 +14,15 @@ struct ServerHostData {
 pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::DiscordState>) {
     // Master server proxy
     //println!("start");
-    let server = tiny_http::Server::http("0.0.0.0:3693").unwrap();
+    let server = std::sync::Arc::new(tiny_http::Server::http("0.0.0.0:3693").unwrap());
     let mut destroyer: Option<tokio::sync::oneshot::Sender<()>> = None;
     loop {
-        for request in server.incoming_requests() {
+        let server_clone = server.clone();
+        // Offload blocking HTTP listen to a background thread so Tokio doesn't freeze
+        let request = match tokio::task::spawn_blocking(move || server_clone.recv()).await {
+            Ok(Ok(req)) => req,
+            _ => continue,
+        };
             let addr = request.remote_addr();
             if addr.ip() != Ipv4Addr::new(127, 0, 0, 1) {
                 continue;
@@ -85,12 +90,15 @@ pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::Discord
                 request.respond(response).unwrap();
                 continue;
             }
-            if let Ok(response) = reqwest::get(&url).await {
+            // Timeout so a dead master server domain doesn't hang the game indefinitely
+            if let Ok(Ok(response)) = tokio::time::timeout(std::time::Duration::from_secs(2), reqwest::get(&url)).await {
                 if let Ok(text) = response.text().await {
                     let response = tiny_http::Response::from_string(text);
-                    request.respond(response).unwrap();
+                    let _ = request.respond(response);
                 }
+            } else {
+                let response = tiny_http::Response::from_string("[]");
+                let _ = request.respond(response);
             }
-        }
     }
 }

@@ -1,6 +1,7 @@
 local M = {}
 local imgui = ui_imgui
 local http = require("socket.http")
+http.TIMEOUT = 0.5
 local version = require("lua/ge/extensions/kissmp/version")
 local VERSION_PRTL = version.VERSION_STR
 
