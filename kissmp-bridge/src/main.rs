@@ -59,7 +59,6 @@ async fn main() {
     let listener = TcpListener::bind(bind_addr).await.unwrap();
     info!("Bridge is running!");
     while let Ok((mut client_stream, _)) = listener.accept().await {
-        info!("Attempting to connect to a server...");
 
         let addr = {
             let address_string =
@@ -122,7 +121,6 @@ async fn connect_to_server(
         endpoint
     };
 
-    info!("Attempting to connect to the server at {}", addr);
     let mut server_connection = match endpoint.connect(addr, "kissmp").unwrap().await {
         Ok(c) => {
             info!("Successfully connected to the server at {}", addr);
@@ -393,7 +391,7 @@ async fn server_incoming(
             else => break,
         }
     }
-    info!("Server incoming closed");
+    debug!("Server incoming closed");
     Ok(())
 }
 
@@ -463,10 +461,10 @@ impl rustls::client::ServerCertVerifier for AcceptAnyCertificate {
         _end_entity: &Certificate,
         _: &[Certificate],
         _: &ServerName,
-        scts: &mut dyn Iterator<Item = &[u8]>,
-        ocsp_response: &[u8],
-        now: SystemTime,
-    ) -> Result<rustls::client::ServerCertVerified, rustls::TLSError> {
+        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _ocsp_response: &[u8],
+        _now: SystemTime,
+    ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
         Ok(rustls::client::ServerCertVerified::assertion())
     }
 }

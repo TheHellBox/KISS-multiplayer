@@ -312,7 +312,7 @@ impl Server {
         self.lua.context(|lua_ctx| {
             let _ = run_hook::<(), ()>(lua_ctx, String::from("Tick"), ());
         });
-        for event in self.lua_watcher_rx.try_recv() {
+        if let Ok(event) = self.lua_watcher_rx.try_recv() {
             use notify::DebouncedEvent::*;
             match event {
                 Write(path) => {

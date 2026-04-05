@@ -22,8 +22,8 @@ webpki = "0.21"
 anyhow = "1.0.32"
 reqwest = { version = "0.11", default-features = false, features=["rustls-tls"] }
 tiny_http="0.8"
-tokio-stream="0.1.5"
-tokio = { version = "1.4", features = ["time", "macros", "sync", "io-util", "net"] }
+tokio-stream="0.1.18"
+tokio = { version = "1.51", features = ["time", "macros", "sync", "io-util", "net"] }
 discord-rpc-client = {version = "0.4", optional = true}
 percent-encoding = "2.1"
 audiopus = "0.2"

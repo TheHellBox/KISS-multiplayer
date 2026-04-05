@@ -139,7 +139,13 @@ pub fn init_logging()
     let filter = match std::env::var("RUST_LOG")
     {
       Ok(f) => f,
-      Err(_e) => "info".to_owned()
+      Err(_e) => {
+        if cfg!(debug_assertions) {
+            "debug" // show debug! logs in debug build
+        } else {
+            "info,discord_rpc_client=off" // no debug logs in '--release'
+        }
+      }.to_owned()
     };
 
 

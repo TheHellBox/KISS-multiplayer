@@ -60,7 +60,7 @@ pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::Discord
                     let _ = destroyer.send(());
                 }
                 let (destroyer_tx, destroyer_rx) = tokio::sync::oneshot::channel();
-                let (setup_result_tx, mut setup_result_rx) = tokio::sync::oneshot::channel();
+                let (setup_result_tx, setup_result_rx) = tokio::sync::oneshot::channel();
                 destroyer = Some(destroyer_tx);
                 std::thread::spawn(move || {
                     let data: ServerHostData = serde_json::from_str(&data).unwrap();
@@ -80,12 +80,7 @@ pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::Discord
                     });
                 });
                 // FIXME: Utilize setup response at some point. Like display dialog message on client with copy button instead of chat message
-                loop {
-                    let result = setup_result_rx.try_recv();
-                    if result.is_ok() {
-                        break;
-                    }
-                }
+                let _ = setup_result_rx.blocking_recv();
                 let response = tiny_http::Response::from_string("ok");
                 request.respond(response).unwrap();
                 continue;

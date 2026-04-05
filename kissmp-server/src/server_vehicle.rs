@@ -14,7 +14,7 @@ impl crate::Server {
             if let Some(owner_id) = vehicle.data.owner {
                 if let Some(client_vehicles) = self.vehicle_ids.get_mut(&owner_id) {
                     client_vehicles.remove(&vehicle.data.in_game_id);
-                    if client_vehicles.len() == 0 {
+                    if client_vehicles.is_empty() {
                         self.set_current_vehicle(owner_id, None).await;
                     }
                 }
@@ -39,7 +39,7 @@ impl crate::Server {
     }    
     pub async fn reset_vehicle(&mut self, data: VehicleReset, client_id: Option<u32>) {
         for (cid, client) in &mut self.connections {
-            if client_id.is_some() && *cid == client_id.unwrap() {
+            if client_id == Some(*cid) {
                 continue;
             }
             let _ = client

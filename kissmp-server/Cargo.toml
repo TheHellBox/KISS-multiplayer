@@ -19,14 +19,14 @@ rustls = { version = "0.20.3", default-features = false }
 anyhow = "1.0.32"
 rlua = "0.17.0"
 notify = "4.0.15"
-tokio-util = {version = "0.6.5", features = ["codec"]}
+tokio-util = {version = "0.7", features = ["codec"]}
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11.2", default-features = false, features=["rustls-tls"] }
 rcgen = { version = "0.8.2", default-features = false }
-tokio = { version = "1.4", features = ["rt-multi-thread", "time", "macros", "sync", "io-util", "io-std", "fs"] }
-tokio-stream = "0.1.5"
+tokio = { version = "1.51", features = ["rt-multi-thread", "time", "macros", "sync", "io-util", "io-std", "fs"] }
+tokio-stream = "0.1.18"
 dirs = "3.0"
-igd = { git = "https://github.com/stevefan1999-personal/rust-igd.git", rev = "c2d1f83" }
+igd = { package = "igd-next", version = "0.14" }
 ifcfg = "0.1.2"
 async-ctrlc = "1.2"
 ipnetwork = "0.18"
