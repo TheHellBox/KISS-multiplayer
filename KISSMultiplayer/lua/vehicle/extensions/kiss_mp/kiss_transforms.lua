@@ -57,8 +57,8 @@ local function predict(dt)
 end
 
 local function try_rude()
-  local distance =  M.target_transform.position:distance(vec3(obj:getPosition()))
-  if distance > 6 then
+  local distance = M.target_transform.position:squaredDistance(object_position)
+  if distance > 6 * 6 then
     local p = M.target_transform.position
     obj:queueGameEngineLua("getObjectByID("..objectId.."):setPositionNoPhysicsReset(vec3("..p.x..", "..p.y..", "..p.z.."))")
     return true
