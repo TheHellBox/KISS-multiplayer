@@ -99,8 +99,8 @@ local function update_transform_info()
     objectId, string_buffer.encode(transform)))
 end
 
-local velocity = vec3(x, y, z)
-local force = vec3(0, 0, 0)
+local velocity = vec3()
+local force = vec3()
 local angular_velocity = vec3()
 local function apply_linear_velocity(x, y, z)
   velocity:set(x, y, z)
