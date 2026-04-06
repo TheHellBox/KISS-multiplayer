@@ -121,7 +121,7 @@ async fn connect_to_server(
         endpoint
     };
 
-    let mut server_connection = match endpoint.connect(addr, "kissmp").unwrap().await {
+    let server_connection = match endpoint.connect(addr, "kissmp").unwrap().await {
         Ok(c) => {
             info!("Successfully connected to the server at {}", addr);
             c
@@ -143,7 +143,7 @@ async fn connect_to_server(
     let client_info_data = bincode::serialize(&client_info).unwrap();
 
     // Send client info through reliable stream
-    let mut send_stream = match server_connection.connection.open_uni().await {
+    let mut send_stream = match server_connection.open_uni().await {
         Ok(stream) => stream,
         Err(e) => {
             error!("Failed to open send stream: {}", e);
@@ -157,14 +157,10 @@ async fn connect_to_server(
     }
 
     // Wait for server info response
-    let mut stream = match server_connection.uni_streams.next().await {
-        Some(Ok(stream)) => stream,
-        Some(Err(e)) => {
+    let mut stream = match server_connection.accept_uni().await {
+        Ok(stream) => stream,
+        Err(e) => {
             error!("Error receiving server info stream: {}", e);
-            return;
-        }
-        None => {
-            error!("No server info stream received");
             return;
         }
     };
@@ -257,13 +253,13 @@ async fn connect_to_server(
             },
             client_outgoing(server_commands_receiver, client_stream_writer),
             client_incoming(
-                server_connection.connection.clone(),
+                server_connection.clone(),
                 vc_playback_sender.clone(),
                 client_stream_reader,
                 vc_recording_sender,
                 client_event_sender
             ),
-            server_outgoing(server_connection.connection.clone(), client_event_receiver),
+            server_outgoing(server_connection.clone(), client_event_receiver),
             server_incoming(
                 server_commands_sender,
                 vc_playback_sender,
@@ -334,61 +330,46 @@ async fn client_outgoing(
 async fn server_incoming(
     server_commands_sender: tokio::sync::mpsc::Sender<shared::ServerCommand>,
     vc_playback_sender: std::sync::mpsc::Sender<voice_chat::VoiceChatPlaybackEvent>,
-    server_connection: quinn::NewConnection,
+    server_connection: quinn::Connection,
 ) -> AHResult {
-    let mut reliable_commands = server_connection.uni_streams
-        .map(|stream| async { 
-            let mut stream = stream?;
-            read_pascal_bytes(&mut stream).await 
-        })
-        .buffered(256)
-        .fuse();
-
-    let mut unreliable_commands = server_connection
-        .datagrams
-        .map(|data| async { Ok::<_, anyhow::Error>(data?.to_vec()) })
-        .buffer_unordered(1024);
-
     loop {
         tokio::select! {
-            command = reliable_commands.next() => match command {
-                Some(Ok(bytes)) => {
-                    let command = bincode::deserialize::<shared::ServerCommand>(&bytes)?;
-                    match command {
-                        shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
-                            let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
-                                client, pos, data,
-                            ));
-                        }
-                        _ => server_commands_sender.send(command).await?,
-                    }
-                }
-                Some(Err(e)) => {
-                    warn!("Error reading reliable command: {}", e);
-                    break;
-                }
-                None => break,
-            },
-            command = unreliable_commands.next() => match command {
-                Some(Ok(bytes)) => {
-                    if let Ok(command) = bincode::deserialize::<shared::ServerCommand>(&bytes) {
-                        match command {
-                            shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
-                                let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
-                                    client, pos, data,
-                                ));
+            stream_res = server_connection.accept_uni() => {
+                match stream_res {
+                    Ok(mut stream) => {
+                        if let Ok(bytes) = read_pascal_bytes(&mut stream).await {
+                            if let Ok(command) = bincode::deserialize::<shared::ServerCommand>(&bytes) {
+                                match command {
+                                    shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
+                                        let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
+                                            client, pos, data,
+                                        ));
+                                    }
+                                    _ => { let _ = server_commands_sender.send(command).await; },
+                                }
                             }
-                            _ => server_commands_sender.send(command).await?,
                         }
                     }
+                    Err(e) => { warn!("Error accepting reliable stream: {}", e); break; }
                 }
-                Some(Err(e)) => {
-                    warn!("Error reading unreliable command: {}", e);
-                    break;
+            }
+            datagram_res = server_connection.read_datagram() => {
+                match datagram_res {
+                    Ok(bytes) => {
+                        if let Ok(command) = bincode::deserialize::<shared::ServerCommand>(&bytes) {
+                            match command {
+                                shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
+                                    let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
+                                        client, pos, data,
+                                    ));
+                                }
+                                _ => { let _ = server_commands_sender.send(command).await; },
+                            }
+                        }
+                    }
+                    Err(e) => { warn!("Error reading datagram: {}", e); break; }
                 }
-                None => break,
-            },
-            else => break,
+            }
         }
     }
     debug!("Server incoming closed");
