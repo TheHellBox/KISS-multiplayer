@@ -112,7 +112,7 @@ async fn connect_to_server(
         let mut transport = quinn::TransportConfig::default();
         transport.max_idle_timeout(Some(IdleTimeout::try_from(SERVER_IDLE_TIMEOUT).unwrap()));
         transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
-        client_cfg.transport = Arc::new(transport);
+        client_cfg.transport_config(Arc::new(transport));
 
         let mut endpoint = quinn::Endpoint::client(
             SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)
@@ -280,7 +280,7 @@ async fn connect_to_server(
 async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
     stream.write_all(&(message.len() as u32).to_le_bytes()).await?;
     stream.write_all(message).await?;
-    stream.finish().await?;
+    stream.finish();
     Ok(())
 }
 
