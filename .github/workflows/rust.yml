@@ -42,22 +42,44 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            name: linux-arm
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            name: windows-arm
     steps:
     - uses: actions/checkout@v5
 
+    - name: Install ARM linker
+      if: matrix.target == 'aarch64-unknown-linux-gnu'
+      run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
     - uses: Swatinem/rust-cache@v2
 
+    - name: Add Rust Target
+      run: rustup target add ${{ matrix.target }}
+
     - name: Build
-      run: cargo build -p kissmp-server --verbose --release
+      run: cargo build -p kissmp-server --verbose --release --target ${{ matrix.target }}
 
     - name: Store Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: build_results_server-${{ matrix.os }}
+        name: build_results_server-${{ matrix.name }}
         path: |
-          ./target/release/kissmp-server
-          ./target/release/kissmp-server.exe
+          ./target/${{ matrix.target }}/release/kissmp-server
+          ./target/${{ matrix.target }}/release/kissmp-server.exe
 
   build_master:
     runs-on: ${{ matrix.os }}
@@ -107,6 +129,16 @@ jobs:
       with:
         name: build_results_server-windows-latest
         path: release_staging/windows
+
+    # Download ARM server artifacts
+    - uses: actions/download-artifact@v4
+      with:
+        name: build_results_server-linux-arm
+        path: release_staging/linux-arm
+    - uses: actions/download-artifact@v4
+      with:
+        name: build_results_server-windows-arm
+        path: release_staging/windows-arm
 
     # Zip everything
     - name: Package Zip Files
