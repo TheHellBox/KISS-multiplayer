@@ -304,10 +304,12 @@ local function onUpdate(dt)
     local to_remove = {}
     for k, vehicle in pairs(M.vehicle_buffer) do
       local t = kisstransform.raw_transforms[k]
-      transform_pos:set(t.position[1], t.position[2], t.position[3])
-      if t and not (view_distance and transform_pos:squaredDistance(camera_pos) > view_distance) then
-        spawn_vehicle(vehicle)
-        table.insert(to_remove, k)
+      if t then
+        transform_pos:set(t.position[1], t.position[2], t.position[3])
+        if not (view_distance and transform_pos:squaredDistance(camera_pos) > view_distance) then
+          spawn_vehicle(vehicle)
+          table.insert(to_remove, k)
+        end
       end
     end
     for _, v in pairs(to_remove) do
