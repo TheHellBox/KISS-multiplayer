@@ -52,9 +52,6 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: windows
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            name: windows-arm
     steps:
     - uses: actions/checkout@v5
 
@@ -117,7 +114,7 @@ jobs:
         path: release_staging/linux
     - uses: actions/download-artifact@v4
       with:
-        name: build_results_server-ubuntu-latest
+        name: build_results_server-linux
         path: release_staging/linux
 
     # Download Windows artifacts
@@ -127,18 +124,14 @@ jobs:
         path: release_staging/windows
     - uses: actions/download-artifact@v4
       with:
-        name: build_results_server-windows-latest
+        name: build_results_server-windows
         path: release_staging/windows
 
-    # Download ARM server artifacts
+    # Download ARM server artifact
     - uses: actions/download-artifact@v4
       with:
         name: build_results_server-linux-arm
         path: release_staging/linux-arm
-    - uses: actions/download-artifact@v4
-      with:
-        name: build_results_server-windows-arm
-        path: release_staging/windows-arm
 
     # Zip everything
     - name: Package Zip Files
