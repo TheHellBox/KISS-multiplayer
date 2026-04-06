@@ -572,7 +572,7 @@ fn generate_certificate() -> (rustls::Certificate, rustls::PrivateKey) {
 async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
     stream.write_all(&(message.len() as u32).to_le_bytes()).await?;
     stream.write_all(message).await?;
-    stream.finish();
+    stream.finish().await?;
     Ok(())
 }
 

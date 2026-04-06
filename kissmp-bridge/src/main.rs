@@ -81,7 +81,10 @@ async fn main() {
         };
 
         info!("Connecting to {}...", addr);
-        connect_to_server(addr, client_stream, discord_tx.clone()).await;
+        let discord_tx_clone = discord_tx.clone();
+        tokio::spawn(async move {
+            connect_to_server(addr, client_stream, discord_tx_clone).await;
+        });
     }
 }
 
@@ -280,7 +283,7 @@ async fn connect_to_server(
 async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
     stream.write_all(&(message.len() as u32).to_le_bytes()).await?;
     stream.write_all(message).await?;
-    stream.finish();
+    stream.finish().await?;
     Ok(())
 }
 

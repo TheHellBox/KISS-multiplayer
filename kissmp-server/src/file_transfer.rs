@@ -30,7 +30,7 @@ pub async fn transfer_file(
             .unwrap(),
         )
         .await?;
-        stream.finish();
+        stream.finish().await?;
         chunk_n += 1;
     }
     Ok(())
