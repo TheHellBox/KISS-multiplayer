@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use shared::{VERSION, VERSION_STR};
+use shared::VERSION;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -80,8 +80,16 @@ async fn main() {
     let server_list = server_list_r.clone();
     let addresses = addresses_r.clone();
     let ver = warp::path::param().map(move |ver: String| {
-        if ver != VERSION_STR && ver != "latest" {
-            return outdated_ver();
+        if ver != "latest" {
+            // Convert client version string e.g. "0.7.2" into tuple (0, 7)
+            let mut parts = ver.split('.').filter_map(|s| s.parse::<u32>().ok());
+            let client_ver = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
+            
+            if client_ver > VERSION {
+                return outdated_ver(true); // Master is outdated
+            } else if client_ver < VERSION {
+                return outdated_ver(false); // Client is outdated
+            }
         }
         let server_list = server_list.clone();
         let addresses = addresses.clone();
@@ -103,7 +111,7 @@ async fn main() {
         };
         response
     });
-    let outdated = warp::get().map(move || return outdated_ver());
+    let outdated = warp::get().map(move || return outdated_ver(false));
     let routes = post.or(ver).or(outdated);
     warp::serve(routes).run(([0, 0, 0, 0], 3692)).await;
 }
@@ -128,15 +136,30 @@ async fn p2p_server() {
     });
 }
 
-fn outdated_ver() -> String {
+fn outdated_ver(master_outdated: bool) -> String {
     let mut server_list = ServerList(HashMap::with_capacity(5));
+
+    let (name_str, desc_str, map_str) = if master_outdated {
+        (
+            "The Master Server is outdated.",
+            "Please wait for the developers to update the master server.",
+            "Master Server Outdated",
+        )
+    } else {
+        (
+            "You're running an outdated version of KissMP. Please update.",
+            "You can find the updated version of KissMP on the GitHub releases page.",
+            "Update to a newer version",
+        )
+    };
+
     for k in 0..5 {
         server_list.0.insert(SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)), k), ServerInfo {
-            name: "You're running an outdated version of KissMP. Please, consider updating to a newer version".to_string(),
+            name: name_str.to_string(),
             player_count: 0,
             max_players: 0,
-            description: "You can find updated version of KissMP on a github releases page".to_string(),
-            map: "Update to a newer version of KissMP".to_string(),
+            description: desc_str.to_string(),
+            map: map_str.to_string(),
             port: 0,
             version: VERSION,
             update_time: None

@@ -23,7 +23,6 @@ pub const VERSION: (u32, u32) = (
     parse_env_u32(env!("CARGO_PKG_VERSION_MAJOR")),
     parse_env_u32(env!("CARGO_PKG_VERSION_MINOR"))
 );
-pub const VERSION_STR: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientInfoPrivate {
