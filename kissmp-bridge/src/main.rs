@@ -115,6 +115,15 @@ async fn connect_to_server(
         let mut transport = quinn::TransportConfig::default();
         transport.max_idle_timeout(Some(IdleTimeout::try_from(SERVER_IDLE_TIMEOUT).unwrap()));
         transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
+
+        // settings for VPN like Hamachi
+        transport.initial_mtu(1200);
+        transport.mtu_discovery_config(None);
+        // increase uni stream buffer limits
+        transport.max_concurrent_uni_streams(2048u32.into());
+        transport.stream_receive_window(33_554_432u32.into());
+        transport.receive_window(33_554_432u32.into());
+
         client_cfg.transport_config(Arc::new(transport));
 
         let mut endpoint = quinn::Endpoint::client(

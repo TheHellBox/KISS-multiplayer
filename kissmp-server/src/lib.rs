@@ -178,6 +178,14 @@ impl Server {
             IdleTimeout::try_from(std::time::Duration::from_secs(60)).unwrap(),
         ));
         transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
+
+        // settings for VPN like Hamachi
+        transport.initial_mtu(1200);
+        transport.mtu_discovery_config(None);
+        // increase uni stream buffer limits
+        transport.max_concurrent_uni_streams(2048u32.into());
+        transport.send_window(33_554_432);
+
         server_config.transport = std::sync::Arc::new(transport);
 
         let endpoint = quinn::Endpoint::server(server_config, addr).unwrap();
