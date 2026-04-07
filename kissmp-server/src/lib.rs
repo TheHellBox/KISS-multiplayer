@@ -178,12 +178,6 @@ impl Server {
             IdleTimeout::try_from(std::time::Duration::from_secs(60)).unwrap(),
         ));
         transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
-
-        // Allow game clients to open 2048 streams
-        transport.max_concurrent_uni_streams(2048u32.into()); 
-        // Give server a 1.25MB send buffer, for 100ms ping, speed ~100 Mbps
-        transport.send_window(1_250_000);
-
         server_config.transport = std::sync::Arc::new(transport);
 
         let endpoint = quinn::Endpoint::server(server_config, addr).unwrap();
