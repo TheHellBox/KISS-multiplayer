@@ -18,19 +18,23 @@ pub async fn transfer_file(
             break;
         }
         let mut stream = connection.open_uni().await?;
-        send(
-            &mut stream,
-            &bincode::serialize(&shared::ServerCommand::FilePart(
-                file_name.to_string(),
-                buf[0..n].to_vec(),
-                chunk_n,
-                file_length,
-                n as u32,
-            ))
-            .unwrap(),
-        )
-        .await?;
-        // stream.finish().await?;
+        let data = bincode::serialize(&shared::ServerCommand::FilePart(
+            file_name.to_string(),
+            buf[0..n].to_vec(),
+            chunk_n,
+            file_length,
+            n as u32,
+        )).unwrap();
+        
+        stream.write_all(&(data.len() as u32).to_le_bytes()).await?;
+        stream.write_all(&data).await?;
+        
+        // Do not need to wait for player ack before writing into buffers
+        // Unlike previously used send()
+        tokio::spawn(async move {
+            let _ = stream.finish().await;
+        });
+        
         chunk_n += 1;
     }
     Ok(())
