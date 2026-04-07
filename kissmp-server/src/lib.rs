@@ -181,8 +181,8 @@ impl Server {
 
         // Allow game clients to open 2048 streams
         transport.max_concurrent_uni_streams(2048u32.into()); 
-        // Give server a 33MB send buffer
-        transport.send_window(33_554_432);
+        // Give server a 1.25MB send buffer, for 100ms ping, speed ~100 Mbps
+        transport.send_window(1_250_000);
 
         server_config.transport = std::sync::Arc::new(transport);
 
