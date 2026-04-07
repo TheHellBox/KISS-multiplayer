@@ -115,6 +115,14 @@ async fn connect_to_server(
         let mut transport = quinn::TransportConfig::default();
         transport.max_idle_timeout(Some(IdleTimeout::try_from(SERVER_IDLE_TIMEOUT).unwrap()));
         transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
+
+        // Allow server to transmit 2048 chunks concurrently without waiting for permission
+        transport.max_concurrent_uni_streams(2048u32.into()); 
+        // Increase stream RAM buffer to 8MB
+        transport.stream_receive_window(8_388_608u32.into()); 
+        // Increase total connection RAM buffer to 33MB
+        transport.receive_window(33_554_432u32.into());
+
         client_cfg.transport_config(Arc::new(transport));
 
         let mut endpoint = quinn::Endpoint::client(
