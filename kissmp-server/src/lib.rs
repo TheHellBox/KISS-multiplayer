@@ -498,13 +498,21 @@ impl Server {
         loop {
             tokio::select! {
                 stream_res = connection.accept_uni() => {
-                    let mut stream = stream_res?;
-                    let mut buf = [0; 4];
-                    stream.read_exact(&mut buf[0..4]).await?;
-                    let len = u32::from_le_bytes(buf).min(65536) as usize;
-                    let mut data: Vec<u8> = vec![0; len];
-                    stream.read_exact(&mut data).await?;
-                    let _ = Self::handle_incoming_data(id, data, &mut client_events_tx).await;
+                    if let Ok(mut stream) = stream_res {
+                        let mut tx_clone = client_events_tx.clone();
+                        tokio::spawn(async move {
+                            let mut buf = [0; 4];
+                            if stream.read_exact(&mut buf[0..4]).await.is_ok() {
+                                let len = u32::from_le_bytes(buf).min(65536) as usize;
+                                let mut data: Vec<u8> = vec![0; len];
+                                if stream.read_exact(&mut data).await.is_ok() {
+                                    let _ = Self::handle_incoming_data(id, data, &mut tx_clone).await;
+                                }
+                            }
+                        });
+                    } else {
+                        break Ok(());
+                    }
                 }
                 datagram_res = connection.read_datagram() => {
                     let data = datagram_res?;
@@ -572,7 +580,7 @@ fn generate_certificate() -> (rustls::Certificate, rustls::PrivateKey) {
 async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
     stream.write_all(&(message.len() as u32).to_le_bytes()).await?;
     stream.write_all(message).await?;
-    stream.finish().await?;
+    let _ = stream.finish().await;
     Ok(())
 }
 

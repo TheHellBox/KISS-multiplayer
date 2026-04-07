@@ -283,7 +283,7 @@ async fn connect_to_server(
 async fn send(stream: &mut quinn::SendStream, message: &[u8]) -> anyhow::Result<()> {
     stream.write_all(&(message.len() as u32).to_le_bytes()).await?;
     stream.write_all(message).await?;
-    stream.finish().await?;
+    let _ = stream.finish().await;
     Ok(())
 }
 
@@ -338,22 +338,23 @@ async fn server_incoming(
     loop {
         tokio::select! {
             stream_res = server_connection.accept_uni() => {
-                match stream_res {
-                    Ok(mut stream) => {
+                if let Ok(mut stream) = stream_res {
+                    let vc_tx = vc_playback_sender.clone();
+                    let cmd_tx = server_commands_sender.clone();
+                    tokio::spawn(async move {
                         if let Ok(bytes) = read_pascal_bytes(&mut stream).await {
                             if let Ok(command) = bincode::deserialize::<shared::ServerCommand>(&bytes) {
                                 match command {
                                     shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
-                                        let _ = vc_playback_sender.send(voice_chat::VoiceChatPlaybackEvent::Packet(
-                                            client, pos, data,
-                                        ));
+                                        let _ = vc_tx.send(voice_chat::VoiceChatPlaybackEvent::Packet(client, pos, data));
                                     }
-                                    _ => { let _ = server_commands_sender.send(command).await; },
+                                    _ => { let _ = cmd_tx.send(command).await; },
                                 }
                             }
                         }
-                    }
-                    Err(e) => { warn!("Error accepting reliable stream: {}", e); break; }
+                    });
+                } else {
+                    break;
                 }
             }
             datagram_res = server_connection.read_datagram() => {
