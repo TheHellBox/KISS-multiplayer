@@ -103,24 +103,24 @@ local function disconnect(data)
 
   cancel_download()
 
+  -- Delete the 3D player models from world memory
+  for _, v in pairs(kissplayers.players) do
+    if v then v:delete() end
+  end
+  for _, v in pairs(kissplayers.players_in_cars) do
+    if v then v:delete() end
+  end
+
   M.players = {}
   kissplayers.players = {}
   kissplayers.player_transforms = {}
   kissplayers.players_in_cars = {}
   kissplayers.player_heads_attachments = {}
   kissrichpresence.update()
-  --vehiclemanager.id_map = {}
-  --vehiclemanager.ownership = {}
-  --vehiclemanager.delay_spawns = false
-  --kissui.force_disable_nametags = false
-  --Lua:requestReload()
+  
   if getMissionFilename() ~= "" then
     returnToMainMenu()
   end
-end
-
-local function handle_disconnected(data)
-  disconnect(data)
 end
 
 local function handle_player_info(player_info)
@@ -270,13 +270,15 @@ local function generate_secret(server_identifier)
 end
 
 local function change_map(map)
-  if FS:fileExists(map) or FS:directoryExists(map) then
-    vehiclemanager.loading_map = true
-    freeroam_freeroam.startFreeroam(map)
-  else
-    kissui.chat.add_message("Map file doesn't exist. Check if mod containing map is enabled", kissui.COLOR_RED)
-    disconnect()
-  end
+  -- if FS:fileExists(map) or FS:directoryExists(map) then
+  --   vehiclemanager.loading_map = true
+  --   freeroam_freeroam.startFreeroam(map)
+  -- else
+  --   kissui.chat.add_message("Map file doesn't exist. Check if mod containing map is enabled", kissui.COLOR_RED)
+  --   disconnect()
+  -- end
+  vehiclemanager.loading_map = true
+  freeroam_freeroam.startFreeroam(map)
 end
 
 local function connect(addr, player_name, is_public)
