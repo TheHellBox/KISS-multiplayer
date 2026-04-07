@@ -28,11 +28,13 @@ local function onCouplerAttached(node_id, obj2_id, obj2_node_id)
     ignore_attachment = false
     return
   end
+  local node_data = v.data.nodes[node_id]
   local data = {
     obj_a = obj:getID(),
     obj_b = obj2_id,
     node_a_id = node_id,
-    node_b_id = obj2_node_id
+    node_b_id = obj2_node_id,
+    coupler_tag = node_data and node_data.couplerTag or ""
   }
   obj:queueGameEngineLua("vehiclemanager.attach_coupler_inner(\'"..jsonEncode(data).."\')")
 end

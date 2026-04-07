@@ -354,7 +354,7 @@ local function remove_vehicle(data)
     -- Clean up any coupling involving this vehicle
     M.coupled_to[local_id] = nil
     for k, v in pairs(M.coupled_to) do
-      if v == local_id then M.coupled_to[k] = nil end
+      if v.truck_id == local_id then M.coupled_to[k] = nil end
     end
     update_ownership_limits()
   else
@@ -425,6 +425,18 @@ local function electrics_diff_update(data)
     local data = jsonEncode(data[2].diff)
     vehicle:queueLuaCommand("kiss_electrics.apply_diff(" .. string.format("%q", data) .. ")")
   end
+end
+
+-- Classify coupler tag into internal path identifier for sync branching.
+-- Detected once at attach time, stored on cluster state, never recomputed.
+local function classify_hitch(coupler_tag)
+  if coupler_tag == "fifthwheel_v2" or coupler_tag == "fifthwheel" then
+    return "fifthwheel"
+  elseif coupler_tag == "pintle" then
+    return "pintle"
+  end
+  -- tow_hitch, gooseneck_hitch, and any unknown tag → ball hitch (safe 3-DOF default)
+  return "ball"
 end
 
 -- Dedup table: BeamNG fires onCouplerAttached/Detached on BOTH vehicles,
@@ -498,13 +510,31 @@ local function attach_coupler(data)
     vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data.node_b_id..")")
     -- Track coupling: obj_a fired onCouplerAttached (has the coupler node = trailer),
     -- obj_b is what it attached to (the truck/fifth wheel receiver)
-    if M.coupled_to[obj_a] == obj_b or M.coupled_to[obj_b] == obj_a then
+    local existing = M.coupled_to[obj_a]
+    if (existing and existing.truck_id == obj_b) or (M.coupled_to[obj_b] and M.coupled_to[obj_b].truck_id == obj_a) then
       print("[KISS_COUPLER] Skipping duplicate coupling for " .. obj_a .. " <-> " .. obj_b)
     else
-      M.coupled_to[obj_a] = obj_b
+      -- Cache coupler offset vectors in local space (from CG to hitch point).
+      -- These are stored once at attach time and used every tick for offset composition.
+      local trailer_offset = vehicle:getNodePosition(data.node_a_id)
+      local truck_offset = vehicle_b:getNodePosition(data.node_b_id)
+      local hitch_type = classify_hitch(data.coupler_tag or "")
+      M.coupled_to[obj_a] = {
+        truck_id = obj_b,
+        node_a = data.node_a_id,
+        node_b = data.node_b_id,
+        hitch_type = hitch_type,
+        -- Full 3D offset vectors: vehicle CG → coupling point, in vehicle local space
+        trailer_offset = {trailer_offset.x, trailer_offset.y, trailer_offset.z},
+        truck_offset = {truck_offset.x, truck_offset.y, truck_offset.z},
+      }
+      print("[KISS_COUPLER] Hitch type: " .. hitch_type .. " (tag: " .. (data.coupler_tag or "nil") .. ")")
       -- Notify both vehicles of their coupled state
       vehicle:queueLuaCommand("kiss_electrics.set_coupled(true)")
       vehicle_b:queueLuaCommand("kiss_electrics.set_coupled(true)")
+      -- Release parking brake on the trailer — trailers don't send VehicleUpdate
+      -- (no input/gearbox data) so kiss_input.apply never fires for them
+      vehicle:queueLuaCommand("input.event('parkingbrake', 0, 2)")
       print("[KISS_COUPLER] Marked vehicle " .. obj_a .. " (trailer) as coupled to " .. obj_b .. " (truck)")
     end
     onCouplerAttached(obj_a, obj_b, data.node_a_id, data.node_b_id)

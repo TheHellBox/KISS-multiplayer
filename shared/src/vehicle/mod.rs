@@ -49,6 +49,8 @@ pub struct CouplerAttached {
     obj_b: u32,
     node_a_id: u32,
     node_b_id: u32,
+    #[serde(default)]
+    coupler_tag: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

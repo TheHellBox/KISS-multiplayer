@@ -217,7 +217,7 @@ local function set_target_transform(raw)
     if ang_accel_clamped then flags = flags .. " [ANG_ACCEL_CLAMPED from " .. string.format("%.2f", raw_ang_accel) .. "]" end
     print(string.format(
       "[KISS_RECV id=%d] time_dif=%.4f time_past=%.4f vel=(%.2f,%.2f,%.2f) ang_vel=(%.2f,%.2f,%.2f)%s",
-      obj:getID(), time_dif, transform.time_past,
+      obj:getID(), time_dif, transform.time_past or 0,
       transform.velocity[1], transform.velocity[2], transform.velocity[3],
       transform.angular_velocity[1], transform.angular_velocity[2], transform.angular_velocity[3],
       flags
@@ -231,86 +231,102 @@ local function set_target_transform(raw)
   M.received_transform.time_past = transform.time_past
 end
 
--- Coupled vehicle sync: only correct the hitch angle, no position forces.
--- The coupler constraint handles positioning; we just nudge the swing angle.
-local function update_coupled(dt, truck_target_rot_raw, truck_local_rot_raw)
+-- Constraint-preserving sync for coupled trailers.
+-- The expected trailer CG is computed on the GE side (branching by hitch
+-- type: fifth wheel = yaw only, ball/pintle hitch = full quaternion).
+-- Here we only check for drift and hard-snap when it exceeds the threshold.
+-- Between snaps the trailer runs entirely on BeamNG's own coupler physics.
+
+-- Per-hitch-type drift thresholds
+local DRIFT_THRESHOLDS = {
+  fifthwheel = { pos = 0.25, ticks = 15 },  -- tight: plate constrains well
+  ball       = { pos = 0.25, ticks = 15 },  -- standard ball hitch
+  pintle     = { pos = 0.45, ticks = 15 },  -- loose: designed-in slop
+}
+local DEFAULT_THRESHOLD = DRIFT_THRESHOLDS.ball
+
+local STALENESS_CUTOFF = 0.5  -- seconds — suspend sync if data is older
+local snap_cooldown_ticks = 0
+
+local function update_coupled(dt, data_raw)
   if cooldown_timer > 0 then
     cooldown_timer = cooldown_timer - clamp(dt, 0, 0.02)
     return
   end
   if dt > 0.1 then return end
 
-  local truck_target_rot = quat(jsonDecode(truck_target_rot_raw))
-  local truck_local_rot = quat(jsonDecode(truck_local_rot_raw))
-  local trailer_local_rot = quat(obj:getRotation())
-
-  -- Use received_transform directly (predict() doesn't run for coupled vehicles)
-  local trailer_target_rot = M.received_transform.rotation
-
-  -- Target relative angle: how the trailer should be angled vs the truck (from owner's data)
-  local target_relative = trailer_target_rot * truck_target_rot:inversed()
-  -- Current relative angle: how the trailer is actually angled vs the truck locally
-  local current_relative = trailer_local_rot * truck_local_rot:inversed()
-  -- Correction: rotate from current relative to target relative
-  local correction = target_relative * current_relative:inversed()
-  local correction_euler = correction:toEulerYXZ()
-
-  -- Scale forces by mass so heavier trailers get proportionally more force
-  local mass_scale = obj:getTotalMass() / 20000
-  local ang_force_strength = 5 * mass_scale
-  local angular_force = correction_euler * ang_force_strength * dt
-
-  -- Clamp to prevent explosions
-  if angular_force:length() > 15 then
-    angular_force = angular_force:normalized() * 15
+  -- Staleness: if transform data is too old, let physics run freely
+  if M.received_transform.time_past > STALENESS_CUTOFF then
+    if M.debug_log then
+      print(string.format(
+        "[KISS_COUPLED id=%d] STALE data (%.3fs), skipping sync",
+        obj:getID(), M.received_transform.time_past
+      ))
+    end
+    return
   end
 
-  -- Debug visualization for coupled vehicles
+  -- Snap cooldown: let coupler re-equilibrate after a snap
+  if snap_cooldown_ticks > 0 then
+    snap_cooldown_ticks = snap_cooldown_ticks - 1
+    return
+  end
+
+  local data = jsonDecode(data_raw)
+  local expected_pos = vec3(data.expected_pos)
+  local kingpin_world = vec3(data.kingpin_world)
+  local cur_pos = vec3(obj:getPosition())
+  local hitch_type = data.hitch_type or "ball"
+  local thresholds = DRIFT_THRESHOLDS[hitch_type] or DEFAULT_THRESHOLD
+
+  -- Measure drift between expected and actual trailer CG
+  local pos_drift = expected_pos:distance(cur_pos)
+
+  -- Debug visualization
   if M.debug then
-    local cur_pos = vec3(obj:getPosition())
-    local target_pos = M.received_transform.position
-    obj.debugDrawProxy:drawSphere(0.3, target_pos:toFloat3(), color(0,255,0,100))
+    local within_threshold = pos_drift <= thresholds.pos
+    -- Expected position: green if OK, red if drifted
+    if within_threshold then
+      obj.debugDrawProxy:drawSphere(0.3, expected_pos:toFloat3(), color(0,255,0,100))
+    else
+      obj.debugDrawProxy:drawSphere(0.3, expected_pos:toFloat3(), color(255,0,0,200))
+    end
+    -- Actual position
     obj.debugDrawProxy:drawSphere(0.15, cur_pos:toFloat3(), color(255,255,0,100))
-    obj.debugDrawProxy:drawCylinder(cur_pos:toFloat3(), target_pos:toFloat3(), 0.03, color(255,255,255,180))
-    -- Orange sphere above = coupled mode indicator
+    -- Drift line: current -> expected
+    obj.debugDrawProxy:drawCylinder(cur_pos:toFloat3(), expected_pos:toFloat3(), 0.03, color(255,255,255,180))
+    -- Kingpin/hitch point marker
+    obj.debugDrawProxy:drawSphere(0.1, kingpin_world:toFloat3(), color(0,200,255,200))
+    -- Coupled mode indicator: orange=fifthwheel, magenta=ball, cyan=pintle
     local coupled_marker = cur_pos + vec3(0, 0, 2)
-    obj.debugDrawProxy:drawSphere(0.25, coupled_marker:toFloat3(), color(255,165,0,200))
-    -- Angular correction magnitude
-    local ang_mag = angular_force:length()
-    local ang_marker = cur_pos + vec3(0, 0, 1.5)
-    local ang_color_r = math.min(255, ang_mag * 50)
-    local ang_color_g = math.max(0, 255 - ang_mag * 50)
-    obj.debugDrawProxy:drawSphere(0.15 + ang_mag * 0.05, ang_marker:toFloat3(), color(ang_color_r, ang_color_g, 0, 180))
+    if hitch_type == "fifthwheel" then
+      obj.debugDrawProxy:drawSphere(0.25, coupled_marker:toFloat3(), color(255,165,0,200))
+    elseif hitch_type == "pintle" then
+      obj.debugDrawProxy:drawSphere(0.25, coupled_marker:toFloat3(), color(0,200,255,200))
+    else
+      obj.debugDrawProxy:drawSphere(0.25, coupled_marker:toFloat3(), color(255,0,255,200))
+    end
   end
 
   if M.debug_log then
-    local angle_err = correction_euler:length()
-    local ang_mag = angular_force:length()
-    local pos_err = M.received_transform.position:distance(vec3(obj:getPosition()))
+    local snapping = pos_drift > thresholds.pos
     print(string.format(
-      "[KISS_COUPLED id=%d] pos_drift=%.3f angle_err=%.3f ang_force=%.3f correction=(%.3f,%.3f,%.3f)",
-      obj:getID(), pos_err, angle_err, ang_mag, correction_euler.x, correction_euler.y, correction_euler.z
+      "[KISS_COUPLED id=%d] type=%s pos_drift=%.3f thresh=%.2f%s",
+      obj:getID(), hitch_type, pos_drift, thresholds.pos,
+      snapping and " [SNAP]" or ""
     ))
   end
 
-  -- Gentle linear nudge to help the coupler keep up — the coupler constraint alone
-  -- can't effectively transfer PD velocity impulses from the truck
-  local pos_delta = M.received_transform.position - vec3(obj:getPosition())
-  local linear_force = pos_delta * 0.5 * mass_scale * dt
-  if linear_force:length() > 1.0 * mass_scale then
-    linear_force = linear_force:normalized() * 1.0 * mass_scale
+  -- Only intervene when drift exceeds threshold
+  if pos_drift > thresholds.pos then
+    -- Hard snap: reposition trailer CG without velocity impulse
+    obj:queueGameEngineLua(string.format(
+      "be:getObjectByID(%d):setPositionNoPhysicsReset(Point3F(%f, %f, %f))",
+      obj:getID(), expected_pos.x, expected_pos.y, expected_pos.z
+    ))
+    snap_cooldown_ticks = thresholds.ticks
   end
-
-  if angular_force:length() > 0.05 or linear_force:length() > (dt * 5) then
-    kiss_vehicle.apply_linear_velocity_ang_torque(
-      linear_force.x,
-      linear_force.y,
-      linear_force.z,
-      angular_force.y,
-      angular_force.z,
-      angular_force.x
-    )
-  end
+  -- Between snaps: do nothing. Coupler physics drives the trailer.
 end
 
 local function onExtensionLoaded()

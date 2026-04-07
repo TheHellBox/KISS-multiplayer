@@ -187,15 +187,13 @@ local function set_coupled(is_coupled)
 end
 
 local function update_advanced_coupler_state(coupler_control_controller, value)
-  -- the value indicates "notattached"
+  -- Only act on coupler state changes if this vehicle is actually coupled
+  -- via our tracking. Otherwise electrics sync can break our coupler attachment
+  -- (detach path) or grab random objects (attach path).
+  if not coupled_state then return end
   local is_open = value > 0.5
   if not is_open then
-    -- Only try to attach if this vehicle is actually coupled to something,
-    -- otherwise the fifth wheel coupler grabs nearby objects (ground, own nodes)
-    -- and physically locks the vehicle
-    if coupled_state then
-      coupler_control_controller.tryAttachGroupImpulse()
-    end
+    coupler_control_controller.tryAttachGroupImpulse()
   else
     coupler_control_controller.detachGroup()
   end
@@ -275,7 +273,7 @@ local function onExtensionLoaded()
         local coupler_control_controller = controller.getController(controller_data.name)
         table.insert(coupler_controllers, coupler_control_controller)
         -- Force-detach on remote vehicles at init to prevent the controller
-        -- from auto-attaching to nearby objects (ground, own nodes) on spawn
+        -- from auto-attaching to nearby objects on spawn
         if not ownership then
           coupler_control_controller.detachGroup()
         end
