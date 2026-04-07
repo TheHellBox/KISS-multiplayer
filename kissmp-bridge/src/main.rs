@@ -342,7 +342,7 @@ async fn server_incoming(
                     let vc_tx = vc_playback_sender.clone();
                     let cmd_tx = server_commands_sender.clone();
                     tokio::spawn(async move {
-                        if let Ok(bytes) = read_pascal_bytes(&mut stream).await {
+                        while let Ok(bytes) = read_pascal_bytes(&mut stream).await {
                             if let Ok(command) = bincode::deserialize::<shared::ServerCommand>(&bytes) {
                                 match command {
                                     shared::ServerCommand::VoiceChatPacket(client, pos, data) => {
