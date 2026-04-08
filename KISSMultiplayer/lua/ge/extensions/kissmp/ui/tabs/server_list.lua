@@ -22,6 +22,9 @@ local filtered_servers = {}
 local filtered_favorite_servers = {}
 local next_bridge_status_update = 0
 
+local secs_elapsed = 0
+local refresh_secs = 60
+
 M.server_list = {}
 
 -- Server list update and search
@@ -146,6 +149,14 @@ local function draw_server_description(description)
 end
 
 local function draw(dt)
+  -- Refresh the server list every few seconds
+  secs_elapsed = secs_elapsed + dt
+  if secs_elapsed >= refresh_secs then
+    refresh_server_list()
+    update_filtered_servers()
+    secs_elapsed = 0
+  end
+
   -- Search update
   local search_text = ffi.string(search_buffer)
   local filter_notfull = filter_servers_notfull[0]
@@ -212,7 +223,6 @@ local function draw(dt)
   imgui.PopTextWrapPos()
 
   imgui.EndChild()
-
   if imgui.Button("Refresh List", imgui.ImVec2(-1, 0)) then
     refresh_server_list()
     update_filtered_servers()
