@@ -51,18 +51,16 @@ local function deactivate_all_mods()
 end
 
 local function mount_mod(name)
-  --local mode = mode or "added"
-  --extensions.core_modmanager.workOffChangedMod("/kissmp_mods/"..name, mode)
-  if FS:fileExists("/kissmp_mods/"..name) then
-    FS:mount("/kissmp_mods/"..name)
-  else
-    local files = FS:findFiles("/mods/", name, 1000)
-    if files[1] then
-      FS:mount(files[1])
-    else
-      kissui.chat.add_message("Failed to mount mod "..name..", file not found", kissui.COLOR_RED)
-    end
+  local path = "/kissmp_mods/"..name
+  FS:mount(path)
+  if not FS:isMounted(path) then
+    path = "/mods/"..name
+    FS:mount(path)
   end
+  if extensions.core_modmanager then
+    extensions.core_modmanager.workOffChangedMod(path, "added")
+  end
+
   core_vehicles.clearCache()
 end
 

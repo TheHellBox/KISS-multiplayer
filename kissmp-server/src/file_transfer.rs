@@ -13,25 +13,26 @@ pub async fn transfer_file(
     let file_name = path.file_name().unwrap().to_str().unwrap();
     let mut buf = [0; CHUNK_SIZE];
     let mut chunk_n = 0;
+    
+    let mut stream = connection.open_uni().await?;
+    
     while let Ok(n) = file.read(&mut buf).await {
         if n == 0 {
             break;
         }
-        let mut stream = connection.open_uni().await?;
-        send(
-            &mut stream,
-            &bincode::serialize(&shared::ServerCommand::FilePart(
-                file_name.to_string(),
-                buf[0..n].to_vec(),
-                chunk_n,
-                file_length,
-                n as u32,
-            ))
-            .unwrap(),
-        )
-        .await?;
-        stream.finish().await?;
+        let data = bincode::serialize(&shared::ServerCommand::FilePart(
+            file_name.to_string(),
+            buf[0..n].to_vec(),
+            chunk_n,
+            file_length,
+            n as u32,
+        )).unwrap();
+
+        stream.write_all(&(data.len() as u32).to_le_bytes()).await?;
+        stream.write_all(&data).await?;
         chunk_n += 1;
     }
+    
+    let _ = stream.finish().await;
     Ok(())
 }
