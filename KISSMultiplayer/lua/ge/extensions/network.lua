@@ -286,7 +286,11 @@ local function connect(addr, player_name, is_public)
 
   if M.connection.connected then
     disconnect()
+  elseif M.connection.tcp then
+    M.connection.tcp:close()
+    M.connection.tcp = nil
   end
+
   M.players = {}
   M.download_start_time = 0
   M.download_queue = {}
@@ -298,7 +302,7 @@ local function connect(addr, player_name, is_public)
   kissui.chat.add_message("Connecting to "..addr.."...")
   M.connection.tcp = socket.tcp()
   M.connection.tcp:settimeout(3.0)
-  local connected, err = M.connection.tcp:connect("127.0.0.1", "7894")
+  M.connection.tcp:connect("127.0.0.1", "7894")
 
   -- Send server address to the bridge
   local addr_lenght = ffi.string(ffi.new("uint32_t[?]", 1, {#addr}), 4)
@@ -321,7 +325,6 @@ local function connect(addr, player_name, is_public)
 
   local len, _, _ = M.connection.tcp:receive(4)
   len = bytesToU32(len)
-
   local received, _, _ = M.connection.tcp:receive(len)
   local server_info = jsonDecode(received).ServerInfo
   if not server_info then
@@ -432,8 +435,13 @@ local function onUpdate(dt)
   local max_packets_per_update = 64
 
   while packets_processed < max_packets_per_update do
-    local msg_type = M.connection.tcp:receive(1)
-    if not msg_type then break end
+    local msg_type, err = M.connection.tcp:receive(1)
+    if not msg_type then
+      if err == "closed" then
+        disconnect("Connection lost")
+      end
+      break
+    end
     packets_processed = packets_processed + 1
 
     M.connection.tcp:settimeout(5.0)

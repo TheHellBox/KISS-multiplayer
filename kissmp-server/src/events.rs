@@ -7,6 +7,25 @@ impl Server {
         match event {
             ClientConnected(connection) => {
                 let player_name = connection.client_info_public.name.clone();
+
+                let secret = connection.client_info_private.secret.clone();
+
+                // Kick ghost IDs to prevent client duplication
+                let ghost_id = self.connections.iter()
+                    .find(|(_, c)| c.client_info_private.secret == secret)
+                    .map(|(&id, _)| id);
+
+                if let Some(id) = ghost_id {
+                    if let Some(ghost) = self.connections.remove(&id) {
+                        ghost.conn.close(0u32.into(), b"Reconnected");
+                    }
+                    if let Some(client_vehicles) = self.vehicle_ids.get(&id).cloned() {
+                        for (_, vid) in client_vehicles {
+                            self.remove_vehicle(vid, Some(id)).await;
+                        }
+                    }
+                }
+
                 self.connections.insert(client_id, connection);
                 // Kinda ugly, but idk how to deal with lifetimes otherwise
                 let mut client_info_list = vec![];
