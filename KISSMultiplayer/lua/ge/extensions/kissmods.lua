@@ -53,7 +53,10 @@ end
 local function mount_mod(name)
   local path = "/kissmp_mods/"..name
   FS:mount(path)
-  
+  if not FS:isMounted(path) then
+    path = "/mods/"..name
+    FS:mount(path)
+  end
   if extensions.core_modmanager then
     extensions.core_modmanager.workOffChangedMod(path, "added")
   end
