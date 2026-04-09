@@ -143,7 +143,6 @@ local function send()
     ElectricsUndefinedUpdate = {obj:getID(), data}
   }
   if diff_count > 0 then
-    print("=== ELECTRICS BEING SENT ===\n" .. jsonEncode(data)) 
     obj:queueGameEngineLua("network.send_data(\'"..jsonEncode(data).."\', true)")
   end
 end
@@ -184,6 +183,17 @@ local coupler_controllers = {}
 
 local function set_coupled(is_coupled)
   coupled_state = is_coupled
+  if is_coupled then
+    for _, ctrl in pairs(coupler_controllers) do
+      ctrl.tryAttachGroupImpulse()
+    end
+  end
+end
+
+local function reactivate_couplers()
+  for _, ctrl in pairs(coupler_controllers) do
+    ctrl.tryAttachGroupImpulse()
+  end
 end
 
 local function update_advanced_coupler_state(coupler_control_controller, value)
@@ -339,6 +349,7 @@ M.apply = apply
 M.apply_diff = apply_diff
 M.ignore_key = ignore_key
 M.set_coupled = set_coupled
+M.reactivate_couplers = reactivate_couplers
 
 M.kissUpdateOwnership = kissUpdateOwnership
 

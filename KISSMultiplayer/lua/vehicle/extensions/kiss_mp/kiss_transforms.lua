@@ -23,8 +23,8 @@ M.target_transform = {
 
 M.force = 3
 M.ang_force = 100
-M.debug = true
-M.debug_log = true
+M.debug = false
+M.debug_log = false
 M.lerp_factor = 30.0
 
 -- Debug: last computed forces for visualization
