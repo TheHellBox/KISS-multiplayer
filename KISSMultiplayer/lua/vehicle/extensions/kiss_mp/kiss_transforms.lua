@@ -126,7 +126,7 @@ local function debug_log(dt, linear_force, angular_force, position_delta, veloci
   ))
 end
 
-local function update(dt, skip_rude)
+local function update(dt, skip_rude, ang_scale)
   if cooldown_timer > 0 then
     cooldown_timer = cooldown_timer - clamp(dt, 0, 0.02)
     return
@@ -134,6 +134,12 @@ local function update(dt, skip_rude)
   if dt > 0.1 then return end
   M.received_transform.time_past = clamp(M.received_transform.time_past + dt, 0, 0.5)
   predict(dt)
+  -- Coupled trucks skip try_rude (6m teleport yanks the whole rig under
+  -- trailer drag lag). Angular torque is skipped separately below via the
+  -- forced ang_skipped flag, so coupled trucks fall through to the
+  -- linear-only propulsion branch — which is what actually moves a ghost
+  -- vehicle at all (input sync doesn't produce real engine thrust on a
+  -- non-owned vehicle).
   if not skip_rude and try_rude() then return end
 
   local force = M.force
@@ -158,7 +164,19 @@ local function update(dt, skip_rude)
   local angular_velocity_difference = M.target_transform.angular_velocity - local_ang_vel
   local angle_delta = M.target_transform.rotation / quat(obj:getRotation())
   local angle_delta_euler = angle_delta:toEulerYXZ()
-  local angular_force = (angular_velocity_difference + angle_delta_euler * ang_force + c_ang * local_ang_vel) * dt
+  local angular_force
+  if skip_rude then
+    -- Coupled truck: drop the proportional angle-error term
+    -- (angle_delta_euler * ang_force). That term was the jackknife driver
+    -- because it slams a rigid-body rotation impulse into the chassis
+    -- every tick, which whip-cracks the hitch node sideways faster than
+    -- the trailer pivot can absorb. Keep only the velocity-matching and
+    -- damping terms so the ghost chassis rotates at the owner's yaw rate
+    -- smoothly — small absolute angle drift is bounded by rate tracking.
+    angular_force = (angular_velocity_difference + c_ang * local_ang_vel) * dt
+  else
+    angular_force = (angular_velocity_difference + angle_delta_euler * ang_force + c_ang * local_ang_vel) * dt
+  end
 
   -- Store debug state
   last_linear_force = linear_force

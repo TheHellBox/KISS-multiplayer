@@ -50,6 +50,13 @@ local function onExtensionLoaded()
       }
     )
   end
+
+  -- Report total mass to GE so vehiclemanager can size coupler PD gains by
+  -- the truck/trailer mass ratio at attach time.
+  obj:queueGameEngineLua(string.format(
+    "if vehiclemanager and vehiclemanager.set_vehicle_mass then vehiclemanager.set_vehicle_mass(%d, %f) end",
+    obj:getID(), total_mass
+  ))
 end
 
   -- NOTE:

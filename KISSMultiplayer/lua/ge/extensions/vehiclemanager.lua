@@ -21,6 +21,11 @@ M.vehicle_buffer = {}
 M.coupled_to = {} -- local_game_id (trailer) → local_game_id (truck)
 M.coupled_trucks = {} -- local_game_id (truck) → local_game_id (trailer). Inverse index so kisstransform.update can skip try_rude for coupled trucks.
 M.known_couplings = {} -- local_game_id → {[node_id] = {obj2id, obj2nodeId}, ...}
+M.vehicle_masses = {} -- local_game_id → total jbeam mass in kg (reported by kiss_vehicle.onExtensionLoaded)
+
+local function set_vehicle_mass(id, mass)
+  M.vehicle_masses[id] = mass
+end
 
 -- Forward declaration so any closure defined later that references classify_hitch
 -- resolves it as a local upvalue rather than falling through to global lookup.
@@ -619,16 +624,46 @@ local function attach_coupler(data)
     local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
     vehicle_b:setPositionNoPhysicsReset(Point3F(pos.x, pos.y, pos.z))
     vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data.node_b_id..")")
-    -- Cache coupler offset vectors in local space (from CG to hitch point).
-    -- These are stored once at attach time and used every tick for offset composition.
-    local trailer_offset = vehicle:getNodePosition(data.node_a_id)
-    local truck_offset = vehicle_b:getNodePosition(data.node_b_id)
+    -- Cache coupler offset vectors in VEHICLE-LOCAL (unrotated) space.
+    -- obj:getNodePosition returns a world-rotated offset from the ref node;
+    -- we apply the inverse of the current vehicle rotation so the stored
+    -- offset is stable regardless of the vehicle's heading at attach time.
+    -- kisstransform.update_coupled later does `current_rot * offset` to get
+    -- back to world space, which only works if the offset is local.
+    local vehicle_inv_rot  = quat(vehicle:getRefNodeMatrix():toQuatF()):inversed()
+    local vehicleb_inv_rot = quat(vehicle_b:getRefNodeMatrix():toQuatF()):inversed()
+    local trailer_offset = vehicle_inv_rot  * vec3(vehicle:getNodePosition(data.node_a_id))
+    local truck_offset   = vehicleb_inv_rot * vec3(vehicle_b:getNodePosition(data.node_b_id))
     local hitch_type = classify_hitch(data.coupler_tag or "")
+    -- Scale the coupled truck's angular PD gain by the mass ratio. A heavy
+    -- trailer on a light truck gets a very soft angular correction so the
+    -- hitch pivot can keep up without jackknifing. A light trailer on a
+    -- heavy truck gets closer to full strength. Masses reported by
+    -- kiss_vehicle.onExtensionLoaded; if either is missing (race at
+    -- attach time), fall back to a mid value.
+    local truck_mass = M.vehicle_masses[obj_b]
+    local trailer_mass = M.vehicle_masses[obj_a]
+    local ang_scale
+    if truck_mass and trailer_mass and (truck_mass + trailer_mass) > 0 then
+      ang_scale = truck_mass / (truck_mass + trailer_mass)
+      -- Clamp to a safe range. Below 0.05 the ghost truck under-rotates on
+      -- curves; above 0.5 the jackknife risk returns even for favourable
+      -- mass ratios.
+      if ang_scale < 0.05 then ang_scale = 0.05 end
+      if ang_scale > 0.5 then ang_scale = 0.5 end
+    else
+      ang_scale = 0.3
+    end
+    print(string.format(
+      "[KISS_COUPLER] Mass ratio: truck=%s trailer=%s → ang_scale=%.3f",
+      tostring(truck_mass), tostring(trailer_mass), ang_scale
+    ))
     M.coupled_to[obj_a] = {
       truck_id = obj_b,
       node_a = data.node_a_id,
       node_b = data.node_b_id,
       hitch_type = hitch_type,
+      ang_scale = ang_scale,
       -- Full 3D offset vectors: vehicle CG → coupling point, in vehicle local space
       trailer_offset = {trailer_offset.x, trailer_offset.y, trailer_offset.z},
       truck_offset = {truck_offset.x, truck_offset.y, truck_offset.z},
@@ -815,6 +850,7 @@ M.detach_coupler_inner = detach_coupler_inner
 M.onCouplerAttached = onCouplerAttached
 M.onCouplerDetached = onCouplerDetached
 M.onObjectCouplingChange = onObjectCouplingChange
+M.set_vehicle_mass = set_vehicle_mass
 
 M.set_position = set_position
 M.set_position_rotation = set_position_rotation
