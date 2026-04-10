@@ -126,7 +126,7 @@ local function debug_log(dt, linear_force, angular_force, position_delta, veloci
   ))
 end
 
-local function update(dt)
+local function update(dt, skip_rude)
   if cooldown_timer > 0 then
     cooldown_timer = cooldown_timer - clamp(dt, 0, 0.02)
     return
@@ -134,7 +134,7 @@ local function update(dt)
   if dt > 0.1 then return end
   M.received_transform.time_past = clamp(M.received_transform.time_past + dt, 0, 0.5)
   predict(dt)
-  if try_rude() then return end
+  if not skip_rude and try_rude() then return end
 
   local force = M.force
   local ang_force = M.ang_force
@@ -317,16 +317,8 @@ local function update_coupled(dt, data_raw)
     ))
   end
 
-  -- Only intervene when drift exceeds threshold
-  if pos_drift > thresholds.pos then
-    -- Hard snap: reposition trailer CG without velocity impulse
-    obj:queueGameEngineLua(string.format(
-      "be:getObjectByID(%d):setPositionNoPhysicsReset(Point3F(%f, %f, %f))",
-      obj:getID(), expected_pos.x, expected_pos.y, expected_pos.z
-    ))
-    snap_cooldown_ticks = thresholds.ticks
-  end
-  -- Between snaps: do nothing. Coupler physics drives the trailer.
+  -- Never teleport a coupled trailer. Let the physics coupler constraint
+  -- drive it off the truck; drift is expected and tolerable.
 end
 
 local function onExtensionLoaded()

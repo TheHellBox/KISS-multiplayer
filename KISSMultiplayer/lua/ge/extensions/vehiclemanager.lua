@@ -19,6 +19,12 @@ M.is_network_session = false
 M.delay_spawns = false
 M.vehicle_buffer = {}
 M.coupled_to = {} -- local_game_id (trailer) → local_game_id (truck)
+M.coupled_trucks = {} -- local_game_id (truck) → local_game_id (trailer). Inverse index so kisstransform.update can skip try_rude for coupled trucks.
+M.known_couplings = {} -- local_game_id → {[node_id] = {obj2id, obj2nodeId}, ...}
+
+-- Forward declaration so any closure defined later that references classify_hitch
+-- resolves it as a local upvalue rather than falling through to global lookup.
+local classify_hitch
 
 local function get_current_time()
   local date = os.date("*t", os.time() + network.connection.time_offset)
@@ -429,7 +435,7 @@ end
 
 -- Classify coupler tag into internal path identifier for sync branching.
 -- Detected once at attach time, stored on cluster state, never recomputed.
-local function classify_hitch(coupler_tag)
+classify_hitch = function(coupler_tag)
   if coupler_tag == "fifthwheel_v2" or coupler_tag == "fifthwheel" then
     return "fifthwheel"
   elseif coupler_tag == "pintle" then
@@ -439,57 +445,149 @@ local function classify_hitch(coupler_tag)
   return "ball"
 end
 
--- Dedup table: BeamNG fires onCouplerAttached/Detached on BOTH vehicles,
--- so both owned vehicles try to send the event. We only want one.
-local pending_coupler_events = {}
+-- Dedup tables for coupler events. One physical coupling can fire up to 3
+-- times: once per owned vehicle via the vehicle-side kiss_couplers hook, plus
+-- once via the GE-level BeamNG dispatch to M.onCouplerAttached. Time-based
+-- cooldown suppresses duplicates within a short window while still allowing
+-- quick re-coupling after a brief detach.
+local coupler_send_cooldown = 2.0
+local last_attach_sent = {}
+local last_detach_sent = {}
 
 local function coupler_pair_key(a, b)
   return math.min(a, b) .. "_" .. math.max(a, b)
 end
 
-local function attach_coupler_inner(data)
-  local data = jsonDecode(data)
-  -- Only dedup when both vehicles are ours (both fire the event locally)
-  local both_owned = M.ownership[data.obj_a] and M.ownership[data.obj_b]
+-- Shared send path for coupler attach events. Takes a decoded table so both
+-- the vehicle-side JSON path (attach_coupler_inner) and the new GE-level
+-- hook (onCouplerAttached) can feed into the same dedup + network send.
+local function send_coupler_attach(data)
+  if not data.obj_a or not data.obj_b then return end
+  if data.obj_a == data.obj_b then return end
+  if not M.server_ids[data.obj_a] or not M.server_ids[data.obj_b] then return end
   local key = coupler_pair_key(data.obj_a, data.obj_b)
-  if both_owned then
-    if pending_coupler_events[key] then
-      pending_coupler_events[key] = nil
-      print("[KISS_COUPLER] Suppressed duplicate attach event for pair " .. key)
-      return
-    end
-    pending_coupler_events[key] = true
+  local now = os.clock()
+  local last = last_attach_sent[key]
+  if last and (now - last) < coupler_send_cooldown then
+    print("[KISS_COUPLER] Suppressed duplicate attach event for pair " .. key)
+    return
   end
+  last_attach_sent[key] = now
+  last_detach_sent[key] = nil
   print("[KISS_COUPLER] Sending attach event: obj_a=" .. data.obj_a .. " obj_b=" .. data.obj_b)
-  data.obj_a = M.server_ids[data.obj_a]
-  data.obj_b = M.server_ids[data.obj_b]
-  network.send_data(
-    {
-      CouplerAttached = data
-    },
-    true
-  )
+  local payload = {
+    obj_a = M.server_ids[data.obj_a],
+    obj_b = M.server_ids[data.obj_b],
+    node_a_id = data.node_a_id,
+    node_b_id = data.node_b_id,
+    coupler_tag = data.coupler_tag or "",
+  }
+  network.send_data({ CouplerAttached = payload }, true)
+end
+
+local function send_coupler_detach(data)
+  if not data.obj_a or not data.obj_b then return end
+  if data.obj_a == data.obj_b then return end
+  if not M.server_ids[data.obj_a] or not M.server_ids[data.obj_b] then return end
+  local key = coupler_pair_key(data.obj_a, data.obj_b)
+  local now = os.clock()
+  local last = last_detach_sent[key]
+  if last and (now - last) < coupler_send_cooldown then
+    return
+  end
+  last_detach_sent[key] = now
+  last_attach_sent[key] = nil
+  local payload = {
+    obj_a = M.server_ids[data.obj_a],
+    obj_b = M.server_ids[data.obj_b],
+    node_a_id = data.node_a_id,
+    node_b_id = data.node_b_id,
+  }
+  network.send_data({ CouplerDetached = payload }, true)
+end
+
+-- Vehicle-side JSON entry points (called from kiss_couplers via queueGameEngineLua)
+local function attach_coupler_inner(data)
+  send_coupler_attach(jsonDecode(data))
 end
 
 local function detach_coupler_inner(data)
-  local data = jsonDecode(data)
-  local both_owned = M.ownership[data.obj_a] and M.ownership[data.obj_b]
-  local key = coupler_pair_key(data.obj_a, data.obj_b)
-  if both_owned then
-    if pending_coupler_events[key] then
-      pending_coupler_events[key] = nil
-      return
-    end
-    pending_coupler_events[key] = true
+  send_coupler_detach(jsonDecode(data))
+end
+
+-- GE-level hook: BeamNG fires this via extensions dispatch when beamstate
+-- sees a coupler latch (subject to objectId <= obj2id dedup on the C++ side).
+-- This catches ball-hitch L-key couplings whose vehicle-level callback may
+-- land on a vehicle where kiss_couplers.onCouplerAttached short-circuits.
+local function onCouplerAttached(objA, objB, nodeA, nodeB)
+  if not network.connection.connected then return end
+  if not objA or not objB or objA == objB then return end
+  local owned_a = M.ownership[objA]
+  local owned_b = M.ownership[objB]
+  if not owned_a and not owned_b then return end
+  -- Normalize so obj_a is the owned vehicle (matches kiss_couplers convention)
+  local data
+  if owned_a then
+    data = { obj_a = objA, obj_b = objB, node_a_id = nodeA, node_b_id = nodeB, coupler_tag = "" }
+  else
+    data = { obj_a = objB, obj_b = objA, node_a_id = nodeB, node_b_id = nodeA, coupler_tag = "" }
   end
-  data.obj_a = M.server_ids[data.obj_a]
-  data.obj_b = M.server_ids[data.obj_b]
-  network.send_data(
-    {
-      CouplerDetached = data
-    },
-    true
-  )
+  send_coupler_attach(data)
+end
+
+local function onCouplerDetached(objA, objB, nodeA, nodeB)
+  if not network.connection.connected then return end
+  if not objA or not objB or objA == objB then return end
+  local owned_a = M.ownership[objA]
+  local owned_b = M.ownership[objB]
+  if not owned_a and not owned_b then return end
+  local data
+  if owned_a then
+    data = { obj_a = objA, obj_b = objB, node_a_id = nodeA, node_b_id = nodeB }
+  else
+    data = { obj_a = objB, obj_b = objA, node_a_id = nodeB, node_b_id = nodeA }
+  end
+  send_coupler_detach(data)
+end
+
+-- Belt-and-suspenders hook: BeamNG fires onObjectCouplingChange with the full
+-- attachedCouplers table for a vehicle whenever its coupling state changes.
+-- We diff against a cached snapshot and emit synthetic attach/detach events
+-- for anything the per-event onCouplerAttached path may have missed.
+local function onObjectCouplingChange(objectId, couplerData)
+  if not network.connection.connected then return end
+  if not M.ownership[objectId] then return end
+  if type(couplerData) ~= "table" then couplerData = {} end
+  local prev = M.known_couplings[objectId] or {}
+  local curr = {}
+  for nodeId, entry in pairs(couplerData) do
+    if type(entry) == "table" and entry.obj2id and entry.obj2nodeId then
+      curr[nodeId] = { obj2id = entry.obj2id, obj2nodeId = entry.obj2nodeId }
+    end
+  end
+  -- New couplings
+  for nodeId, entry in pairs(curr) do
+    local was = prev[nodeId]
+    if not was or was.obj2id ~= entry.obj2id or was.obj2nodeId ~= entry.obj2nodeId then
+      print("[KISS_COUPLER] onObjectCouplingChange attach: " .. objectId .. " node " .. nodeId .. " -> " .. entry.obj2id)
+      send_coupler_attach({
+        obj_a = objectId, obj_b = entry.obj2id,
+        node_a_id = nodeId, node_b_id = entry.obj2nodeId,
+        coupler_tag = "",
+      })
+    end
+  end
+  -- Removed couplings
+  for nodeId, entry in pairs(prev) do
+    if not curr[nodeId] then
+      print("[KISS_COUPLER] onObjectCouplingChange detach: " .. objectId .. " node " .. nodeId)
+      send_coupler_detach({
+        obj_a = objectId, obj_b = entry.obj2id,
+        node_a_id = nodeId, node_b_id = entry.obj2nodeId,
+      })
+    end
+  end
+  M.known_couplings[objectId] = curr
 end
 
 local function attach_coupler(data)
@@ -497,7 +595,20 @@ local function attach_coupler(data)
   local obj_a = M.id_map[data.obj_a]
   local obj_b = M.id_map[data.obj_b]
   if obj_a and obj_b then
-    if M.ownership[obj_a] then return end
+    -- Never reposition a vehicle we own from an inbound network message.
+    -- The remote receive path snaps obj_b via setPositionNoPhysicsReset to
+    -- align coupler nodes, which would yank our own truck/trailer sideways
+    -- when rebroadcast events bounce back to us.
+    if M.ownership[obj_a] or M.ownership[obj_b] then return end
+    -- Idempotency: if this pair is already coupled in either direction,
+    -- skip the snap + reattach so duplicate inbound events don't disrupt
+    -- the active physics constraint.
+    local existing_a = M.coupled_to[obj_a]
+    local existing_b = M.coupled_to[obj_b]
+    if (existing_a and existing_a.truck_id == obj_b) or (existing_b and existing_b.truck_id == obj_a) then
+      print("[KISS_COUPLER] Skipping duplicate coupling for " .. obj_a .. " <-> " .. obj_b)
+      return
+    end
     local vehicle = be:getObjectByID(obj_a)
     local vehicle_b = be:getObjectByID(obj_b)
     if not vehicle then return end
@@ -508,36 +619,29 @@ local function attach_coupler(data)
     local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
     vehicle_b:setPositionNoPhysicsReset(Point3F(pos.x, pos.y, pos.z))
     vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data.node_b_id..")")
-    -- Track coupling: obj_a fired onCouplerAttached (has the coupler node = trailer),
-    -- obj_b is what it attached to (the truck/fifth wheel receiver)
-    local existing = M.coupled_to[obj_a]
-    if (existing and existing.truck_id == obj_b) or (M.coupled_to[obj_b] and M.coupled_to[obj_b].truck_id == obj_a) then
-      print("[KISS_COUPLER] Skipping duplicate coupling for " .. obj_a .. " <-> " .. obj_b)
-    else
-      -- Cache coupler offset vectors in local space (from CG to hitch point).
-      -- These are stored once at attach time and used every tick for offset composition.
-      local trailer_offset = vehicle:getNodePosition(data.node_a_id)
-      local truck_offset = vehicle_b:getNodePosition(data.node_b_id)
-      local hitch_type = classify_hitch(data.coupler_tag or "")
-      M.coupled_to[obj_a] = {
-        truck_id = obj_b,
-        node_a = data.node_a_id,
-        node_b = data.node_b_id,
-        hitch_type = hitch_type,
-        -- Full 3D offset vectors: vehicle CG → coupling point, in vehicle local space
-        trailer_offset = {trailer_offset.x, trailer_offset.y, trailer_offset.z},
-        truck_offset = {truck_offset.x, truck_offset.y, truck_offset.z},
-      }
-      print("[KISS_COUPLER] Hitch type: " .. hitch_type .. " (tag: " .. (data.coupler_tag or "nil") .. ")")
-      -- Notify both vehicles of their coupled state
-      vehicle:queueLuaCommand("kiss_electrics.set_coupled(true)")
-      vehicle_b:queueLuaCommand("kiss_electrics.set_coupled(true)")
-      -- Release parking brake on the trailer — trailers don't send VehicleUpdate
-      -- (no input/gearbox data) so kiss_input.apply never fires for them
-      vehicle:queueLuaCommand("input.event('parkingbrake', 0, 2)")
-      print("[KISS_COUPLER] Marked vehicle " .. obj_a .. " (trailer) as coupled to " .. obj_b .. " (truck)")
-    end
-    onCouplerAttached(obj_a, obj_b, data.node_a_id, data.node_b_id)
+    -- Cache coupler offset vectors in local space (from CG to hitch point).
+    -- These are stored once at attach time and used every tick for offset composition.
+    local trailer_offset = vehicle:getNodePosition(data.node_a_id)
+    local truck_offset = vehicle_b:getNodePosition(data.node_b_id)
+    local hitch_type = classify_hitch(data.coupler_tag or "")
+    M.coupled_to[obj_a] = {
+      truck_id = obj_b,
+      node_a = data.node_a_id,
+      node_b = data.node_b_id,
+      hitch_type = hitch_type,
+      -- Full 3D offset vectors: vehicle CG → coupling point, in vehicle local space
+      trailer_offset = {trailer_offset.x, trailer_offset.y, trailer_offset.z},
+      truck_offset = {truck_offset.x, truck_offset.y, truck_offset.z},
+    }
+    M.coupled_trucks[obj_b] = obj_a
+    print("[KISS_COUPLER] Hitch type: " .. hitch_type .. " (tag: " .. (data.coupler_tag or "nil") .. ")")
+    -- Notify both vehicles of their coupled state
+    vehicle:queueLuaCommand("kiss_electrics.set_coupled(true)")
+    vehicle_b:queueLuaCommand("kiss_electrics.set_coupled(true)")
+    -- Release parking brake on the trailer — trailers don't send VehicleUpdate
+    -- (no input/gearbox data) so kiss_input.apply never fires for them
+    vehicle:queueLuaCommand("input.event('parkingbrake', 0, 2)")
+    print("[KISS_COUPLER] Marked vehicle " .. obj_a .. " (trailer) as coupled to " .. obj_b .. " (truck)")
   end
 end
 
@@ -545,7 +649,9 @@ local function detach_coupler(data)
   local obj_a = M.id_map[data.obj_a]
   local obj_b = M.id_map[data.obj_b]
   if obj_a and obj_b then
-    if M.ownership[obj_a] then return end
+    -- Never act on inbound detach for a vehicle we own; the owner's local
+    -- physics already handled it.
+    if M.ownership[obj_a] or M.ownership[obj_b] then return end
     local vehicle = be:getObjectByID(obj_a)
     local vehicle_b = be:getObjectByID(obj_b)
     if not vehicle then return end
@@ -555,12 +661,11 @@ local function detach_coupler(data)
     -- Clear coupling tracking in both directions
     M.coupled_to[obj_b] = nil
     M.coupled_to[obj_a] = nil
+    M.coupled_trucks[obj_a] = nil
+    M.coupled_trucks[obj_b] = nil
     -- Notify both vehicles they are no longer coupled
     vehicle:queueLuaCommand("kiss_electrics.set_coupled(false)")
     vehicle_b:queueLuaCommand("kiss_electrics.set_coupled(false)")
-    onCouplerDetached(obj_a, obj_b, data.node_a_id, data.node_b_id)
-    onCouplerDetach(obj_a, data.node_a_id)
-    onCouplerDetach(obj_b, data.node_b_id)
   end
 end
 
@@ -624,6 +729,18 @@ local function onVehicleDestroyed(id)
     )
     update_ownership_limits()
   end
+  M.known_couplings[id] = nil
+  -- Clear any coupling state referencing this vehicle
+  if M.coupled_to[id] then
+    local truck_id = M.coupled_to[id].truck_id
+    if truck_id then M.coupled_trucks[truck_id] = nil end
+    M.coupled_to[id] = nil
+  end
+  if M.coupled_trucks[id] then
+    local trailer_id = M.coupled_trucks[id]
+    M.coupled_to[trailer_id] = nil
+    M.coupled_trucks[id] = nil
+  end
 end
 
 local function onVehicleResetted(id)
@@ -666,6 +783,8 @@ local function onMissionLoaded(mission)
   M.id_map = {}
   M.ownership = {}
   M.coupled_to = {}
+  M.coupled_trucks = {}
+  M.known_couplings = {}
   M.loading_map = false
   first_vehicle = true
 end
@@ -693,6 +812,9 @@ M.attach_coupler = attach_coupler
 M.detach_coupler = detach_coupler
 M.attach_coupler_inner = attach_coupler_inner
 M.detach_coupler_inner = detach_coupler_inner
+M.onCouplerAttached = onCouplerAttached
+M.onCouplerDetached = onCouplerDetached
+M.onObjectCouplingChange = onObjectCouplingChange
 
 M.set_position = set_position
 M.set_position_rotation = set_position_rotation

@@ -120,9 +120,17 @@ local function update(dt)
             ))
           end
         else
-          -- Normal vehicle: full PD sync
+          -- Normal vehicle: full PD sync.
+          -- For trucks with a coupled trailer on this client, skip try_rude —
+          -- the 6m teleport would yank the whole coupled rig when PD lag grows
+          -- under the trailer's drag load.
+          local is_coupled_truck = vehiclemanager.coupled_trucks and vehiclemanager.coupled_trucks[id] ~= nil
           vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
-          vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.update("..dt..") end")
+          if is_coupled_truck then
+            vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.update("..dt..", true) end")
+          else
+            vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.update("..dt..") end")
+          end
         end
       end
     end
