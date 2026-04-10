@@ -19,7 +19,6 @@ M.is_network_session = false
 M.delay_spawns = false
 M.vehicle_buffer = {}
 M.coupled_to = {} -- local_game_id (trailer) → local_game_id (truck)
-local deferred_attaches = {} -- coupler attaches waiting for vehicle initialization
 
 local function get_current_time()
   local date = os.date("*t", os.time() + network.connection.time_offset)
@@ -269,68 +268,6 @@ local function onUpdate(dt)
     meta_timer = meta_timer - 1
   end
 
-  -- Process deferred coupler attaches
-  local i = 1
-  while i <= #deferred_attaches do
-    local da = deferred_attaches[i]
-    da.delay = da.delay - dt
-    if da.delay <= 0 then
-      -- Buffered raw network event: re-dispatch through attach_coupler
-      if da.raw_data then
-        print("[KISS_COUPLER] Retrying buffered attach event")
-        table.remove(deferred_attaches, i)
-        attach_coupler(da.raw_data)
-        goto continue
-      end
-      local vehicle = be:getObjectByID(da.trailer_id)
-      local vehicle_b = be:getObjectByID(da.truck_id)
-      if vehicle and vehicle_b then
-        -- Position truck so coupler nodes align
-        local rot_a = quat(vehicle:getRotation())
-        local rot_b = quat(vehicle_b:getRotation())
-        local node_a_pos = vec3(vehicle:getPosition()) + rot_a * vec3(vehicle:getNodePosition(da.node_a_id))
-        local node_b_pos = vec3(vehicle_b:getPosition()) + rot_b * vec3(vehicle_b:getNodePosition(da.node_b_id))
-        local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
-        print(string.format("[KISS_COUPLER] Executing deferred attach: trailer=%d truck=%d node_dist=%.3f",
-          da.trailer_id, da.truck_id, node_a_pos:distance(node_b_pos)))
-        vehicle_b:setPositionNoPhysicsReset(Point3F(pos.x, pos.y, pos.z))
-        -- Reactivate trailer couplers then attach from both sides
-        vehicle:queueLuaCommand("kiss_electrics.reactivate_couplers()")
-        vehicle:queueLuaCommand("kiss_couplers.attach_coupler("..da.node_a_id..")")
-        vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..da.node_b_id..")")
-
-        -- Cache offsets and track coupling (now that vehicles are initialized)
-        local trailer_offset = vehicle:getNodePosition(da.node_a_id)
-        local truck_offset = vehicle_b:getNodePosition(da.node_b_id)
-        local hitch_type = classify_hitch(da.coupler_tag)
-        M.coupled_to[da.trailer_id] = {
-          truck_id = da.truck_id,
-          node_a = da.node_a_id,
-          node_b = da.node_b_id,
-          hitch_type = hitch_type,
-          trailer_offset = {trailer_offset.x, trailer_offset.y, trailer_offset.z},
-          truck_offset = {truck_offset.x, truck_offset.y, truck_offset.z},
-        }
-        print("[KISS_COUPLER] Hitch type: " .. hitch_type .. " (tag: " .. da.coupler_tag .. ")")
-        vehicle:queueLuaCommand("kiss_electrics.set_coupled(true)")
-        vehicle_b:queueLuaCommand("kiss_electrics.set_coupled(true)")
-        vehicle:queueLuaCommand("input.event('parkingbrake', 0, 2)")
-        -- Reset both vehicles in place so they settle into the coupled state
-        print(string.format("[KISS_COUPLER] Coupled trailer=%d to truck=%d, resetting in place", da.trailer_id, da.truck_id))
-        vehicle:reset()
-        vehicle_b:reset()
-        onCouplerAttached(da.trailer_id, da.truck_id, da.node_a_id, da.node_b_id)
-      else
-        print(string.format("[KISS_COUPLER] Deferred attach failed: vehicles not found (trailer=%d truck=%d)",
-          da.trailer_id, da.truck_id))
-      end
-      table.remove(deferred_attaches, i)
-    else
-      i = i + 1
-    end
-    ::continue::
-  end
-
   local tick_time = (1/network.connection.tickrate)
   if timer <  tick_time then
     timer = timer + dt
@@ -556,37 +493,51 @@ local function detach_coupler_inner(data)
 end
 
 local function attach_coupler(data)
-  print(string.format("[KISS_COUPLER] attach_coupler received: obj_a=%s obj_b=%s", tostring(data.obj_a), tostring(data.obj_b)))
-  if data.obj_a == data.obj_b then print("[KISS_COUPLER] REJECTED: self-coupling") return end
+  if data.obj_a == data.obj_b then return end -- Ignore self-coupling
   local obj_a = M.id_map[data.obj_a]
   local obj_b = M.id_map[data.obj_b]
-  if not obj_a or not obj_b then
-    -- Vehicles not spawned yet — buffer the raw network event for retry
-    print(string.format("[KISS_COUPLER] Buffering: id_map miss (obj_a=%s obj_b=%s), will retry", tostring(obj_a), tostring(obj_b)))
-    table.insert(deferred_attaches, {
-      raw_data = data,
-      delay = 2.0,
-    })
-    return
-  end
   if obj_a and obj_b then
-    if M.ownership[obj_a] then print("[KISS_COUPLER] REJECTED: we own obj_a") return end
+    if M.ownership[obj_a] then return end
     local vehicle = be:getObjectByID(obj_a)
     local vehicle_b = be:getObjectByID(obj_b)
-    if not vehicle then print("[KISS_COUPLER] REJECTED: vehicle obj_a not found") return end
-    if not vehicle_b then print("[KISS_COUPLER] REJECTED: vehicle obj_b not found") return end
-    local dist = vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition()))
-    if dist > 15 then print(string.format("[KISS_COUPLER] REJECTED: too far apart (%.1fm)", dist)) return end
-    print(string.format("[KISS_COUPLER] Deferring attach: trailer=%d truck=%d (waiting for vehicles to initialize)",
-      obj_a, obj_b))
-    table.insert(deferred_attaches, {
-      trailer_id = obj_a,
-      truck_id = obj_b,
-      node_a_id = data.node_a_id,
-      node_b_id = data.node_b_id,
-      coupler_tag = data.coupler_tag or "",
-      delay = 1.0,
-    })
+    if not vehicle then return end
+    if not vehicle_b then return end
+    if vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
+    local node_a_pos = vec3(vehicle:getPosition()) + vec3(vehicle:getNodePosition(data.node_a_id))
+    local node_b_pos = vec3(vehicle_b:getPosition()) + vec3(vehicle_b:getNodePosition(data.node_b_id))
+    local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
+    vehicle_b:setPositionNoPhysicsReset(Point3F(pos.x, pos.y, pos.z))
+    vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data.node_b_id..")")
+    -- Track coupling: obj_a fired onCouplerAttached (has the coupler node = trailer),
+    -- obj_b is what it attached to (the truck/fifth wheel receiver)
+    local existing = M.coupled_to[obj_a]
+    if (existing and existing.truck_id == obj_b) or (M.coupled_to[obj_b] and M.coupled_to[obj_b].truck_id == obj_a) then
+      print("[KISS_COUPLER] Skipping duplicate coupling for " .. obj_a .. " <-> " .. obj_b)
+    else
+      -- Cache coupler offset vectors in local space (from CG to hitch point).
+      -- These are stored once at attach time and used every tick for offset composition.
+      local trailer_offset = vehicle:getNodePosition(data.node_a_id)
+      local truck_offset = vehicle_b:getNodePosition(data.node_b_id)
+      local hitch_type = classify_hitch(data.coupler_tag or "")
+      M.coupled_to[obj_a] = {
+        truck_id = obj_b,
+        node_a = data.node_a_id,
+        node_b = data.node_b_id,
+        hitch_type = hitch_type,
+        -- Full 3D offset vectors: vehicle CG → coupling point, in vehicle local space
+        trailer_offset = {trailer_offset.x, trailer_offset.y, trailer_offset.z},
+        truck_offset = {truck_offset.x, truck_offset.y, truck_offset.z},
+      }
+      print("[KISS_COUPLER] Hitch type: " .. hitch_type .. " (tag: " .. (data.coupler_tag or "nil") .. ")")
+      -- Notify both vehicles of their coupled state
+      vehicle:queueLuaCommand("kiss_electrics.set_coupled(true)")
+      vehicle_b:queueLuaCommand("kiss_electrics.set_coupled(true)")
+      -- Release parking brake on the trailer — trailers don't send VehicleUpdate
+      -- (no input/gearbox data) so kiss_input.apply never fires for them
+      vehicle:queueLuaCommand("input.event('parkingbrake', 0, 2)")
+      print("[KISS_COUPLER] Marked vehicle " .. obj_a .. " (trailer) as coupled to " .. obj_b .. " (truck)")
+    end
+    onCouplerAttached(obj_a, obj_b, data.node_a_id, data.node_b_id)
   end
 end
 
@@ -715,7 +666,6 @@ local function onMissionLoaded(mission)
   M.id_map = {}
   M.ownership = {}
   M.coupled_to = {}
-  deferred_attaches = {}
   M.loading_map = false
   first_vehicle = true
 end

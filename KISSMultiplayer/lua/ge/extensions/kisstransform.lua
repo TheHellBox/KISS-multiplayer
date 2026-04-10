@@ -43,11 +43,87 @@ local function update(dt)
           M.inactive[id] = false
         end
 
-        -- All vehicles (coupled or not) use the same PD sync.
-        -- Coupled trailers are driven by coupler physics attached to the truck —
-        -- the PD forces on the trailer are naturally overridden by the constraint.
-        vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
-        vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.update("..dt..") end")
+        local coupling = vehiclemanager.coupled_to[id]
+        if coupling then
+          local truck_id = coupling.truck_id
+          -- Coupled vehicle (trailer): constraint-preserving sync
+          local truck = be:getObjectByID(truck_id)
+          local truck_transform = M.received_transforms[truck_id]
+          if truck and truck_transform then
+            local truck_pos = vec3(truck:getPosition())
+            local truck_rot = quat(truck:getRotation())
+            -- Use cached offset vectors from attach time (local space, full 3D)
+            local truck_offset = vec3(coupling.truck_offset[1], coupling.truck_offset[2], coupling.truck_offset[3])
+            local trailer_offset = vec3(coupling.trailer_offset[1], coupling.trailer_offset[2], coupling.trailer_offset[3])
+            local coupled_data
+
+            if coupling.hitch_type == "fifthwheel" then
+              -- FIFTH WHEEL PATH: 1 DOF (yaw only)
+              -- Compute target articulation angle from network rotations
+              local net_truck_rot = quat(truck_transform.rotation)
+              local net_trailer_rot = quat(transform.rotation)
+              local net_truck_fwd = net_truck_rot * vec3(0, 1, 0)
+              local net_trailer_fwd = net_trailer_rot * vec3(0, 1, 0)
+              local net_truck_yaw = math.atan2(net_truck_fwd.x, net_truck_fwd.y)
+              local net_trailer_yaw = math.atan2(net_trailer_fwd.x, net_trailer_fwd.y)
+              local target_artic = net_trailer_yaw - net_truck_yaw
+              target_artic = math.atan2(math.sin(target_artic), math.cos(target_artic))
+
+              -- Kingpin world pos: truck full rotation * full 3D truck offset
+              local kingpin_world = truck_pos + truck_rot * truck_offset
+
+              -- Expected trailer heading: yaw only — clamp pitch/roll to zero
+              local truck_fwd = truck_rot * vec3(0, 1, 0)
+              local truck_yaw = math.atan2(truck_fwd.x, truck_fwd.y)
+              local expected_trailer_yaw = truck_yaw + target_artic
+              local expected_trailer_rot = quatFromEuler(0, 0, expected_trailer_yaw)
+
+              -- Expected trailer CG: kingpin minus yaw-rotated full 3D trailer offset
+              local expected_pos = kingpin_world - expected_trailer_rot * trailer_offset
+
+              coupled_data = {
+                expected_pos = {expected_pos.x, expected_pos.y, expected_pos.z},
+                hitch_type = "fifthwheel",
+                target_artic = target_artic,
+                kingpin_world = {kingpin_world.x, kingpin_world.y, kingpin_world.z},
+              }
+            else
+              -- BALL HITCH / PINTLE PATH: 3 DOF (full quaternion)
+              -- Compute target relative rotation from network rotations
+              local net_truck_rot = quat(truck_transform.rotation)
+              local net_trailer_rot = quat(transform.rotation)
+              local target_rel_rot = net_truck_rot:inversed() * net_trailer_rot
+
+              -- Hitch point world pos: full 3D offset with full truck rotation
+              local hitch_world = truck_pos + truck_rot * truck_offset
+
+              -- Expected trailer world rotation = truck rotation * relative rotation
+              local expected_trailer_rot = truck_rot * target_rel_rot
+
+              -- Expected trailer CG: hitch point minus full-rotated full 3D trailer offset
+              local expected_pos = hitch_world - expected_trailer_rot * trailer_offset
+
+              coupled_data = {
+                expected_pos = {expected_pos.x, expected_pos.y, expected_pos.z},
+                hitch_type = coupling.hitch_type,  -- "ball" or "pintle"
+                target_rel_rot = {target_rel_rot.x, target_rel_rot.y, target_rel_rot.z, target_rel_rot.w},
+                kingpin_world = {hitch_world.x, hitch_world.y, hitch_world.z},
+              }
+            end
+
+            -- Pass expected position to vehicle-side for drift detection
+            vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
+            vehicle:queueLuaCommand(string.format(
+              "if kiss_transforms then kiss_transforms.update_coupled(%f, %q) end",
+              dt,
+              jsonEncode(coupled_data)
+            ))
+          end
+        else
+          -- Normal vehicle: full PD sync
+          vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
+          vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.update("..dt..") end")
+        end
       end
     end
   end
