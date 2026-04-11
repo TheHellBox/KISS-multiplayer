@@ -28,8 +28,8 @@ pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::Discord
             continue;
         }
         let mut url = request.url().to_string();
-        //println!("{:?}", url);
         url.remove(0);
+        let url = url.replace("http:/", "http://").replace("https:/", "https://");
         if url == "check" {
             let response = tiny_http::Response::from_string("ok");
             request.respond(response).unwrap();
@@ -86,7 +86,8 @@ pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::Discord
             continue;
         }
         // Prevent unrestricted internet/local network access (SSRF)
-        if !url.starts_with("http://kissmp.thehellbox.ru") && !url.starts_with("https://kissmp.thehellbox.ru") {
+        if !url.starts_with(&format!("http://{}", shared::MASTER_SERVER)) 
+            && !url.starts_with(&format!("https://{}", shared::MASTER_SERVER)) {
             let response = tiny_http::Response::from_string("[]");
             let _ = request.respond(response);
             continue;

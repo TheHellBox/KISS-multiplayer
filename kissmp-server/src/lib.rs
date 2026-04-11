@@ -135,7 +135,7 @@ impl Server {
                 self.upnp_port = Some(port);
                 info!("Fetching public IP address...");
                 let socket = UdpSocket::bind(&addr).unwrap();
-                let _ = socket.connect("kissmp.thehellbox.ru:3691");
+                let _ = socket.connect(format!("{}:3691", shared::MASTER_SERVER));
                 let mut i = 0;
                 while i < 5 {
                     let _ = socket.send(b"hi");
@@ -288,7 +288,7 @@ impl Server {
         let client = self.reqwest_client.clone();
         tokio::spawn(async move {
             let _ = client
-                .post("http://kissmp.thehellbox.ru:3692")
+                .post(format!("http://{}:3692", shared::MASTER_SERVER))
                 .body(server_info)
                 .send()
                 .await;

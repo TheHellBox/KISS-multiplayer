@@ -24,6 +24,8 @@ pub const VERSION: (u32, u32) = (
     parse_env_u32(env!("CARGO_PKG_VERSION_MINOR"))
 );
 
+pub const MASTER_SERVER: &str = "kissmp.thehellbox.ru";
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientInfoPrivate {
     pub name: String,
