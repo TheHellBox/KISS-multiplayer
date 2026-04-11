@@ -114,7 +114,6 @@ async fn connect_to_server(
         
         let mut transport = quinn::TransportConfig::default();
         transport.max_idle_timeout(Some(IdleTimeout::try_from(SERVER_IDLE_TIMEOUT).unwrap()));
-        transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
 
         // settings for VPN like Hamachi
         transport.initial_mtu(1200);
@@ -143,30 +142,6 @@ async fn connect_to_server(
             return;
         }
     };
-
-    // Send initial client info to establish connection
-    let client_info = shared::ClientCommand::ClientInfo(shared::ClientInfoPrivate {
-        name: "Bridge Client".to_string(),
-        client_version: shared::VERSION,
-        secret: String::from("bridge"),
-        steamid64: None,
-    });
-
-    let client_info_data = bincode::serialize(&client_info).unwrap();
-
-    // Send client info through reliable stream
-    let mut send_stream = match server_connection.open_uni().await {
-        Ok(stream) => stream,
-        Err(e) => {
-            error!("Failed to open send stream: {}", e);
-            return;
-        }
-    };
-
-    if let Err(e) = send(&mut send_stream, &client_info_data).await {
-        error!("Failed to send client info: {}", e);
-        return;
-    }
 
     // Wait for server info response
     let mut stream = match server_connection.accept_uni().await {

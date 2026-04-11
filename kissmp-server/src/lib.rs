@@ -175,9 +175,8 @@ impl Server {
 
         let mut transport = quinn::TransportConfig::default();
         transport.max_idle_timeout(Some(
-            IdleTimeout::try_from(std::time::Duration::from_secs(60)).unwrap(),
+            IdleTimeout::try_from(std::time::Duration::from_secs(10)).unwrap(),
         ));
-        transport.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
 
         // settings for VPN like Hamachi
         transport.initial_mtu(1200);
@@ -306,23 +305,6 @@ impl Server {
         debug!("Connection handshake starting...");
         debug!("Connection stats: {:?}", connection.stats());
 
-        // timeout for receiving client info
-        let _client_info = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            async {
-                let mut stream = connection.accept_uni().await?;
-                debug!("Receiving client info stream...");
-                let mut buf = [0; 4];
-                stream.read_exact(&mut buf[0..4]).await?;
-                let len = u32::from_le_bytes(buf).min(16384) as usize;
-                debug!("Expected client info length: {}", len);
-                let mut buf: Vec<u8> = vec![0; len];
-                stream.read_exact(&mut buf).await?;
-                debug!("Received client info bytes: {} bytes", buf.len());
-                Ok::<_, anyhow::Error>(buf)
-            }
-        ).await;
-
         if self.connections.len() >= self.max_players.into() {
             connection.close(0u32.into(), b"Server is full");
             return Err(anyhow::Error::msg("Server is full"));
@@ -405,17 +387,15 @@ impl Server {
                 .await
                 .unwrap();
             debug!("[CONNECT_TASK] Starting drive_receive for {}", id);
-            if let Err(_e) = Self::drive_receive(
+            let _ = Self::drive_receive(
                 id,
                 connection_clone.clone(),
                 client_events_tx.clone(),
             )
-            .await
-            {
-                let _ = client_events_tx
-                    .send((id, IncomingEvent::ConnectionLost))
-                    .await;
-            }
+            .await;
+            let _ = client_events_tx
+                .send((id, IncomingEvent::ConnectionLost))
+                .await;
         });
 
         let server_info =

@@ -96,6 +96,12 @@ local function disconnect(data)
   end
   kissui.chat.add_message(text)
   M.connection.connected = false
+  
+  if vehiclemanager then
+    vehiclemanager.loading_map = false
+  end
+  kissui.show_download = false
+
   if M.connection.tcp then
     M.connection.tcp:close()
     M.connection.tcp = nil
@@ -103,13 +109,13 @@ local function disconnect(data)
 
   cancel_download()
 
-  -- Delete the 3D player models from world memory
-  for _, v in pairs(kissplayers.players) do
-    if v then v:delete() end
-  end
-  for _, v in pairs(kissplayers.players_in_cars) do
-    if v then v:delete() end
-  end
+  -- -- Delete the 3D player models from world memory
+  -- for _, v in pairs(kissplayers.players) do
+  --   if v then v:delete() end
+  -- end
+  -- for _, v in pairs(kissplayers.players_in_cars) do
+  --   if v then v:delete() end
+  -- end
 
   M.players = {}
   kissplayers.players = {}
@@ -180,6 +186,13 @@ local function handle_player_disconnected(data)
   if kissplayers.players_in_cars[id] then
     kissplayers.delete_player_head(id)
   end
+
+  -- Delete the 3D player models from world memory
+  if kissplayers.players[id] then
+    kissplayers.players[id]:delete()
+    kissplayers.players[id] = nil
+  end
+  kissplayers.player_transforms[id] = nil
 end
 
 local function handle_chat(data)
