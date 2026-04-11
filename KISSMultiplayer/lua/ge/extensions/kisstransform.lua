@@ -18,6 +18,7 @@ local transform_pos = vec3()
 local camera_pos = vec3()
 local function update(dt)
   if not network.connection.connected then return end
+  if vehiclemanager and vehiclemanager.loading_map then return end
   -- Get rotation/angular velocity from vehicle lua
   for vid, v in vehiclesIterator() do
     if not M.inactive[vid] then

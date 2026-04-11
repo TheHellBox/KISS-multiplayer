@@ -181,6 +181,8 @@ local function update_player_head(dt, player_id, vehicle)
 end
 
 local function update_players(_, dt_sim)
+  if vehiclemanager and vehiclemanager.loading_map then return end
+
   update_unicycle_replacements(dt_sim)
 
   camera_pos:set(core_camera.getPositionXYZ())
