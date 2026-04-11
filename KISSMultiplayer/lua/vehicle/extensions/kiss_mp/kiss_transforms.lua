@@ -166,13 +166,12 @@ local function update(dt, skip_rude, ang_scale)
   local angle_delta_euler = angle_delta:toEulerYXZ()
   local angular_force
   if skip_rude then
-    -- Coupled truck: drop the proportional angle-error term
-    -- (angle_delta_euler * ang_force). That term was the jackknife driver
-    -- because it slams a rigid-body rotation impulse into the chassis
-    -- every tick, which whip-cracks the hitch node sideways faster than
-    -- the trailer pivot can absorb. Keep only the velocity-matching and
-    -- damping terms so the ghost chassis rotates at the owner's yaw rate
-    -- smoothly — small absolute angle drift is bounded by rate tracking.
+    -- Coupled truck: no proportional angle term at all. Empirically any
+    -- gain (even 2, 1/50 of the non-coupled value) reintroduces jackknife
+    -- because per-tick rigid-body chassis rotation generates a tangential
+    -- velocity at the hitch node that the trailer pivot can't absorb
+    -- smoothly. Rate matching + damping only; heading drift is recovered
+    -- via the GE-side cluster teleport fallback when it grows large.
     angular_force = (angular_velocity_difference + c_ang * local_ang_vel) * dt
   else
     angular_force = (angular_velocity_difference + angle_delta_euler * ang_force + c_ang * local_ang_vel) * dt
