@@ -85,6 +85,12 @@ pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::Discord
             request.respond(response).unwrap();
             continue;
         }
+        // Prevent unrestricted internet/local network access (SSRF)
+        if !url.starts_with("http://kissmp.thehellbox.ru") && !url.starts_with("https://kissmp.thehellbox.ru") {
+            let response = tiny_http::Response::from_string("[]");
+            let _ = request.respond(response);
+            continue;
+        }
         // Timeout so a dead master server domain doesn't hang the game indefinitely
         if let Ok(Ok(response)) = tokio::time::timeout(
             std::time::Duration::from_secs(5),
