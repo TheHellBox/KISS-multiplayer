@@ -23,7 +23,7 @@ pub async fn spawn_http_proxy(discord_tx: std::sync::mpsc::Sender<crate::Discord
             Ok(Ok(req)) => req,
             _ => continue,
         };
-        let addr = request.remote_addr();
+        let addr = request.remote_addr().unwrap();
         if addr.ip() != Ipv4Addr::new(127, 0, 0, 1) {
             continue;
         }
