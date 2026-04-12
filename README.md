@@ -6,35 +6,41 @@
 ## Main features
 - Cross platform, open source & free server written in Rust
 - QUIC-based networking (with help of quinn and tokio for async)
-- Server list with search and ability to save favorites
-- Automatic synchronization of your mods with the server
+- Built-in server browser with search and favourites
+- Automatic synchronisation of your mods with the server
 - High overall performance which allows for more players to play on the same server
-- Low traffic usage
-- Lag compensation
-- In-game text chat
-- In-game **voice chat**
+- Low traffic usage and lag compensation
+- In-game text chat and **voice chat**
 - Lua API for creating server-side addons
-- Cross platform bridge (less Wine applications for Linux users)
-- Builtin server list
+- Client-side security settings to prevent unwanted scripts or downloads
+- Cross-platform, native binaries (Windows, Linux-x86, Linux-ARM)
 
 ## Contributors
-- Dummiesman (most of the UI code, huge contributions to the core code)
+KissMP was originally created by [**TheHellBox**](https://github.com/TheHellBox); with huge contributions to the core code and UI by [**Dummiesman**](https://github.com/Dummiesman) and to the backend by [**WhiteHusky**](https://github.com/WhiteHusky).
+
+The project is currently led and maintained by [**Vlad**](https://github.com/Vlad118); alongside core developers [**Zeit**](https://github.com/DaddelZeit) (Lua physics and UI), [**Florin**](https://github.com/florinm03) (Lua and support), and other wonderful contributors and testers from the [Discord](https://discord.gg/ANPsDkeVV).
 
 ## Installation
-- Drop KISSMultiplayer.zip into the /Documents/BeamNG.drive/mods folder. The archive name HAS to be named KISSMultiplayer.zip in order 
-for the mod to work.
-- You can drop the bridge .exe file to any place you want.
+Make sure to use the latest version from the [Releases page](https://github.com/TheHellBox/KISS-multiplayer/releases/latest).
+- Drop `KISSMultiplayer.zip` into your BeamNG user `mods` folder (default on Windows: `%LOCALAPPDATA%\BeamNG\BeamNG.drive\current\mods`). The archive *has* to be named `KISSMultiplayer.zip` for the mod to work.
+- Extract and drop the bridge/server `.exe` files anywhere you want.
 
 ## Usage
-- Launch the bridge. If everything is correct, it'll show you the text "Bridge is running!" in the console window.
-- Launch the game. After the launch, you should be able to see server list and chat windows. Select a server in the server list
-and hit the connect button.
-- Enjoy playing!
+1. Launch the bridge. If everything is correct, it will say "Bridge is running!" in the console.
+2. Launch the game. You should be able to open the KissMP UI, see the server list and hit connect.
+3. Enjoy playing!
 
-## Server installation
-Just launch the kissmp-server for your platform and you're ready to go.
-More detailed guide on server configuration can be found on this [wiki page](https://kissmp.online/docs/srv_hosting/hosting.html).
+## Hosting a server
+If you are hosting and connecting on the same PC:
+1. Run the bridge and the server executables.
+2. In the game, select Direct Connect and type `127.0.0.1`.
 
+For a friend to connect over the internet:
+1. Ensure they have access to your network (via port-forwarding port `3698` UDP; a VPN like Hamachi/Tailscale; or any other means).
+2. Ensure you have allowed the server through your Windows or Linux Firewall.
+3. They launch the bridge, open the game and Direct Connect using your public/VPN IPv4 address.
+
+More detailed guides on server configuration and addons can be found on our [Wiki](https://github.com/TheHellBox/KISS-multiplayer/wiki).
 
 ## Building
 First, download and install a [Rust toolchain](https://rustup.rs/)
@@ -44,7 +50,7 @@ After, clone the repository
 git clone https://github.com/TheHellBox/KISS-multiplayer.git
 cd KISS-multiplayer
 ```
-Now you are ready to build server and bridge.
+Now you are ready to build the server and bridge.
 ### Server
 ```sh
 cd kissmp-server
