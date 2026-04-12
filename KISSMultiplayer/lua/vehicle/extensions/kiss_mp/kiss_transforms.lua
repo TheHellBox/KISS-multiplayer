@@ -166,13 +166,22 @@ local function update(dt, skip_rude, ang_scale)
   local angle_delta_euler = angle_delta:toEulerYXZ()
   local angular_force
   if skip_rude then
-    -- Coupled truck: no proportional angle term at all. Empirically any
-    -- gain (even 2, 1/50 of the non-coupled value) reintroduces jackknife
-    -- because per-tick rigid-body chassis rotation generates a tangential
-    -- velocity at the hitch node that the trailer pivot can't absorb
-    -- smoothly. Rate matching + damping only; heading drift is recovered
-    -- via the GE-side cluster teleport fallback when it grows large.
-    angular_force = (angular_velocity_difference + c_ang * local_ang_vel) * dt
+    -- Coupled truck: weak proportional angle term + rate matching + damping.
+    -- Full-strength proportional (ang_force = 100) was the jackknife driver
+    -- because per-tick rigid-body rotation whip-cracked the hitch. Dropping
+    -- it entirely let heading drift go unbounded, which projected into
+    -- lateral position drift over time. At ~1/50 of the non-coupled gain
+    -- the restoring spring closes heading error over a few seconds without
+    -- exceeding the hitch pivot tolerance per tick.
+    local coupled_ang_force = 2
+    angular_force = (angular_velocity_difference + angle_delta_euler * coupled_ang_force + c_ang * local_ang_vel) * dt
+    -- Hard magnitude cap: even at low gain, a large angle_delta from a lag
+    -- spike or late packet could still whip the hitch. Clamp before the
+    -- 25-gate below.
+    local coupled_cap = 3
+    if angular_force:length() > coupled_cap then
+      angular_force = angular_force:normalized() * coupled_cap
+    end
   else
     angular_force = (angular_velocity_difference + angle_delta_euler * ang_force + c_ang * local_ang_vel) * dt
   end

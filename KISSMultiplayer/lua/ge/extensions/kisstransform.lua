@@ -70,29 +70,12 @@ local function find_truck_in_cluster(members)
   return members[1]
 end
 
--- Rigid-body snap of every cluster member around the truck's current pose:
---   new_pos = pivot_target + rot_delta * (member_pos - pivot_current)
---   new_rot = rot_delta * member_rot
--- This translates AND rotates the whole cluster as a single rigid body,
--- preserving the relative pose between members (so the coupler constraint
--- is not disturbed) while atomically correcting heading error that the
--- per-tick PD can't touch without whip-cracking the hitch.
---
--- Uses setPosRot rather than setPositionNoPhysicsReset because we need to
--- snap rotation too; setPosRot may do a physics reset (velocity cleared,
--- beams settled) but applied uniformly across both cluster members with
--- matching relative pose, the coupler should re-latch immediately on the
--- next physics tick.
-local function teleport_cluster(members, pivot_current, pivot_target, rot_delta)
+local function teleport_cluster(members, ox, oy, oz)
   for _, id in ipairs(members) do
     local v = be:getObjectByID(id)
     if v then
-      local cur_pos = vec3(v:getPosition())
-      local cur_rot = quat(v:getRefNodeMatrix():toQuatF())
-      local offset = cur_pos - pivot_current
-      local new_pos = pivot_target + rot_delta * offset
-      local new_rot = rot_delta * cur_rot
-      v:setPosRot(new_pos.x, new_pos.y, new_pos.z, new_rot.x, new_rot.y, new_rot.z, new_rot.w)
+      local p = vec3(v:getPosition())
+      v:setPositionNoPhysicsReset(Point3F(p.x + ox, p.y + oy, p.z + oz))
     end
   end
 end
@@ -232,14 +215,9 @@ local function update(dt)
                 local truck_vehicle = be:getObjectByID(truck_id)
                 local truck_transform = M.received_transforms[truck_id]
                 if truck_vehicle and truck_transform then
-                  local pivot_current = vec3(truck_vehicle:getPosition())
-                  local pivot_target  = vec3(truck_transform.position)
-                  local truck_cur_rot = quat(truck_vehicle:getRefNodeMatrix():toQuatF())
-                  local truck_tgt_rot = quat(truck_transform.rotation)
-                  -- rot_delta rotates current truck orientation onto target:
-                  --   rot_delta * truck_cur_rot = truck_tgt_rot
-                  local rot_delta = truck_tgt_rot * truck_cur_rot:inversed()
-                  teleport_cluster(members, pivot_current, pivot_target, rot_delta)
+                  local tc = vec3(truck_vehicle:getPosition())
+                  local tt = vec3(truck_transform.position)
+                  teleport_cluster(members, tt.x - tc.x, tt.y - tc.y, tt.z - tc.z)
                   cluster_teleport_cooldowns[key] = now
                   print(string.format(
                     "[KISS_CLUSTER] Teleported cluster %d (drift=%.2fm, members=%d)",

@@ -117,76 +117,11 @@ local function update_engine_state()
   end
 end
 
--- Pending coupler-attach retries. tryAttachGroupImpulse initiates a coupler
--- search but the C++ latch happens asynchronously over the next few hundred
--- ms. If the controller is asked to retract its legs before the coupler is
--- actually latched, its state machine refuses and the legs stay down.
--- Retry several times over the first ~500ms so the call eventually fires
--- against an attached controller.
--- entry: { ctrl = controller, attempts = N, next_at = seconds, interval = seconds }
-local pending_retracts = {}
-local retract_timer = 0
-
--- Best-effort "is this advancedCouplerControl attached?" probe. The
--- controller's internal API isn't documented here, so we sniff a few
--- likely field/method names. If nothing matches we return false and the
--- retry loop falls through to its attempt budget — no regression vs. the
--- pre-guard behavior.
-local function is_controller_attached(ctrl)
-  if not ctrl then return false end
-  -- Field sniff: advancedCouplerControl typically tracks attachment via
-  -- a notAttached flag (0 = attached, 1 = detached) on the controller
-  -- object itself (distinct from the synced electric value, which on a
-  -- ghost reflects the OWNER's state rather than local physical state).
-  if ctrl.notAttached ~= nil then
-    return ctrl.notAttached == 0 or ctrl.notAttached == false
-  end
-  if ctrl.attached == true then return true end
-  if ctrl.groupAttached == true then return true end
-  if type(ctrl.isAttached) == "function" then
-    local ok, result = pcall(ctrl.isAttached)
-    if ok and result then return true end
-  end
-  return false
-end
-
 local function updateGFX(dt)
   engine_timer = engine_timer + dt
   if engine_timer > 5 then
     update_engine_state()
     engine_timer = engine_timer - 5
-  end
-
-  -- Drain pending coupler-attach retries. Re-fires tryAttachGroupImpulse
-  -- on each pending controller every `interval` seconds for up to
-  -- `attempts` total. The first call from update_advanced_coupler_state
-  -- may race with the C++ coupler latch and silently no-op (controller
-  -- refuses to retract legs because it doesn't think it's attached yet);
-  -- by the third or fourth retry the latch has completed and the call
-  -- succeeds, running the full connect state machine including leg
-  -- retraction. An attached-state probe stops the retries as soon as
-  -- we can confirm the controller has latched, to avoid extra calls
-  -- that might visibly replay the connect animation.
-  retract_timer = retract_timer + dt
-  for i = #pending_retracts, 1, -1 do
-    local entry = pending_retracts[i]
-    if retract_timer >= entry.next_at then
-      -- Fire the impulse first — this is what actually triggers the
-      -- full connect sequence (including leg retract) if the coupler
-      -- is latched now.
-      entry.ctrl.tryAttachGroupImpulse()
-      -- Then check state. If the controller now reports attached, one
-      -- call after latch was enough; drop the entry and stop retrying.
-      if is_controller_attached(entry.ctrl) then
-        table.remove(pending_retracts, i)
-      else
-        entry.attempts = entry.attempts - 1
-        entry.next_at = retract_timer + entry.interval
-        if entry.attempts <= 0 then
-          table.remove(pending_retracts, i)
-        end
-      end
-    end
   end
 end
 
@@ -259,25 +194,8 @@ local function update_advanced_coupler_state(coupler_control_controller, value)
   local is_open = value > 0.5
   if not is_open then
     coupler_control_controller.tryAttachGroupImpulse()
-    -- Schedule repeated leg-retract attempts. First attempt fires
-    -- immediately on the next updateGFX tick; subsequent attempts every
-    -- 100ms for up to 5 retries. By the last attempt the ball-hitch
-    -- search has had ~500ms to latch — well past worst-case.
-    table.insert(pending_retracts, {
-      ctrl = coupler_control_controller,
-      attempts = 5,
-      next_at = retract_timer,
-      interval = 0.1,
-    })
   else
     coupler_control_controller.detachGroup()
-    -- Cancel any pending retracts for this controller — the user just
-    -- decoupled, no point retracting legs we want extended.
-    for i = #pending_retracts, 1, -1 do
-      if pending_retracts[i].ctrl == coupler_control_controller then
-        table.remove(pending_retracts, i)
-      end
-    end
   end
 end
 
