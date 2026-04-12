@@ -20,6 +20,33 @@ KissMP was originally created by [**TheHellBox**](https://github.com/TheHellBox)
 
 The project is currently led and maintained by [**Vlad**](https://github.com/Vlad118); alongside core developers [**Zeit**](https://github.com/DaddelZeit) (Lua physics and UI), [**Florin**](https://github.com/florinm03) (Lua and support), and other wonderful contributors and testers from the [Discord](https://discord.gg/ANPsDkeVV).
 
+## Repository Structure
+If you are looking to contribute to the codebase, here is how the project is organised:
+
+```text
+├── .github/             # GitHub Actions workflows
+├── docs/                # Markdown documentation files
+├── kissmp-bridge/       # Rust source: Local proxy connecting the game to servers
+├── kissmp-master/       # Rust source: The master server list backend
+├── kissmp-server/       # Rust source: The dedicated multiplayer server
+├── KISSMultiplayer/     # Lua/UI source: The BeamNG.drive client mod
+├── shared/              # Rust source: Shared networking protocols and structs
+├── Cargo.toml           # Rust workspace configuration
+└── README.md
+```
+
+## Release Structure
+
+When downloading a compiled release from the [Releases page](https://github.com/TheHellBox/KISS-multiplayer/releases/latest), the zip file contains the following structure. You only need the OS folder matching your system and the mod zip.
+
+```text
+KissMP_vX.X.X.zip
+├── linux/               # Server and bridge binaries for Linux
+├── linux-arm/           # Server binary for ARM hosts
+├── windows/             # Server and bridge executables for Windows
+└── KISSMultiplayer.zip  # The client mod (Place in your BeamNG mods folder)
+```
+
 ## Installation
 Make sure to use the latest version from the [Releases page](https://github.com/TheHellBox/KISS-multiplayer/releases/latest).
 - Drop `KISSMultiplayer.zip` into your BeamNG user `mods` folder (default on Windows: `%LOCALAPPDATA%\BeamNG\BeamNG.drive\current\mods`). The archive *has* to be named `KISSMultiplayer.zip` for the mod to work.
