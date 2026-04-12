@@ -34,3 +34,10 @@ log = "0.4"
 
 [target.'cfg(unix)'.dependencies]
 steamlocate = "1.0"
+
+[build-dependencies]
+winres = "0.1"
+
+[features]
+default = ["build-icon"]
+build-icon = []
