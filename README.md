@@ -67,7 +67,7 @@ For a friend to connect over the internet:
 2. Ensure you have allowed the server through your Windows or Linux Firewall.
 3. They launch the bridge, open the game and Direct Connect using your public/VPN IPv4 address.
 
-More detailed guides on server configuration and addons can be found on our [Wiki](https://github.com/TheHellBox/KISS-multiplayer/wiki).
+More detailed guides on server configuration and addons can be found on our [Docs](https://github.com/TheHellBox/KISS-multiplayer/blob/master/docs/src/SUMMARY.md).
 
 ## Building
 First, download and install a [Rust toolchain](https://rustup.rs/)
