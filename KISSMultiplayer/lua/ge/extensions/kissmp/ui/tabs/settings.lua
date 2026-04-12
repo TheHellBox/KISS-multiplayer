@@ -69,16 +69,16 @@ end
 local function draw(dt)
   im.Text("User Interface")
   im.Separator()
-  render_sliderF("Interface Scale", "ui.scale", 0.9, 2)
-  render_sliderF("Window Opacity", "ui.window_opacity", 0.3, 1)
+  render_sliderF("UI scale", "ui.scale", 0.9, 2)
+  render_sliderF("Window opacity", "ui.window_opacity", 0.3, 1)
 
   im.NewLine()
-  im.Text("Player Visbility")
+  im.Text("Player Visibility")
   im.Separator()
-  render_checkbox("Show Players In Vehicles", "players.show_drivers")
+  render_checkbox("Show players in vehicles", "players.show_drivers")
   im.NewLine()
-  render_checkbox("Show Name Tags", "players.show_nametags")
-  render_checkbox("Use Player Colors in Name Tags", "players.nametags.colorful")
+  render_checkbox("Show name tags", "players.show_nametags")
+  render_checkbox("Use player colours in name tags", "players.nametags.colorful")
   render_checkbox(nil, "players.nametags.fade")
   local slider_active = config_items["players.nametags.fade"][0]
   if not slider_active then
@@ -88,7 +88,7 @@ local function draw(dt)
   local cursorX = im.GetCursorPosX()
   local distance = config_items["players.nametags.fade"][0]
   im.SetNextItemWidth(im.CalcTextSize(fade_distance_name).x+im.GetTextLineHeight()+im.GetStyle().FramePadding.x*4)
-  if im.BeginCombo("Fade Name Tags Based on Distance", fade_distance_name) then
+  if im.BeginCombo("Fade name tags based on distance", fade_distance_name) then
     for _, v in ipairs(fade_distances) do
       if im.Selectable1(string.format("%s (%dm)", v[1], v[2]), fade_distance_name == v[1]) then
         distance = v[2]
@@ -108,7 +108,7 @@ local function draw(dt)
   if not slider_active then
     im.EndDisabled()
   end
-  render_checkbox("Hide Name Tags Behind Objects", "players.nametags.use_z")
+  render_checkbox("Hide name tags behind objects", "players.nametags.use_z")
 
   im.NewLine()
   im.Text("Performance")
@@ -122,7 +122,7 @@ local function draw(dt)
   local cursorX = im.GetCursorPosX()
   local distance = config_items["perf.view_distance"][0]
   im.SetNextItemWidth(im.CalcTextSize(view_distance_name).x+im.GetTextLineHeight()+im.GetStyle().FramePadding.x*4)
-  if im.BeginCombo("Limit Vehicle View Distance", view_distance_name) then
+  if im.BeginCombo("Limit vehicle view distance", view_distance_name) then
     for _, v in ipairs(view_distances) do
       if im.Selectable1(string.format("%s (%dm)", v[1], v[2]), view_distance_name == v[1]) then
         distance = v[2]
@@ -140,9 +140,9 @@ local function draw(dt)
   if not slider_active then
     im.EndDisabled()
   end
-  help_marker("(Experimental [?])", [[This feature is experimental.
-  It can introduce a small, usually unnoticeable lag spike when approaching vehicles.
-  It will also block the ability to switch to vehicles outside of the view distance.]])
+  help_marker("[?]", [[Experimental:
+  This may introduce a minor lag spike when approaching vehicles.
+  It also prevents you from switching to vehicles currently outside your view distance.]])
   if not slider_active then
     im.BeginDisabled()
   end
@@ -162,7 +162,7 @@ local function draw(dt)
   im.NewLine()
   im.Text("Danger Zone")
   im.Separator()
-  if im.Checkbox("Allow Public Servers to Run Commands", config_items["security.public_scripting"]) then
+  if im.Checkbox("Allow public servers to run commands", config_items["security.public_scripting"]) then
     if config_items["security.public_scripting"][0] then
       im.OpenPopup1("SecurityConfirmationPopup")
       mouse_cursor_pos = im.GetMousePos()
@@ -171,7 +171,7 @@ local function draw(dt)
       kissconfig.set_setting("security.public_scripting", false)
     end
   end
-  if im.Checkbox("Allow Public Servers to Install Mods", config_items["security.public_mods"]) then
+  if im.Checkbox("Allow public servers to install mods", config_items["security.public_mods"]) then
     if config_items["security.public_mods"][0] then
       im.OpenPopup1("SecurityConfirmationPopup")
       mouse_cursor_pos = im.GetMousePos()

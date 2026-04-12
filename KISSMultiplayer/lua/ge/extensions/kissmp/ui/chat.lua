@@ -9,7 +9,7 @@ local message_buffer = imgui.ArrayChar(128)
 
 M.focus_chat = false
 M.chat = {
-  {text = "KissMP chat", has_color = false}
+  {text = "KissMP Chat", has_color = false}
 }
 
 -- Server list update and search
@@ -47,7 +47,7 @@ end
 
 local function draw_player_list()
   imgui.BeginGroup();
-  imgui.Text("Player list:")
+  imgui.Text("Player List:")
   imgui.BeginChild1("PlayerList", imgui.ImVec2(0, 0), true)
   if network.connection.connected then
     for _, player in spairs(network.players, function(t,a,b) return t[b].name:lower() > t[a].name:lower() end) do

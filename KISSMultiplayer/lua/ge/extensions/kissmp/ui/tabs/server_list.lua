@@ -122,11 +122,11 @@ local function draw_list_search_and_filters(show_online_filter)
   imgui.Text("Filters:")
   imgui.SameLine()
 
-  imgui.Checkbox("Not Full", filter_servers_notfull)
+  imgui.Checkbox("Not full", filter_servers_notfull)
 
   imgui.SameLine()
 
-  imgui.Checkbox("Not Empty", filter_servers_notempty)
+  imgui.Checkbox("Not empty", filter_servers_notempty)
 
   if show_online_filter then
     imgui.SameLine()
@@ -206,7 +206,7 @@ local function draw(dt)
       local in_favorites_list = kissui.tabs.favorites.favorite_servers[addr] ~= nil
       if not in_favorites_list then
         imgui.SameLine()
-        if imgui.Button("Add to Favorites###add_favorite_button_" .. tostring(server_count)) then
+        if imgui.Button("Add to Favourites###add_favorite_button_" .. tostring(server_count)) then
           kissui.tabs.favorites.add_server_to_favorites(addr, server)
           update_filtered_servers()
         end
@@ -216,7 +216,7 @@ local function draw(dt)
 
   imgui.PushTextWrapPos(0)
   if not kissui.bridge_launched then
-    imgui.Text("Bridge is not launched. Please, launch the bridge and then hit 'Refresh list' button")
+    imgui.Text("The bridge is not running. Please launch the bridge and then click 'Refresh List'.")
   elseif server_count == 0 then
     imgui.Text("Server list is empty")
   end

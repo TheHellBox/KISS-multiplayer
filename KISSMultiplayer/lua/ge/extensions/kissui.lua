@@ -50,7 +50,7 @@ local function hide_ui()
   M.gui.hideWindow("KissMP")
   M.gui.hideWindow("Chat")
   M.gui.hideWindow("Downloads")
-  M.gui.hideWindow("Add Favorite")
+  M.gui.hideWindow("Add Favourite")
   ui_showing = false
 end
 
@@ -68,15 +68,15 @@ local function open_ui()
   M.gui.registerWindow("KissMP", imgui.ImVec2(256, 256))
   M.gui.registerWindow("Chat", imgui.ImVec2(256, 256))
   M.gui.registerWindow("Downloads", imgui.ImVec2(512, 512))
-  M.gui.registerWindow("Add Favorite", imgui.ImVec2(256, 128))
-  M.gui.registerWindow("Incorrect install detected", imgui.ImVec2(256, 128))
-  M.gui.hideWindow("Add Favorite")
+  M.gui.registerWindow("Add Favourite", imgui.ImVec2(256, 128))
+  M.gui.registerWindow("Incorrect Install Detected", imgui.ImVec2(256, 128))
+  M.gui.hideWindow("Add Favourite")
   show_ui()
 end
 
 local function draw_incorrect_install()
-  if imgui.Begin("Incorrect install detected") then
-    imgui.Text("Incorrect KissMP install. Please, check if mod path is correct")
+  if imgui.Begin("Incorrect Install Detected") then
+    imgui.Text("Incorrect KissMP install. Please check if the mod path is correct.")
   end
   imgui.End()
 end

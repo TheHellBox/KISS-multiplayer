@@ -29,11 +29,11 @@ local function draw(dt)
         kissui.tabs.direct_connect.draw()
         imgui.EndTabItem()
       end
-      if imgui.BeginTabItem("Create server") then
+      if imgui.BeginTabItem("Create Server") then
         kissui.tabs.create_server.draw()
         imgui.EndTabItem()
       end
-      if imgui.BeginTabItem("Favorites") then
+      if imgui.BeginTabItem("Favourites") then
         kissui.tabs.favorites.draw()
         imgui.EndTabItem()
       end
