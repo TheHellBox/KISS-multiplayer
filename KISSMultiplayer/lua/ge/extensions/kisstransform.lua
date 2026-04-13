@@ -15,6 +15,13 @@ M.velocity_error_limit = 10
 
 M.hidden = {}
 
+-- Grace period after a vehicle loses its coupled_to entry. During this
+-- window the vehicle skips full PD sync so a brief detach→re-attach cycle
+-- (e.g. vehicle reset) doesn't slam it with ang_force=100 for a few frames
+-- and rip the physical coupler before the re-attach event arrives.
+local DECOUPLE_GRACE = 3.0
+local decouple_timestamps = {}
+
 -- Cluster-aware teleport state. try_rude is disabled for coupled trucks
 -- because a per-vehicle teleport rips the hitch apart. Instead, when any
 -- member of a coupled cluster drifts beyond CLUSTER_TELEPORT_THRESHOLD, we
@@ -70,12 +77,29 @@ local function find_truck_in_cluster(members)
   return members[1]
 end
 
-local function teleport_cluster(members, ox, oy, oz)
+-- Rigid-body snap of every cluster member around the truck's current pose:
+--   new_pos = pivot_target + rot_delta * (member_pos - pivot_current)
+--   new_rot = rot_delta * member_rot
+-- This translates AND rotates the whole cluster as a single rigid body,
+-- preserving the relative pose between members (so the coupler constraint
+-- is not disturbed) while atomically correcting heading error that the
+-- per-tick PD can't touch without whip-cracking the hitch.
+--
+-- Uses setPosRot rather than setPositionNoPhysicsReset because we need to
+-- snap rotation too; setPosRot may do a physics reset (velocity cleared,
+-- beams settled) but applied uniformly across both cluster members with
+-- matching relative pose, the coupler should re-latch immediately on the
+-- next physics tick.
+local function teleport_cluster(members, pivot_current, pivot_target, rot_delta)
   for _, id in ipairs(members) do
     local v = be:getObjectByID(id)
     if v then
-      local p = vec3(v:getPosition())
-      v:setPositionNoPhysicsReset(Point3F(p.x + ox, p.y + oy, p.z + oz))
+      local cur_pos = vec3(v:getPosition())
+      local cur_rot = quat(v:getRefNodeMatrix():toQuatF())
+      local offset = cur_pos - pivot_current
+      local new_pos = pivot_target + rot_delta * offset
+      local new_rot = rot_delta * cur_rot
+      v:setPosRot(new_pos.x, new_pos.y, new_pos.z, new_rot.x, new_rot.y, new_rot.z, new_rot.w)
     end
   end
 end
@@ -185,6 +209,22 @@ local function update(dt)
             ))
           end
         else
+          -- Grace period: a vehicle that just lost its coupled_to entry
+          -- (e.g. during a reset detach→re-attach cycle) skips full PD sync
+          -- so we don't slam it with ang_force=100 while it's still
+          -- physically coupled, which would rip the coupler apart before
+          -- the re-attach event arrives.
+          local grace_stamp = decouple_timestamps[id]
+          if grace_stamp then
+            local now_t = vehiclemanager.get_current_time()
+            if (now_t - grace_stamp) < DECOUPLE_GRACE then
+              vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
+              goto continue
+            else
+              decouple_timestamps[id] = nil
+            end
+          end
+
           -- Normal vehicle: full PD sync.
           -- For trucks with a coupled trailer on this client, skip try_rude
           -- (the 6m teleport would yank the whole coupled rig) and scale the
@@ -192,9 +232,17 @@ local function update(dt)
           -- heavy trailers get softer angular pushes.
           local trailer_id = vehiclemanager.coupled_trucks and vehiclemanager.coupled_trucks[id]
           local ang_scale = nil
+          local hitch_node_id = nil
+          local truck_mass = vehiclemanager.vehicle_masses and vehiclemanager.vehicle_masses[id]
           if trailer_id then
             local coupling = vehiclemanager.coupled_to[trailer_id]
-            if coupling then ang_scale = coupling.ang_scale end
+            if coupling then
+              ang_scale = coupling.ang_scale
+              -- node_b is the truck-side hitch node ID (cached at attach time).
+              -- Pivoting the truck's PD rotation around this node prevents the
+              -- per-tick rotation correction from side-slapping the trailer.
+              hitch_node_id = coupling.node_b
+            end
           end
 
           -- Cluster-aware emergency teleport: if this vehicle is part of a
@@ -215,9 +263,14 @@ local function update(dt)
                 local truck_vehicle = be:getObjectByID(truck_id)
                 local truck_transform = M.received_transforms[truck_id]
                 if truck_vehicle and truck_transform then
-                  local tc = vec3(truck_vehicle:getPosition())
-                  local tt = vec3(truck_transform.position)
-                  teleport_cluster(members, tt.x - tc.x, tt.y - tc.y, tt.z - tc.z)
+                  local pivot_current = vec3(truck_vehicle:getPosition())
+                  local pivot_target  = vec3(truck_transform.position)
+                  local truck_cur_rot = quat(truck_vehicle:getRefNodeMatrix():toQuatF())
+                  local truck_tgt_rot = quat(truck_transform.rotation)
+                  -- rot_delta rotates current truck orientation onto target:
+                  --   rot_delta * truck_cur_rot = truck_tgt_rot
+                  local rot_delta = truck_tgt_rot * truck_cur_rot:inversed()
+                  teleport_cluster(members, pivot_current, pivot_target, rot_delta)
                   cluster_teleport_cooldowns[key] = now
                   print(string.format(
                     "[KISS_CLUSTER] Teleported cluster %d (drift=%.2fm, members=%d)",
@@ -231,13 +284,16 @@ local function update(dt)
           vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
           if ang_scale then
             vehicle:queueLuaCommand(string.format(
-              "if kiss_transforms then kiss_transforms.update(%f, true, %f) end",
-              dt, ang_scale
+              "if kiss_transforms then kiss_transforms.update(%f, true, %f, %s, %s) end",
+              dt, ang_scale,
+              hitch_node_id and tostring(hitch_node_id) or "nil",
+              truck_mass and tostring(truck_mass) or "nil"
             ))
           else
             vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.update("..dt..") end")
           end
         end
+        ::continue::
       end
     end
   end
@@ -264,6 +320,11 @@ local function push_transform(id, t)
   M.local_transforms[id] = jsonDecode(t)
 end
 
+local function mark_decoupled(id, timestamp)
+  decouple_timestamps[id] = timestamp  -- nil clears
+end
+
+M.mark_decoupled = mark_decoupled
 M.send_transform_updates = send_transform_updates
 M.send_vehicle_transform = send_vehicle_transform
 M.update_vehicle_transform = update_vehicle_transform

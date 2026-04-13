@@ -126,7 +126,7 @@ local function debug_log(dt, linear_force, angular_force, position_delta, veloci
   ))
 end
 
-local function update(dt, skip_rude, ang_scale)
+local function update(dt, skip_rude, ang_scale, hitch_node_id, truck_mass)
   if cooldown_timer > 0 then
     cooldown_timer = cooldown_timer - clamp(dt, 0, 0.02)
     return
@@ -154,6 +154,26 @@ local function update(dt, skip_rude, ang_scale)
   if linear_force:length() > 10 then
     linear_force = linear_force:normalized() * 10
   end
+  -- Coupled trucks: scale PD forces by two factors that multiply together.
+  --
+  -- 1. Mass ratio (ang_scale): truck_mass / (truck_mass + trailer_mass),
+  --    clamped [0.05, 0.5]. Heavier rigs get softer PD so the force
+  --    transmitted through the hitch doesn't exceed trailer beam budgets.
+  --
+  -- 2. Ping / data staleness: the older the received transform data, the
+  --    larger the position delta the PD chases, and the more likely the
+  --    correction overshoots (the target is where the owner WAS, not
+  --    where they ARE). Scale gain inversely with staleness so high-ping
+  --    clients get softer corrections automatically. On LAN (~20ms
+  --    staleness) the scale is ~1.0; at 200ms it drops to ~0.3.
+  --    Applied to ALL vehicles (not just coupled) because overshooting
+  --    hurts responsiveness for solo ghosts too, just less visibly.
+  local staleness = M.received_transform.time_past
+  local ping_scale = clamp(0.03 / math.max(staleness, 0.001), 0.3, 1.0)
+  linear_force = linear_force * ping_scale
+  if skip_rude and ang_scale then
+    linear_force = linear_force * ang_scale
+  end
 
   local local_ang_vel = vec3(
     obj:getYawAngularVelocity(),
@@ -166,21 +186,50 @@ local function update(dt, skip_rude, ang_scale)
   local angle_delta_euler = angle_delta:toEulerYXZ()
   local angular_force
   if skip_rude then
-    -- Coupled truck: weak proportional angle term + rate matching + damping.
-    -- Full-strength proportional (ang_force = 100) was the jackknife driver
-    -- because per-tick rigid-body rotation whip-cracked the hitch. Dropping
-    -- it entirely let heading drift go unbounded, which projected into
-    -- lateral position drift over time. At ~1/50 of the non-coupled gain
-    -- the restoring spring closes heading error over a few seconds without
-    -- exceeding the hitch pivot tolerance per tick.
-    local coupled_ang_force = 2
-    angular_force = (angular_velocity_difference + angle_delta_euler * coupled_ang_force + c_ang * local_ang_vel) * dt
-    -- Hard magnitude cap: even at low gain, a large angle_delta from a lag
-    -- spike or late packet could still whip the hitch. Clamp before the
-    -- 25-gate below.
-    local coupled_cap = 3
-    if angular_force:length() > coupled_cap then
-      angular_force = angular_force:normalized() * coupled_cap
+    -- Coupled truck: yaw-only proportional correction, pivoted around the
+    -- hitch node via the pivot arg to apply_linear_velocity_ang_torque.
+    --
+    -- Axis: compute the yaw error from forward-vectors projected onto the
+    -- horizontal plane, then convert back to a world-up angular velocity.
+    -- Using angle_delta_euler.x directly was unreliable — toEulerYXZ's
+    -- component order is ambiguous for our local convention, and even a
+    -- small bleed into roll/pitch feeds energy into the chain that
+    -- accumulates until something flips. Forward-vector math is
+    -- unambiguous: pure yaw, nothing else.
+    local target_rot = M.target_transform.rotation
+    local cur_rot = quat(obj:getRotation())
+    local target_fwd = target_rot * vec3(0, 1, 0)
+    local cur_fwd = cur_rot * vec3(0, 1, 0)
+    target_fwd.z = 0
+    cur_fwd.z = 0
+    local tlen = target_fwd:length()
+    local clen = cur_fwd:length()
+    local yaw_err = 0
+    if tlen > 0.01 and clen > 0.01 then
+      target_fwd = target_fwd * (1 / tlen)
+      cur_fwd = cur_fwd * (1 / clen)
+      local cross = cur_fwd:cross(target_fwd)
+      yaw_err = math.asin(clamp(cross.z, -1, 1))
+    end
+    -- Gain combines two scales:
+    --   * Speed-inverse: KE grows with v², so soften with speed to keep
+    --     per-tick rotation energy bounded.
+    --   * Mass-linear: the same gain over-rotates a light rig (car+tilt)
+    --     because its moment of inertia is much smaller than a heavy
+    --     tractor. Scale linearly with truck mass around a 5000 kg
+    --     reference, clamped so extreme rigs don't blow up.
+    local speed = vec3(obj:getVelocity()):length()
+    local mass_factor = clamp((truck_mass or 5000) / 5000, 0.3, 2.0)
+    local coupled_ang_force = 2.0 * mass_factor / (1.0 + speed / 5.0)
+    -- Yaw value goes in the x slot to match local_ang_vel convention
+    -- (vec3(yaw, pitch, roll)), since apply_linear_velocity_ang_torque
+    -- reads angular_force.x as the yaw argument.
+    local yaw_term = vec3(yaw_err * coupled_ang_force, 0, 0)
+    angular_force = (angular_velocity_difference + yaw_term + c_ang * local_ang_vel) * dt * ping_scale
+    -- Hard cap, tightened from 3 → 1 now that per-node forces scale with
+    -- distance from the hitch pivot (can be ~2x longer arm than CG pivot).
+    if angular_force:length() > 1 then
+      angular_force = angular_force:normalized() * 1
     end
   else
     angular_force = (angular_velocity_difference + angle_delta_euler * ang_force + c_ang * local_ang_vel) * dt
@@ -207,7 +256,8 @@ local function update(dt, skip_rude, ang_scale)
       linear_force.z,
       angular_force.y,
       angular_force.z,
-      angular_force.x
+      angular_force.x,
+      hitch_node_id  -- nil for non-coupled, the truck-side hitch node otherwise
     )
   elseif linear_force:length() > (dt * 15) then
     -- Still apply linear forces even when angular is too high

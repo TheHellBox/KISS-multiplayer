@@ -118,7 +118,12 @@ local function apply_linear_velocity(x, y, z)
   end
 end
 
-local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw)
+-- pivot_node_id (optional): if provided, the angular component is applied as
+-- a rotation around THAT node instead of the vehicle's reference node (≈ CG).
+-- For coupled trucks we pass the hitch node so the per-tick rotation produces
+-- zero tangential velocity at the hitch — meaning the trailer's coupling pin
+-- doesn't get a side-slap kick when the truck's heading is corrected.
+local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw, pivot_node_id)
   local velocity = vec3(x, y, z)
   local nodes = nodes
   -- 0.1 seems like the safe value we can use for low velocities
@@ -127,13 +132,18 @@ local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw)
     --nodes = ref_nodes
   end
   local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation()))
+  local pivot_offset = vec3(0, 0, 0)
+  if pivot_node_id then
+    pivot_offset = vec3(obj:getNodePosition(pivot_node_id))
+  end
   local node_position = vec3()
   local force = float3(0, 0, 0)
   for k=1, #nodes do
     local node = nodes[k]
     if node[3] then
       node_position:set(obj:getNodePosition(node[1]))
-      local result = (velocity + node_position:cross(rot)) * node[2]
+      local rel_pos = node_position - pivot_offset
+      local result = (velocity + rel_pos:cross(rot)) * node[2]
       force:set(result.x, result.y, result.z)
       obj:applyForceVector(node[1], force)
     end

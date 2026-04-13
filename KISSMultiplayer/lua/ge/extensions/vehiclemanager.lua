@@ -339,9 +339,8 @@ local function update_vehicle(data)
   kisstransform.update_vehicle_transform(data)
   if not kisstransform.inactive[id] then
     vehicle:queueLuaCommand("kiss_input.apply(" .. string.format("%q", jsonEncode(data.electrics)) .. ")")
-    if not M.coupled_to[id] then
-      vehicle:queueLuaCommand("kiss_gearbox.apply(" .. string.format("%q", jsonEncode(data.gearbox)) .. ")")
-    end
+    -- Always apply gearbox.
+    vehicle:queueLuaCommand("kiss_gearbox.apply(" .. string.format("%q", jsonEncode(data.gearbox)) .. ")")
   end
 end
 
@@ -669,6 +668,9 @@ local function attach_coupler(data)
       truck_offset = {truck_offset.x, truck_offset.y, truck_offset.z},
     }
     M.coupled_trucks[obj_b] = obj_a
+    -- Clear any pending decouple grace stamps now that we're re-coupled.
+    kisstransform.mark_decoupled(obj_a, nil)
+    kisstransform.mark_decoupled(obj_b, nil)
     print("[KISS_COUPLER] Hitch type: " .. hitch_type .. " (tag: " .. (data.coupler_tag or "nil") .. ")")
     -- Notify both vehicles of their coupled state
     vehicle:queueLuaCommand("kiss_electrics.set_coupled(true)")
@@ -693,6 +695,12 @@ local function detach_coupler(data)
     if not vehicle_b then return end
     if vehicle ~= vehicle_b and vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
     vehicle:queueLuaCommand("kiss_couplers.detach_coupler("..data.node_a_id..")")
+    -- Stamp decouple grace period BEFORE clearing coupled_to, so kisstransform
+    -- doesn't slam the now-uncoupled vehicle with full PD sync while the
+    -- physical coupler is still in the process of breaking/re-latching.
+    local detach_time = get_current_time()
+    if M.coupled_to[obj_a] then kisstransform.mark_decoupled(obj_a, detach_time) end
+    if M.coupled_to[obj_b] then kisstransform.mark_decoupled(obj_b, detach_time) end
     -- Clear coupling tracking in both directions
     M.coupled_to[obj_b] = nil
     M.coupled_to[obj_a] = nil
