@@ -201,7 +201,11 @@ local function update(dt)
             end
 
             -- Pass expected position to vehicle-side for drift detection
-            vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
+            vehicle:queueLuaCommand(string.format(
+              "if kiss_transforms then kiss_transforms.set_target_transform(%q, %f) end",
+              jsonEncode(transform),
+              (kisstuning and kisstuning.values and kisstuning.values.accel_clamp) or 15.0
+            ))
             vehicle:queueLuaCommand(string.format(
               "if kiss_transforms then kiss_transforms.update_coupled(%f, %q) end",
               dt,
@@ -218,7 +222,11 @@ local function update(dt)
           if grace_stamp then
             local now_t = vehiclemanager.get_current_time()
             if (now_t - grace_stamp) < DECOUPLE_GRACE then
-              vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
+              vehicle:queueLuaCommand(string.format(
+              "if kiss_transforms then kiss_transforms.set_target_transform(%q, %f) end",
+              jsonEncode(transform),
+              (kisstuning and kisstuning.values and kisstuning.values.accel_clamp) or 15.0
+            ))
               goto continue
             else
               decouple_timestamps[id] = nil
@@ -232,16 +240,11 @@ local function update(dt)
           -- heavy trailers get softer angular pushes.
           local trailer_id = vehiclemanager.coupled_trucks and vehiclemanager.coupled_trucks[id]
           local ang_scale = nil
-          local hitch_node_id = nil
           local truck_mass = vehiclemanager.vehicle_masses and vehiclemanager.vehicle_masses[id]
           if trailer_id then
             local coupling = vehiclemanager.coupled_to[trailer_id]
             if coupling then
               ang_scale = coupling.ang_scale
-              -- node_b is the truck-side hitch node ID (cached at attach time).
-              -- Pivoting the truck's PD rotation around this node prevents the
-              -- per-tick rotation correction from side-slapping the trailer.
-              hitch_node_id = coupling.node_b
             end
           end
 
@@ -281,16 +284,66 @@ local function update(dt)
             end
           end
 
-          vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
+          vehicle:queueLuaCommand(string.format(
+              "if kiss_transforms then kiss_transforms.set_target_transform(%q, %f) end",
+              jsonEncode(transform),
+              (kisstuning and kisstuning.values and kisstuning.values.accel_clamp) or 15.0
+            ))
           if ang_scale then
+            -- Truck with trailers — needs full PD, no deadband. skip_rude
+            -- is true so it takes the coupled-truck branch (lateral force
+            -- at front chassis + low-speed yaw torque fallback). Pass the
+            -- current tuning values as trailing args so the coupled path
+            -- reads live slider state.
+            local t = kisstuning and kisstuning.values or {}
             vehicle:queueLuaCommand(string.format(
-              "if kiss_transforms then kiss_transforms.update(%f, true, %f, %s, %s) end",
+              "if kiss_transforms then kiss_transforms.update(%f, true, %f, %s, nil, %f, %f, %f, %f, nil, %f, %f, %f) end",
               dt, ang_scale,
-              hitch_node_id and tostring(hitch_node_id) or "nil",
-              truck_mass and tostring(truck_mass) or "nil"
+              truck_mass and tostring(truck_mass) or "nil",
+              t.Kp_yaw or 1.0,
+              t.Kd_yaw or 0.35,
+              t.force_cap_accel or 0.6,
+              t.speed_gate_high or 5.5,
+              t.lateral_pd_scale or 0.2,
+              t.speed_gate_low or 1.5,
+              t.lateral_integral_gain or 0.5
             ))
           else
-            vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.update("..dt..") end")
+            -- Plain uncoupled vehicle — enable the small-delta deadband
+            -- so cargo on tilt decks doesn't get continuously jiggled by
+            -- PD forces when already near its target. Coupled rigs NEVER
+            -- reach this branch (guarded by the outer coupled_to check
+            -- and the ang_scale check above).
+            local deadband_flag = "true"
+            if kisstuning and kisstuning.values and kisstuning.values.deadband_enabled == false then
+              deadband_flag = "false"
+            end
+            if kisstuning and kisstuning.values and kisstuning.values.use_front_puller_solo then
+              -- Opt-in: route solo vehicles through the same front-puller
+              -- mechanism as coupled trucks. Pass tuning values + own
+              -- vehicle mass + trailing use_front_puller_solo=true flag.
+              local t = kisstuning.values
+              local veh_mass = vehiclemanager.vehicle_masses and vehiclemanager.vehicle_masses[id]
+              vehicle:queueLuaCommand(string.format(
+                "if kiss_transforms then kiss_transforms.update(%f, false, nil, %s, %s, %f, %f, %f, %f, true, %f, %f, %f) end",
+                dt,
+                veh_mass and tostring(veh_mass) or "nil",
+                deadband_flag,
+                t.Kp_yaw or 1.0,
+                t.Kd_yaw or 0.35,
+                t.force_cap_accel or 0.6,
+                t.speed_gate_high or 5.5,
+                t.lateral_pd_scale or 0.2,
+                t.speed_gate_low or 1.5,
+                t.lateral_integral_gain or 0.5
+              ))
+            else
+              -- Legacy path: full angular PD via apply_linear_velocity_ang_torque
+              vehicle:queueLuaCommand(string.format(
+                "if kiss_transforms then kiss_transforms.update(%f, false, nil, nil, %s) end",
+                dt, deadband_flag
+              ))
+            end
           end
         end
         ::continue::
@@ -312,7 +365,11 @@ local function update_vehicle_transform(data)
   local vehicle = be:getObjectByID(id)
   if vehicle and (not M.inactive[id]) then
     transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
-    vehicle:queueLuaCommand("if kiss_transforms then kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ") end")
+    vehicle:queueLuaCommand(string.format(
+              "if kiss_transforms then kiss_transforms.set_target_transform(%q, %f) end",
+              jsonEncode(transform),
+              (kisstuning and kisstuning.values and kisstuning.values.accel_clamp) or 15.0
+            ))
   end
 end
 

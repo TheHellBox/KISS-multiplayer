@@ -2,6 +2,10 @@ local M = {}
 local parts_config = v.config
 local nodes = {}
 local ref_nodes = {}
+-- Subset of front chassis nodes used by apply_force_at_front_chassis to
+-- inject heading-correction force at a point ahead of the CG without
+-- directly pushing the hitch. Built at extension load.
+local front_chassis_subset = {}
 
 local last_node = 1
 local nodes_per_frame = 32
@@ -30,9 +34,10 @@ local function onExtensionLoaded()
       nodes,
       {
         node.cid,
-        node_mass * force,
-        true,
-        node_pos
+        node_mass * force,  -- [2] FPS-scaled impulse factor (legacy primitives)
+        true,               -- [3] eligibility flag
+        node_pos,           -- [4] original local position
+        node_mass           -- [5] real mass in kg (new primitive)
       }
     )
     --M.test_nodes_sync[node.cid] = vec3(obj:getNodePosition(node.cid))
@@ -49,6 +54,58 @@ local function onExtensionLoaded()
         inverse_rot * obj:getNodePosition(node)
       }
     )
+  end
+
+  -- Precompute the front chassis subset: a small set of non-wheel nodes
+  -- forward of center, clustered around a point 35% of vehicle length
+  -- forward of the geometric center. Used by apply_force_at_front_chassis
+  -- to inject heading-correction force at a chassis point ahead of CG
+  -- without directly pushing the hitch.
+  local y_min, y_max = math.huge, -math.huge
+  for _, n in ipairs(nodes) do
+    if n[4].y < y_min then y_min = n[4].y end
+    if n[4].y > y_max then y_max = n[4].y end
+  end
+  local wheelbase_proxy = y_max - y_min
+  local y_center = (y_min + y_max) * 0.5
+  local target_y = y_center + wheelbase_proxy * 0.35
+  local target_local = vec3(0, target_y, 0)
+
+  -- Build a set of wheel node cids to exclude from the subset
+  local wheel_cids = {}
+  if v.data.wheels then
+    for _, w in pairs(v.data.wheels) do
+      if type(w) == "table" then
+        if w.node1 then wheel_cids[w.node1] = true end
+        if w.node2 then wheel_cids[w.node2] = true end
+      end
+    end
+  end
+
+  local candidates = {}
+  for _, n in ipairs(nodes) do
+    if n[4].y > y_center and not wheel_cids[n[1]] then
+      local dy = n[4].y - target_local.y
+      local dx = n[4].x - target_local.x
+      local dz = n[4].z - target_local.z
+      local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+      table.insert(candidates, {node = n, dist = dist})
+    end
+  end
+  table.sort(candidates, function(a, b) return a.dist < b.dist end)
+  local N = math.min(6, #candidates)
+  for i = 1, N do
+    table.insert(front_chassis_subset, candidates[i].node)
+  end
+  print(string.format(
+    "[KISS_VEHICLE %d] front_chassis_subset built: %d nodes, target_y=%.2f (y_min=%.2f y_max=%.2f y_center=%.2f)",
+    obj:getID(), #front_chassis_subset, target_y, y_min, y_max, y_center
+  ))
+  for i, n in ipairs(front_chassis_subset) do
+    print(string.format(
+      "  [%d] cid=%d local=(%.2f, %.2f, %.2f) mass=%.1f",
+      i, n[1], n[4].x, n[4].y, n[4].z, n[5]
+    ))
   end
 
   -- Report total mass to GE so vehiclemanager can size coupler PD gains by
@@ -118,12 +175,7 @@ local function apply_linear_velocity(x, y, z)
   end
 end
 
--- pivot_node_id (optional): if provided, the angular component is applied as
--- a rotation around THAT node instead of the vehicle's reference node (≈ CG).
--- For coupled trucks we pass the hitch node so the per-tick rotation produces
--- zero tangential velocity at the hitch — meaning the trailer's coupling pin
--- doesn't get a side-slap kick when the truck's heading is corrected.
-local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw, pivot_node_id)
+local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw)
   local velocity = vec3(x, y, z)
   local nodes = nodes
   -- 0.1 seems like the safe value we can use for low velocities
@@ -132,20 +184,48 @@ local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw, pivot
     --nodes = ref_nodes
   end
   local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation()))
-  local pivot_offset = vec3(0, 0, 0)
-  if pivot_node_id then
-    pivot_offset = vec3(obj:getNodePosition(pivot_node_id))
-  end
   local node_position = vec3()
   local force = float3(0, 0, 0)
   for k=1, #nodes do
     local node = nodes[k]
     if node[3] then
       node_position:set(obj:getNodePosition(node[1]))
-      local rel_pos = node_position - pivot_offset
-      local result = (velocity + rel_pos:cross(rot)) * node[2]
+      local result = (velocity + node_position:cross(rot)) * node[2]
       force:set(result.x, result.y, result.z)
       obj:applyForceVector(node[1], force)
+    end
+  end
+end
+
+-- Apply a total world-space force F = (fx, fy, fz) distributed across the
+-- precomputed front chassis subset, mass-weighted by real node mass. The
+-- resultant is the full F acting at the subset's mass-weighted centroid
+-- (approximately the target_local point computed at extension load).
+--
+-- Unlike apply_linear_velocity_ang_torque, this function does NOT use a
+-- cross-product velocity snap, so it produces a smooth chassis-level force
+-- that propagates to the rest of the vehicle via normal beam dynamics.
+-- When called with a lateral force at a front-of-CG chassis point, it
+-- creates a real geometric torque around the CG (via the lever arm) and
+-- the front tires contribute additional yaw moment via slip angle — both
+-- in the same direction. The hitch node is behind the CG and never
+-- directly pushed; it follows chassis rotation through beam propagation
+-- without the per-tick impulsive kick that causes jackknife.
+local function apply_force_at_front_chassis(fx, fy, fz)
+  if not front_chassis_subset or #front_chassis_subset == 0 then return end
+  local total_mass = 0
+  for k = 1, #front_chassis_subset do
+    local n = front_chassis_subset[k]
+    if n[3] then total_mass = total_mass + n[5] end
+  end
+  if total_mass <= 0 then return end
+  local force = float3(0, 0, 0)
+  for k = 1, #front_chassis_subset do
+    local n = front_chassis_subset[k]
+    if n[3] then
+      local w = n[5] / total_mass
+      force:set(fx * w, fy * w, fz * w)
+      obj:applyForceVector(n[1], force)
     end
   end
 end
@@ -163,6 +243,7 @@ end
 
 M.update_transform_info = update_transform_info
 M.apply_linear_velocity_ang_torque = apply_linear_velocity_ang_torque
+M.apply_force_at_front_chassis = apply_force_at_front_chassis
 M.update_eligible_nodes = update_eligible_nodes
 M.apply_linear_velocity = apply_linear_velocity
 M.onExtensionLoaded = onExtensionLoaded

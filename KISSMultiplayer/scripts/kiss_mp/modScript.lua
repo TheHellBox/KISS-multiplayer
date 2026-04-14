@@ -10,6 +10,9 @@ registerCoreModule("vehiclemanager")
 load("kisstransform")
 registerCoreModule("kisstransform")
 
+load("kisstuning")
+registerCoreModule("kisstuning")
+
 load("kissui")
 registerCoreModule("kissui")
 

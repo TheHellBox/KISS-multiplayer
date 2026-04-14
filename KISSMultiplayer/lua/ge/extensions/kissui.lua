@@ -14,6 +14,7 @@ M.tabs = {
   settings = require("kissmp.ui.tabs.settings"),
   direct_connect = require("kissmp.ui.tabs.direct_connect"),
   create_server = require("kissmp.ui.tabs.create_server"),
+  tuning = require("kissmp.ui.tabs.tuning"),
 }
 
 M.dependencies = {"ui_imgui"}
