@@ -11,11 +11,52 @@ local function generate_base_secret()
   return result
 end
 
+local function format_history_timestamp(unix_time)
+  return os.date("%Y-%m-%d %H:%M:%S", unix_time)
+end
+
+local function normalize_direct_connect_history(history)
+  if type(history) ~= "table" then
+    return {}
+  end
+
+  local normalized = {}
+  for _, entry in ipairs(history) do
+    if type(entry) == "table" and type(entry.addr) == "string" then
+      local addr = entry.addr:gsub("^%s*(.-)%s*$", "%1")
+      local last_accessed = tonumber(entry.last_accessed)
+      if addr:len() > 0 and last_accessed ~= nil then
+        local text = entry.last_accessed_text
+        if type(text) ~= "string" or text:len() == 0 then
+          text = format_history_timestamp(last_accessed)
+        end
+        table.insert(normalized, {
+          addr = addr,
+          last_accessed = last_accessed,
+          last_accessed_text = text,
+        })
+      end
+    end
+  end
+
+  table.sort(normalized, function(a, b)
+    return a.last_accessed > b.last_accessed
+  end)
+
+  while #normalized > 5 do
+    table.remove(normalized)
+  end
+
+  return normalized
+end
+
 local function save_config()
   local secret = network.base_secret or "None"
   if secret == "None" then
     secret = generate_base_secret()
   end
+  local history = normalize_direct_connect_history(kissui.direct_connect_history)
+  kissui.direct_connect_history = history
   local result = {
     name = ffi.string(kissui.player_name),
     addr = ffi.string(kissui.addr),
@@ -24,7 +65,8 @@ local function save_config()
     window_opacity = kissui.window_opacity[0],
     enable_view_distance = kissui.enable_view_distance[0],
     view_distance = kissui.view_distance[0],
-    base_secret_v2 = secret
+    base_secret_v2 = secret,
+    direct_connect_history = history,
   }
   jsonWriteFile("/settings/kissmp_config.json", result, true)
 end
@@ -63,6 +105,7 @@ local function load_config()
   if config.base_secret_v2 ~= nil then
     network.base_secret = config.base_secret_v2
   end
+  kissui.direct_connect_history = normalize_direct_connect_history(config.direct_connect_history)
 end
 
 local function init()
