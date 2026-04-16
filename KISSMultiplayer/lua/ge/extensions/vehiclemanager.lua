@@ -279,7 +279,12 @@ local function onUpdate(dt)
     meta_timer = meta_timer - 1
   end
 
-  local tick_time = (1/network.connection.tickrate)
+  -- Base tick_time comes from the server's configured tickrate. Divide
+  -- by the sample-rate multiplier so a value > 1 sends more packets per
+  -- second (better remote accuracy at the cost of upload bandwidth).
+  local sample_mult = (kisstuning and kisstuning.values and kisstuning.values.sample_rate_multiplier) or 1.0
+  if sample_mult < 0.1 then sample_mult = 0.1 end
+  local tick_time = (1/network.connection.tickrate) / sample_mult
   if timer <  tick_time then
     timer = timer + dt
   else

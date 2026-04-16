@@ -8,16 +8,27 @@ local M = {}
 -- Current tuning values (defaults). Every slider in the UI maps to one
 -- entry here; every coupled-truck physics tick reads from these.
 M.values = {
-  Kp_yaw                 = 1.0,
-  Kd_yaw                 = 0.35,
-  force_cap_accel        = 0.6,
-  speed_gate_low         = 1.5,
-  speed_gate_high        = 5.5,
-  accel_clamp            = 15.0,
-  lateral_pd_scale       = 0.2,
-  lateral_integral_gain  = 0.5,
-  deadband_enabled       = true,
-  use_front_puller_solo  = false,
+  Kp_yaw                      = 1.0,
+  Kd_yaw                      = 0.35,
+  force_cap_accel             = 0.6,
+  speed_gate_low              = 1.5,
+  speed_gate_high             = 5.5,
+  accel_clamp                 = 15.0,
+  lateral_pd_scale            = 0.2,
+  lateral_integral_gain       = 0.5,
+  sample_rate_multiplier      = 1.0,
+  prediction_enabled          = true,
+  deadband_enabled            = false,
+  use_front_puller_solo       = true,
+  -- Cluster-sync scaffolding. Plumbed through update() but not read
+  -- on the vehicle side until Phase 2. Currently defaults ON for
+  -- testing so the Phase 1 debug overlay (colored AABBs around each
+  -- discovered cluster) is visible by default on every vehicle.
+  -- Until Phase 2 actually wires the sender/receiver, this flag
+  -- does nothing force-related — legacy PD path still handles sync.
+  cluster_sync_enabled        = true,
+  cluster_sync_force_fallback = false,
+  cluster_convergence_gain    = 0.3,
 }
 
 -- UI metadata: label, range, default, one-sentence description including
@@ -76,18 +87,51 @@ M.specs = {
     desc = "Integral gain for the lateral axis: accumulates residual drift over time and pushes back toward centerline. Too low and steady-state drift never closes; too high and the integral winds up during turns, producing oscillating self-centering kicks.",
   },
   {
+    key = "sample_rate_multiplier",
+    label = "Outgoing packet rate ×",
+    min = 0.5, max = 4.0, default = 1.0,
+    desc = "Multiplies this client's own vehicle-update send rate. Only affects how often YOUR owned vehicles broadcast state to others — not how often you receive. Higher = smoother remote view of your vehicles at higher upload bandwidth cost. Lower = less bandwidth, more visible latency for your vehicles on other clients.",
+  },
+  {
+    key = "prediction_enabled",
+    type = "bool",
+    label = "Position/rotation prediction",
+    default = true,
+    desc = "On: extrapolate received transform forward by latency (kinematic position, axis-angle rotation). Off: use received transform directly as target — no extrapolation. Turn off to A/B test whether prediction is adding value or adding error on the current tuning; remote will appear latency-delayed but without extrapolation artifacts.",
+  },
+  {
     key = "deadband_enabled",
     type = "bool",
     label = "Near-target deadband",
-    default = true,
+    default = false,
     desc = "On: skip PD corrections below 15cm position error (prevents cargo on tilt decks from jiggling at rest, but leaves up to 15cm of visible position offset at rest). Off: PD always runs to zero position error (exact parking but micro-jitter on stationary loose cargo).",
   },
   {
     key = "use_front_puller_solo",
     type = "bool",
     label = "Front-puller for solo vehicles",
+    default = true,
+    desc = "Apply the lateral-force-at-front-chassis mechanism to solo non-coupled vehicles. On = same mechanism as coupled trucks, which models front-steered cars more naturally. Off = legacy angular PD (rigid-body torque around CG) — only useful for diagnosing whether front-puller is causing some regression.",
+  },
+  {
+    key = "cluster_sync_enabled",
+    type = "bool",
+    label = "Cluster sync (EXPERIMENTAL)",
+    default = true,
+    desc = "Default ON for testing. Currently does nothing at runtime (Phase 1 only does cluster discovery + debug overlay, which run regardless of this toggle). When future phases wire the sender/receiver, this flag will gate whether a vehicle is synced via per-cluster velocity matching (ON) or via the legacy front-puller/PID path (OFF).",
+  },
+  {
+    key = "cluster_convergence_gain",
+    label = "Cluster sync convergence gain",
+    min = 0.05, max = 1.0, default = 0.3,
+    desc = "Fraction of per-node velocity error closed per tick in the cluster-sync force path. 1.0 = fully closed in one tick (stiffest, may produce elastic wobble as sync forces fight local beam physics); 0.05 = very soft, takes ~20 ticks to converge but lets the soft-body solver breathe. Try 0.2-0.4 as a starting range. No effect when cluster sync is disabled.",
+  },
+  {
+    key = "cluster_sync_force_fallback",
+    type = "bool",
+    label = "Force cluster fallback",
     default = false,
-    desc = "Experimental: apply the lateral-force-at-front-chassis mechanism to solo non-coupled vehicles. Off = legacy angular PD (rigid-body torque around CG). On = same mechanism as coupled trucks, which models front-steered cars more naturally but is less battle-tested for solo use.",
+    desc = "Diagnostic override: when on, any vehicle that would use cluster sync falls back to the legacy front-puller/PID path regardless of topology. Lets you A/B compare cluster vs legacy in the same session when cluster sync is implemented. No effect at Phase 0.",
   },
 }
 

@@ -208,7 +208,6 @@ local function send()
     ElectricsUndefinedUpdate = {obj:getID(), data}
   }
   if diff_count > 0 then
-    print("=== ELECTRICS BEING SENT ===\n" .. jsonEncode(data)) 
     obj:queueGameEngineLua("network.send_data(\'"..jsonEncode(data).."\', true)")
   end
 end

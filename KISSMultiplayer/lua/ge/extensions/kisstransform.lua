@@ -296,8 +296,11 @@ local function update(dt)
             -- current tuning values as trailing args so the coupled path
             -- reads live slider state.
             local t = kisstuning and kisstuning.values or {}
+            local pred_flag = (t.prediction_enabled == false) and "false" or "true"
+            local cluster_enabled_flag = (t.cluster_sync_enabled == true) and "true" or "false"
+            local cluster_fallback_flag = (t.cluster_sync_force_fallback == true) and "true" or "false"
             vehicle:queueLuaCommand(string.format(
-              "if kiss_transforms then kiss_transforms.update(%f, true, %f, %s, nil, %f, %f, %f, %f, nil, %f, %f, %f) end",
+              "if kiss_transforms then kiss_transforms.update(%f, true, %f, %s, nil, %f, %f, %f, %f, nil, %f, %f, %f, %s, %s, %s) end",
               dt, ang_scale,
               truck_mass and tostring(truck_mass) or "nil",
               t.Kp_yaw or 1.0,
@@ -306,7 +309,10 @@ local function update(dt)
               t.speed_gate_high or 5.5,
               t.lateral_pd_scale or 0.2,
               t.speed_gate_low or 1.5,
-              t.lateral_integral_gain or 0.5
+              t.lateral_integral_gain or 0.5,
+              pred_flag,
+              cluster_enabled_flag,
+              cluster_fallback_flag
             ))
           else
             -- Plain uncoupled vehicle — enable the small-delta deadband
@@ -318,6 +324,9 @@ local function update(dt)
             if kisstuning and kisstuning.values and kisstuning.values.deadband_enabled == false then
               deadband_flag = "false"
             end
+            local pred_flag = (kisstuning and kisstuning.values and kisstuning.values.prediction_enabled == false) and "false" or "true"
+            local cluster_enabled_flag = (kisstuning and kisstuning.values and kisstuning.values.cluster_sync_enabled == true) and "true" or "false"
+            local cluster_fallback_flag = (kisstuning and kisstuning.values and kisstuning.values.cluster_sync_force_fallback == true) and "true" or "false"
             if kisstuning and kisstuning.values and kisstuning.values.use_front_puller_solo then
               -- Opt-in: route solo vehicles through the same front-puller
               -- mechanism as coupled trucks. Pass tuning values + own
@@ -325,7 +334,7 @@ local function update(dt)
               local t = kisstuning.values
               local veh_mass = vehiclemanager.vehicle_masses and vehiclemanager.vehicle_masses[id]
               vehicle:queueLuaCommand(string.format(
-                "if kiss_transforms then kiss_transforms.update(%f, false, nil, %s, %s, %f, %f, %f, %f, true, %f, %f, %f) end",
+                "if kiss_transforms then kiss_transforms.update(%f, false, nil, %s, %s, %f, %f, %f, %f, true, %f, %f, %f, %s, %s, %s) end",
                 dt,
                 veh_mass and tostring(veh_mass) or "nil",
                 deadband_flag,
@@ -335,13 +344,17 @@ local function update(dt)
                 t.speed_gate_high or 5.5,
                 t.lateral_pd_scale or 0.2,
                 t.speed_gate_low or 1.5,
-                t.lateral_integral_gain or 0.5
+                t.lateral_integral_gain or 0.5,
+                pred_flag,
+                cluster_enabled_flag,
+                cluster_fallback_flag
               ))
             else
-              -- Legacy path: full angular PD via apply_linear_velocity_ang_torque
+              -- Legacy path: full angular PD via apply_linear_velocity_ang_torque.
+              -- Cluster sync flags come in as trailing args after prediction.
               vehicle:queueLuaCommand(string.format(
-                "if kiss_transforms then kiss_transforms.update(%f, false, nil, nil, %s) end",
-                dt, deadband_flag
+                "if kiss_transforms then kiss_transforms.update(%f, false, nil, nil, %s, nil, nil, nil, nil, nil, nil, nil, nil, %s, %s, %s) end",
+                dt, deadband_flag, pred_flag, cluster_enabled_flag, cluster_fallback_flag
               ))
             end
           end

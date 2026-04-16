@@ -63,7 +63,20 @@ local LOG_INTERVAL = 1.0 / 33.0 -- log every tick (~30ms)
 local PREDICT_TIME_CAP_LIN = 0.1
 local PREDICT_TIME_CAP_ROT = 0.2
 
+-- Prediction enabled flag. Set by update() from the tuning pipeline.
+-- When false, predict() skips all extrapolation and sets target directly
+-- from received_transform. Used to A/B test whether prediction is
+-- adding value or adding error on the current tuning.
+local prediction_enabled = true
+
 local function predict(dt)
+  if not prediction_enabled then
+    -- No extrapolation: target = last received state, exactly.
+    M.target_transform.position = vec3(M.received_transform.position)
+    M.target_transform.velocity = vec3(M.received_transform.velocity)
+    M.target_transform.rotation = quat(M.received_transform.rotation)
+    return
+  end
   local tp_lin = math.min(M.received_transform.time_past, PREDICT_TIME_CAP_LIN)
   local tp_rot = math.min(M.received_transform.time_past, PREDICT_TIME_CAP_ROT)
   -- End velocity at "now": v0 + a·t
@@ -195,10 +208,86 @@ local function debug_log(dt, linear_force, angular_force, position_delta, veloci
   ))
 end
 
+-- ==================================================================
+-- Phase 2: cluster-sync early path
+-- ==================================================================
+-- When tun_cluster_sync_enabled is true AND cluster_spawn has
+-- populated cluster_state.clusters AND tun_cluster_sync_force_fallback
+-- is false, the cluster_receiver runs BEFORE any legacy force code
+-- and we return early. The degenerate single-cluster case behaves
+-- like a per-node generalization of the front-puller (the whole
+-- vehicle is one rigid cluster).
+--
+-- Any failure condition (no clusters, no target yet, missing offsets)
+-- falls through to the legacy path so Phase 2 cannot regress on
+-- vehicles whose discovery hasn't finished or that failed discovery
+-- altogether. Legacy is still the safe default.
+local function try_apply_cluster_sync(dt, enable_flag, force_fallback)
+  if dt <= 0 or dt > 0.1 then return false end
+  if enable_flag ~= true then return false end
+  if force_fallback == true then return false end
+  if not cluster_state or not cluster_state.clusters then return false end
+  if #cluster_state.clusters == 0 then return false end
+  if not cluster_receiver then return false end
+
+  -- Build the target pose. Position / rotation / linear velocity come
+  -- from M.target_transform (already extrapolated forward by predict()
+  -- to approximately "now"). Angular velocity comes from
+  -- M.received_transform because M.target_transform.angular_velocity
+  -- is never written by predict() — legacy code uses it only as a
+  -- damping term where its zero value is harmless; for cluster sync
+  -- we need the real owner-sampled ω, which is in received_transform.
+  -- Phase 2 acts only on ROOT clusters (degenerate single-cluster
+  -- case); child clusters of multi-cluster vehicles fall through to
+  -- legacy until Phase 3 wires parent-relative frame composition.
+  local combined = {
+    position         = M.target_transform.position,
+    rotation         = M.target_transform.rotation,
+    velocity         = M.target_transform.velocity,
+    angular_velocity = M.received_transform.angular_velocity,
+  }
+  local pose = cluster_receiver.target_from_transform(combined)
+  if not pose then return false end
+
+  local base_pos = vec3(obj:getPosition())
+  local get_pos = function(cid)
+    local ok, off = pcall(function() return vec3(obj:getNodePosition(cid)) end)
+    if not ok or not off then return base_pos end
+    return base_pos + off
+  end
+  local get_vel = function(cid)
+    local ok, v = pcall(function() return vec3(obj:getNodeVelocityVector(cid)) end)
+    if not ok or not v then return vec3(0, 0, 0) end
+    return v
+  end
+  local apply_force = function(cid, f)
+    obj:applyForceVector(cid, f)
+  end
+
+  local any_applied = false
+  for _, c in ipairs(cluster_state.clusters) do
+    if c.enabled and c.is_root and c.masses and c.node_offsets_local then
+      cluster_receiver.apply_cluster_forces(
+        c, pose, c.masses, dt, cluster_state.const,
+        get_pos, get_vel, apply_force
+      )
+      any_applied = true
+    end
+  end
+  return any_applied
+end
+
 local function update(dt, skip_rude, ang_scale, truck_mass, enable_deadband,
                       tun_Kp_yaw, tun_Kd_yaw, tun_force_cap_g, tun_speed_gate_high,
                       use_front_puller_solo, tun_lateral_pd_scale, tun_speed_gate_low,
-                      tun_lateral_integral_gain)
+                      tun_lateral_integral_gain, tun_prediction_enabled,
+                      tun_cluster_sync_enabled, tun_cluster_sync_force_fallback)
+  -- Set module-level flag that predict() reads, before calling it.
+  if tun_prediction_enabled == false then
+    prediction_enabled = false
+  else
+    prediction_enabled = true
+  end
   if cooldown_timer > 0 then
     cooldown_timer = cooldown_timer - clamp(dt, 0, 0.02)
     M.lateral_integral = 0  -- anti-windup: clear accumulated error during cooldown
@@ -207,14 +296,30 @@ local function update(dt, skip_rude, ang_scale, truck_mass, enable_deadband,
   if dt > 0.1 then return end
   M.received_transform.time_past = clamp(M.received_transform.time_past + dt, 0, 0.5)
   predict(dt)
-  -- Coupled trucks skip try_rude (6m teleport yanks the whole rig under
-  -- trailer drag lag). Angular torque is skipped separately below via the
-  -- forced ang_skipped flag, so coupled trucks fall through to the
-  -- linear-only propulsion branch — which is what actually moves a ghost
-  -- vehicle at all (input sync doesn't produce real engine thrust on a
-  -- non-owned vehicle).
+
+  -- try_rude BEFORE cluster sync. When the owner map-teleports their
+  -- vehicle, the remote's position error can be 100m+. Without this
+  -- snap, cluster sync's per-node forces (pos_err × KP_POS → absurd
+  -- velocity → beam-breaking forces) would rip the car apart. The 6m
+  -- snap brings the remote close enough that subsequent forces are
+  -- gentle. After a snap, set a brief cooldown so the beam solver can
+  -- settle before per-node forces resume — without this the first
+  -- post-snap tick sees a large velocity mismatch (vehicle is at zero
+  -- velocity after snap but target says full speed) and forces still
+  -- destroy the car.
   if not skip_rude and try_rude() then
-    M.lateral_integral = 0  -- vehicle just got snapped; invalidate integral
+    M.lateral_integral = 0
+    cooldown_timer = 0.5  -- half second to settle after teleport snap
+    return
+  end
+
+  -- Phase 2 cluster-sync branch. If conditions are met, the cluster
+  -- receiver applies per-node velocity-matching forces for every
+  -- root cluster and we return BEFORE legacy force code. Legacy
+  -- path is the fallback when cluster sync is disabled, forced to
+  -- fallback, or when discovery hasn't completed yet.
+  if try_apply_cluster_sync(dt, tun_cluster_sync_enabled, tun_cluster_sync_force_fallback) then
+    M.lateral_integral = 0  -- cluster path owns the force; clear legacy integral
     return
   end
 
@@ -510,18 +615,30 @@ local function set_target_transform(raw, accel_clamp)
   local transform = jsonDecode(raw)
   local time_dif = clamp((transform.sent_at - M.received_transform.sent_at), 0.01, 0.1)
 
-  M.received_transform.acceleration = (vec3(transform.velocity) - M.received_transform.velocity) / time_dif
-  local raw_accel = M.received_transform.acceleration:length()
-  -- Tunable clamp on received acceleration (default 15 m/s² ~1.5 g).
-  -- Covers cornering centripetal accel (v²/r ~5-10 m/s² in typical
-  -- turns) and hard braking. Previously hardcoded 5 which threw away
-  -- the cornering component, making the linear prediction target lag
-  -- the real path on the outside of curves. The kisstuning slider
-  -- "Max predicted accel" controls this.
+  -- Raw finite-difference acceleration from the velocity delta between
+  -- this packet and the last. During sustained turns the raw accel
+  -- vector rotates each packet (it's the instantaneous centripetal
+  -- direction sampled at the packet moment), which causes the
+  -- extrapolated target sphere to wobble port/starboard as the
+  -- direction discretely updates per packet. Fix: low-pass filter
+  -- across packets so the target extrapolation uses a smoothed
+  -- acceleration vector.
+  local new_raw_accel = (vec3(transform.velocity) - M.received_transform.velocity) / time_dif
+  local raw_accel = new_raw_accel:length()
+  -- Clamp the raw sample first (default 15 m/s² ~1.5 g). Covers
+  -- cornering centripetal accel (v²/r ~5-10 m/s² in typical turns)
+  -- and hard braking. The kisstuning "Max predicted accel" slider
+  -- controls this.
   local clamp_val = accel_clamp or 15
-  if M.received_transform.acceleration:length() > clamp_val then
-    M.received_transform.acceleration = M.received_transform.acceleration:normalized() * clamp_val
+  if new_raw_accel:length() > clamp_val then
+    new_raw_accel = new_raw_accel:normalized() * clamp_val
   end
+  -- Exponential smoothing: 70% previous smoothed value, 30% new raw.
+  -- Time constant ~3 packets (~100ms at 30Hz tickrate). Damps the
+  -- per-packet rotation of the accel vector during turns without
+  -- being too laggy on legitimate accel changes (braking, impacts).
+  M.received_transform.acceleration =
+    M.received_transform.acceleration * 0.7 + new_raw_accel * 0.3
   M.received_transform.angular_acceleration = (vec3(transform.angular_velocity) - M.received_transform.angular_velocity) / time_dif
   local raw_ang_accel = M.received_transform.angular_acceleration:length()
   -- BUG: this was checking acceleration instead of angular_acceleration, so angular accel was never clamped
