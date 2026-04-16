@@ -230,24 +230,28 @@ local function try_apply_cluster_sync(dt, enable_flag, force_fallback)
   if #cluster_state.clusters == 0 then return false end
   if not cluster_receiver then return false end
 
-  -- Build the target pose. Position / rotation / linear velocity come
-  -- from M.target_transform (already extrapolated forward by predict()
-  -- to approximately "now"). Angular velocity comes from
-  -- M.received_transform because M.target_transform.angular_velocity
-  -- is never written by predict() — legacy code uses it only as a
-  -- damping term where its zero value is harmless; for cluster sync
-  -- we need the real owner-sampled ω, which is in received_transform.
-  -- Phase 2 acts only on ROOT clusters (degenerate single-cluster
-  -- case); child clusters of multi-cluster vehicles fall through to
-  -- legacy until Phase 3 wires parent-relative frame composition.
-  local combined = {
-    position         = M.target_transform.position,
-    rotation         = M.target_transform.rotation,
-    velocity         = M.target_transform.velocity,
-    angular_velocity = M.received_transform.angular_velocity,
-  }
-  local pose = cluster_receiver.target_from_transform(combined)
-  if not pose then return false end
+  -- Build per-cluster target poses. Phase 3: if the packet carried
+  -- per-cluster poses (M.received_cluster_poses populated by
+  -- set_target_transform), use those directly — they're already in
+  -- world frame with world-frame angular velocity. Phase 2 fallback:
+  -- build a single whole-vehicle pose from the legacy transform for
+  -- root clusters only (non-root clusters get no force — they follow
+  -- via beam physics, same as pre-Phase-3 behavior).
+  local have_cluster_poses = M.received_cluster_poses and next(M.received_cluster_poses) ~= nil
+
+  -- Fallback whole-vehicle pose for root cluster when per-cluster
+  -- data isn't available (Phase 2 path).
+  local fallback_pose = nil
+  if not have_cluster_poses then
+    local combined = {
+      position         = M.target_transform.position,
+      rotation         = M.target_transform.rotation,
+      velocity         = M.target_transform.velocity,
+      angular_velocity = M.received_transform.angular_velocity,
+    }
+    fallback_pose = cluster_receiver.target_from_transform(combined)
+    if not fallback_pose then return false end
+  end
 
   local base_pos = vec3(obj:getPosition())
   local get_pos = function(cid)
@@ -266,12 +270,20 @@ local function try_apply_cluster_sync(dt, enable_flag, force_fallback)
 
   local any_applied = false
   for _, c in ipairs(cluster_state.clusters) do
-    if c.enabled and c.is_root and c.masses and c.node_offsets_local then
-      cluster_receiver.apply_cluster_forces(
-        c, pose, c.masses, dt, cluster_state.const,
-        get_pos, get_vel, apply_force
-      )
-      any_applied = true
+    if c.enabled and c.masses and c.node_offsets_local then
+      local pose
+      if have_cluster_poses then
+        pose = M.received_cluster_poses[c.id]
+      elseif c.is_root then
+        pose = fallback_pose
+      end
+      if pose then
+        cluster_receiver.apply_cluster_forces(
+          c, pose, c.masses, dt, cluster_state.const,
+          get_pos, get_vel, apply_force
+        )
+        any_applied = true
+      end
     end
   end
   return any_applied
@@ -666,6 +678,24 @@ local function set_target_transform(raw, accel_clamp)
   M.received_transform.velocity = vec3(transform.velocity)
   M.received_transform.angular_velocity = vec3(transform.angular_velocity)
   M.received_transform.time_past = transform.time_past
+
+  -- Phase 3: stash per-cluster poses from the packet. Keyed by
+  -- cluster id for O(1) lookup in try_apply_cluster_sync. Each
+  -- entry is a pose table matching cluster_receiver.apply_cluster_forces
+  -- expectations: {pos, rot, lin_vel, ang_vel}. Angular velocity
+  -- arrives in world frame (owner's cluster_sender computes it from
+  -- angular momentum), so no body→world conversion needed here.
+  M.received_cluster_poses = {}
+  if transform.clusters then
+    for _, cp in ipairs(transform.clusters) do
+      M.received_cluster_poses[cp.id] = {
+        pos     = vec3(cp.position),
+        rot     = quat(cp.rotation[1], cp.rotation[2], cp.rotation[3], cp.rotation[4]),
+        lin_vel = vec3(cp.linear_velocity),
+        ang_vel = vec3(cp.angular_velocity),
+      }
+    end
+  end
 end
 
 -- Constraint-preserving sync for coupled trailers.

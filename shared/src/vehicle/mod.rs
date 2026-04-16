@@ -41,6 +41,12 @@ pub struct VehicleUpdate {
     pub vehicle_id: u32,
     pub generation: u64,
     pub sent_at: f64,
+    /// Per-cluster pose snapshots. Empty for Phase 2 single-cluster
+    /// vehicles (they use `transform` directly). Phase 3+ vehicles
+    /// populate one entry per cluster discovered at spawn. Server
+    /// relays blindly — no interpretation.
+    #[serde(default)]
+    pub clusters: Vec<ClusterPose>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

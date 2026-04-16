@@ -378,6 +378,13 @@ local function update_vehicle_transform(data)
   local vehicle = be:getObjectByID(id)
   if vehicle and (not M.inactive[id]) then
     transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
+    -- Phase 3: attach per-cluster poses to the transform blob so the
+    -- vehicle side receives everything in one set_target_transform call.
+    -- data.clusters comes from the VehicleUpdate packet (empty vec for
+    -- Phase 2 / single-cluster vehicles).
+    if data.clusters and #data.clusters > 0 then
+      transform.clusters = data.clusters
+    end
     vehicle:queueLuaCommand(string.format(
               "if kiss_transforms then kiss_transforms.set_target_transform(%q, %f) end",
               jsonEncode(transform),

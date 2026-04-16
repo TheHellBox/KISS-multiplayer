@@ -78,6 +78,22 @@ local function send_vehicle_update(obj)
   end
   local position = obj:getPosition()
   local velocity = obj:getVelocity()
+  -- Phase 3: convert vehicle-side cluster poses (compact Lua tables)
+  -- into the ClusterPose wire format that matches shared/src/vehicle/
+  -- transform.rs. Empty vec for Phase 2 / single-cluster vehicles.
+  local clusters = {}
+  if t.clusters then
+    for _, cp in ipairs(t.clusters) do
+      table.insert(clusters, {
+        id               = cp.id,
+        position         = cp.pos,
+        rotation         = cp.rot,
+        linear_velocity  = cp.lv,
+        angular_velocity = cp.av,
+      })
+    end
+  end
+
   local result = {
     transform = {
       position = {position.x, position.y, position.z},
@@ -89,7 +105,8 @@ local function send_vehicle_update(obj)
     gearbox = t.gearbox,
     vehicle_id = obj:getID(),
     generation = generation,
-    sent_at = get_current_time()
+    sent_at = get_current_time(),
+    clusters = clusters,
   }
   generation = generation + 1
   network.send_data(

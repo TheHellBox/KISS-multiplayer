@@ -159,6 +159,42 @@ local function update_transform_info()
     vel_roll  = obj:getRollAngularVelocity(),
     vel_yaw   = obj:getYawAngularVelocity(),
   }
+
+  -- Phase 3: if cluster discovery has run and cluster_sender is
+  -- available, compute per-cluster poses and attach them. The GE
+  -- side includes these in the VehicleUpdate packet. Empty table
+  -- for single-cluster vehicles or when discovery hasn't finished.
+  if cluster_state and cluster_state.clusters and #cluster_state.clusters > 1
+     and cluster_sender then
+    local base_pos = vec3(obj:getPosition())
+    local get_pos = function(cid)
+      local ok, off = pcall(function() return vec3(obj:getNodePosition(cid)) end)
+      if not ok or not off then return base_pos end
+      return base_pos + off
+    end
+    local get_vel = function(cid)
+      local ok, v = pcall(function() return vec3(obj:getNodeVelocityVector(cid)) end)
+      if not ok or not v then return vec3(0, 0, 0) end
+      return v
+    end
+    local cluster_poses = {}
+    for _, c in ipairs(cluster_state.clusters) do
+      if c.masses and c.node_offsets_local then
+        local pose = cluster_sender.compute_pose(c, c.masses, get_pos, get_vel)
+        table.insert(cluster_poses, {
+          id  = c.id,
+          pos = {pose.pos.x, pose.pos.y, pose.pos.z},
+          rot = {pose.rot.x, pose.rot.y, pose.rot.z, pose.rot.w},
+          lv  = {pose.lin_vel.x, pose.lin_vel.y, pose.lin_vel.z},
+          av  = {pose.ang_vel.x, pose.ang_vel.y, pose.ang_vel.z},
+        })
+      end
+    end
+    if #cluster_poses > 0 then
+      transform.clusters = cluster_poses
+    end
+  end
+
   obj:queueGameEngineLua("kisstransform.push_transform("..obj:getID()..", " .. string.format("%q", jsonEncode(transform)) .. ")")
 end
 
