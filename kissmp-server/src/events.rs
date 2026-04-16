@@ -132,6 +132,7 @@ impl Server {
                                 vehicle.transform = Some(data.transform);
                                 vehicle.electrics = Some(data.electrics);
                                 vehicle.gearbox = Some(data.gearbox);
+                                vehicle.clusters = data.clusters;
                             }
                         }
                     }

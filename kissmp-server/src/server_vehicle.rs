@@ -6,6 +6,7 @@ pub struct Vehicle {
     pub electrics: Option<Electrics>,
     pub gearbox: Option<Gearbox>,
     pub data: VehicleData,
+    pub clusters: Vec<ClusterPose>,
 }
 
 impl crate::Server {
@@ -116,6 +117,7 @@ impl crate::Server {
                 gearbox: None,
                 electrics: None,
                 transform: None,
+                clusters: Vec::new(),
             },
         );
 

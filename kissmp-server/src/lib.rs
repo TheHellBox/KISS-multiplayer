@@ -557,6 +557,7 @@ impl Server {
                             vehicle_id: vehicle_id.clone(),
                             generation: self.tick,
                             sent_at: 0.0,
+                            clusters: vehicle.clusters.clone(),
                         }))
                         .await;
                 }
