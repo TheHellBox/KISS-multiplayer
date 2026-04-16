@@ -86,6 +86,7 @@ local function send_vehicle_update(obj)
     for _, cp in ipairs(t.clusters) do
       table.insert(clusters, {
         id               = cp.id,
+        parent_id        = cp.pr or 0,
         position         = cp.pos,
         rotation         = cp.rot,
         linear_velocity  = cp.lv,

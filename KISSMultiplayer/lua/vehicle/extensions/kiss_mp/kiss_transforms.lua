@@ -679,20 +679,34 @@ local function set_target_transform(raw, accel_clamp)
   M.received_transform.angular_velocity = vec3(transform.angular_velocity)
   M.received_transform.time_past = transform.time_past
 
-  -- Phase 3: stash per-cluster poses from the packet. Keyed by
-  -- cluster id for O(1) lookup in try_apply_cluster_sync. Each
-  -- entry is a pose table matching cluster_receiver.apply_cluster_forces
-  -- expectations: {pos, rot, lin_vel, ang_vel}. Angular velocity
-  -- arrives in world frame (owner's cluster_sender computes it from
-  -- angular momentum), so no body→world conversion needed here.
+  -- Phase 3: stash per-cluster poses from the packet. Non-root
+  -- clusters arrive in parent-relative coordinates; reconstruct
+  -- world poses here so try_apply_cluster_sync gets a flat table
+  -- of world-frame poses keyed by cluster id.
+  --
+  -- The packet arrives in BFS order (parent before child), so we
+  -- can resolve each child's world pose on the spot.
   M.received_cluster_poses = {}
   if transform.clusters then
     for _, cp in ipairs(transform.clusters) do
+      local pid = cp.parent_id or 0
+      local parent = (pid ~= 0) and M.received_cluster_poses[pid] or nil
+      local pos = vec3(cp.position)
+      local rot = quat(cp.rotation[1], cp.rotation[2], cp.rotation[3], cp.rotation[4])
+      local lv  = vec3(cp.linear_velocity)
+      local av  = vec3(cp.angular_velocity)
+      if parent then
+        -- Parent-relative → world.
+        pos = parent.pos + parent.rot * pos
+        rot = parent.rot * rot
+        lv  = parent.lin_vel + parent.rot * lv
+        av  = parent.ang_vel + parent.rot * av
+      end
       M.received_cluster_poses[cp.id] = {
-        pos     = vec3(cp.position),
-        rot     = quat(cp.rotation[1], cp.rotation[2], cp.rotation[3], cp.rotation[4]),
-        lin_vel = vec3(cp.linear_velocity),
-        ang_vel = vec3(cp.angular_velocity),
+        pos     = pos,
+        rot     = rot,
+        lin_vel = lv,
+        ang_vel = av,
       }
     end
   end

@@ -177,16 +177,43 @@ local function update_transform_info()
       if not ok or not v then return vec3(0, 0, 0) end
       return v
     end
-    local cluster_poses = {}
+    -- Compute world poses for all clusters first, then convert
+    -- non-root clusters to parent-relative. BFS order (guaranteed
+    -- by cluster_topology) means the parent's world pose is always
+    -- computed before any of its children.
+    local world_poses = {}
     for _, c in ipairs(cluster_state.clusters) do
       if c.masses and c.node_offsets_local then
-        local pose = cluster_sender.compute_pose(c, c.masses, get_pos, get_vel)
+        world_poses[c.id] = cluster_sender.compute_pose(c, c.masses, get_pos, get_vel)
+      end
+    end
+    local cluster_poses = {}
+    for _, c in ipairs(cluster_state.clusters) do
+      local wp = world_poses[c.id]
+      if wp then
+        local pos, rot, lv, av
+        if c.parent_id and world_poses[c.parent_id] then
+          -- Parent-relative: preserve the hinge angle exactly.
+          local pp = world_poses[c.parent_id]
+          local inv_rot = pp.rot:inversed()
+          pos = inv_rot * (wp.pos - pp.pos)
+          rot = inv_rot * wp.rot
+          lv  = inv_rot * (wp.lin_vel - pp.lin_vel)
+          av  = inv_rot * (wp.ang_vel - pp.ang_vel)
+        else
+          -- Root cluster: world frame.
+          pos = wp.pos
+          rot = wp.rot
+          lv  = wp.lin_vel
+          av  = wp.ang_vel
+        end
         table.insert(cluster_poses, {
           id  = c.id,
-          pos = {pose.pos.x, pose.pos.y, pose.pos.z},
-          rot = {pose.rot.x, pose.rot.y, pose.rot.z, pose.rot.w},
-          lv  = {pose.lin_vel.x, pose.lin_vel.y, pose.lin_vel.z},
-          av  = {pose.ang_vel.x, pose.ang_vel.y, pose.ang_vel.z},
+          pr  = c.parent_id or 0,  -- 0 = root (world frame)
+          pos = {pos.x, pos.y, pos.z},
+          rot = {rot.x, rot.y, rot.z, rot.w},
+          lv  = {lv.x, lv.y, lv.z},
+          av  = {av.x, av.y, av.z},
         })
       end
     end

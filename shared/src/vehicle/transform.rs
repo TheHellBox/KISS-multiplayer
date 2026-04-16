@@ -18,6 +18,9 @@ pub struct Transform {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClusterPose {
     pub id: u32,
+    /// 0 = root cluster (values are world-frame). Non-zero = parent
+    /// cluster id (values are parent-relative).
+    pub parent_id: u32,
     pub position: [f32; 3],
     pub rotation: [f32; 4],
     pub linear_velocity: [f32; 3],

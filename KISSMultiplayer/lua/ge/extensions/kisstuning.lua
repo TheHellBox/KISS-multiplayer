@@ -29,6 +29,10 @@ M.values = {
   cluster_sync_enabled        = true,
   cluster_sync_force_fallback = false,
   cluster_convergence_gain    = 0.3,
+  cluster_kp_pos              = 50.0,
+  cluster_max_force           = 50000,
+  cluster_stiffness_threshold = 500000,
+  cluster_min_size            = 8,
 }
 
 -- UI metadata: label, range, default, one-sentence description including
@@ -125,6 +129,30 @@ M.specs = {
     label = "Cluster sync convergence gain",
     min = 0.05, max = 1.0, default = 0.3,
     desc = "Fraction of per-node velocity error closed per tick in the cluster-sync force path. 1.0 = fully closed in one tick (stiffest, may produce elastic wobble as sync forces fight local beam physics); 0.05 = very soft, takes ~20 ticks to converge but lets the soft-body solver breathe. Try 0.2-0.4 as a starting range. No effect when cluster sync is disabled.",
+  },
+  {
+    key = "cluster_kp_pos",
+    label = "Position spring (KP_POS)",
+    min = 1.0, max = 100.0, default = 50.0,
+    desc = "Strength of the position-error spring that nudges nodes toward their target. Higher = snappier position tracking but more aggressive forces (can stress beams on stale packets). Lower = smoother but allows more drift at rest. Works in tandem with convergence gain.",
+  },
+  {
+    key = "cluster_max_force",
+    label = "Max force per node (N)",
+    min = 1000, max = 200000, default = 50000,
+    desc = "Hard cap on the force applied to any single node per tick. Safety clamp: prevents beam-breaking forces from prediction errors or teleport artifacts. Lower values are safer but may prevent the sync from closing large errors. Rarely needs changing.",
+  },
+  {
+    key = "cluster_stiffness_threshold",
+    label = "Cluster stiffness threshold (N/m)",
+    min = 50000, max = 5000000, default = 500000,
+    desc = "Beams stiffer than this connect nodes into the same cluster; softer beams become cluster boundaries. Lower = more clusters (finer partition, e.g. individual body panels separate). Higher = fewer clusters (only major structural breaks like articulation joints split). Changes take effect on next re-cluster (use the button below or reset the vehicle).",
+  },
+  {
+    key = "cluster_min_size",
+    label = "Minimum cluster size (nodes)",
+    min = 3, max = 50, default = 8,
+    desc = "Clusters smaller than this are merged into their nearest neighbor. Higher = fewer tiny clusters (trim pieces, small brackets get absorbed). Lower = finer granularity (individual wheels, small panels get their own cluster). Changes take effect on next re-cluster.",
   },
   {
     key = "cluster_sync_force_fallback",

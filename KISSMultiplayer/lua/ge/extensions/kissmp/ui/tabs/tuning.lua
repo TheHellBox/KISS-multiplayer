@@ -85,10 +85,20 @@ local function draw()
         -- queueAllObjectLua. cluster_convergence_gain is one of these
         -- because it's read from cluster_state.const inside the
         -- per-tick force path, not passed as an update() arg.
-        if spec.key == "cluster_convergence_gain" and be and be.queueAllObjectLua then
+        -- Cluster tunables that live on the vehicle side need an
+        -- explicit push via queueAllObjectLua.
+        local vehicle_push = {
+          cluster_convergence_gain = "CONVERGENCE_GAIN",
+          cluster_kp_pos           = "KP_POS",
+          cluster_max_force        = "MAX_FORCE_PER_NODE_N",
+          cluster_stiffness_threshold = "STIFFNESS_THRESHOLD",
+          cluster_min_size         = "MIN_CLUSTER_SIZE",
+        }
+        local const_key = vehicle_push[spec.key]
+        if const_key and be and be.queueAllObjectLua then
           be:queueAllObjectLua(string.format(
-            "if cluster_state and cluster_state.const then cluster_state.const.CONVERGENCE_GAIN = %f end",
-            ptr[0]
+            "if cluster_state and cluster_state.const then cluster_state.const.%s = %f end",
+            const_key, ptr[0]
           ))
         end
       end
@@ -119,6 +129,19 @@ local function draw()
     end
     if i < #CLUSTER_VIEW_MODES then imgui.SameLine() end
   end
+  imgui.Dummy(imgui.ImVec2(0, 8))
+
+  if imgui.Button("Re-cluster all vehicles") then
+    if be and be.queueAllObjectLua then
+      be:queueAllObjectLua(
+        "if cluster_spawn and cluster_spawn.run_spawn_clustering then cluster_spawn.run_spawn_clustering() end"
+      )
+    end
+  end
+  imgui.SameLine()
+  imgui.PushTextWrapPos(0)
+  imgui.TextDisabled("Re-runs cluster discovery on all vehicles with current stiffness/min-size values. No vehicle reset needed.")
+  imgui.PopTextWrapPos()
   imgui.Dummy(imgui.ImVec2(0, 8))
 
   imgui.Separator()
