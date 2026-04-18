@@ -6,6 +6,14 @@ Each phase introduces exactly one new axis of difficulty. A phase is done when i
 
 ---
 
+## Implementation Notes
+
+### Interleaved implementation order with debugger toolchain
+
+Complete ClusterSync Phase 1 (single-vehicle sync with measurement primitives) first. Then build the debugger toolchain (HotReloadingDebuggerRoadmap Phases 0-7). Then tackle ClusterSync Phases 2-4 (multi-cluster, authority election, props) with the debugger available. Debugging complex cluster sync without visualization and recording tools is painful — don't skip the debugger.
+
+---
+
 ## Roadmap
 
 - [ ] **Phase 0** — Audit and baseline (done; see audit document)

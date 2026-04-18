@@ -8,6 +8,12 @@ For detailed design rationale, protocol specs, and implementation notes, see `Ho
 
 ---
 
+## Implementation Notes
+
+- **Interleaved implementation order with ClusterSync Roadmap:** This toolchain depends on having something to debug. Complete **ClusterSync Roadmap Phase 1** (single-vehicle sync with measurement primitives) first. Then build Debugger Phases 0–7. Then return to **ClusterSync Roadmap Phases 2–4** (multi-cluster, cross-owner, props) with the debugger available. Debugging authority election and epoch handover without recording/diff visualization would be painful — don't skip the debugger.
+
+---
+
 ## Roadmap
 
 - [ ] **Phase 0** — Hook surface in KISSMultiplayer
