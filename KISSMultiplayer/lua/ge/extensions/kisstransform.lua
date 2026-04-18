@@ -62,6 +62,8 @@ local function update_vehicle_transform(data)
   local vehicle = be:getObjectByID(id)
   if vehicle and (not M.inactive[id]) then
     transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
+    -- Phase 1c: Include deformation data in the message to kiss_transforms
+    transform.deformation = data.deformation
     vehicle:queueLuaCommand("kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
   end
 end

@@ -10,6 +10,15 @@ pub use vehicle_meta::*;
 
 use serde::{Deserialize, Serialize};
 
+/// Deformation state - node positions for soft-body sync
+/// Phase 1c: Node-position-based deformation sync
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Deformation {
+    /// Node positions in world space: [(x, y, z), ...]
+    /// Index corresponds to node ID in JBeam
+    pub node_positions: Vec<[f32; 3]>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VehicleReset {
     pub vehicle_id: u32,
@@ -53,6 +62,8 @@ pub struct VehicleUpdate {
     pub generation: u64,
     /// Timestamp when this update was sent (seconds since epoch)
     pub sent_at: f64,
+    /// Deformation state (node positions) - Phase 1c
+    pub deformation: Option<Deformation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

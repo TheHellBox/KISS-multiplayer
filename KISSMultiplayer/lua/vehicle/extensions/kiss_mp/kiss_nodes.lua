@@ -1,34 +1,42 @@
+-- KissMP Node Sync Module - Phase 1c: Deformation sync
+-- Direct state replay for node positions
+-- No velocity prediction needed - just apply authoritative positions
+
 local M = {}
 
-local function send()
-  local nodes_table = {
-    vehicle_id = obj:getID(),
-    nodes = {}
-  }
-  for k, node in pairs(v.data.nodes) do
-    local position = obj:getNodePosition(node.cid)
-    table.insert(nodes_table.nodes, {position.x, position.y, position.z})
+--- Capture current node positions for sending to authority
+--- Returns table of node positions indexed by node ID
+---
+--- @return table<number, [f32, f32, f32]> Node positions: { [node_id] = {x, y, z} }
+local function capture_nodes()
+  local nodes_data = {}
+
+  for _, node in pairs(v.data.nodes) do
+    local pos = obj:getNodePosition(node.cid)
+    -- Store as [x, y, z] array
+    nodes_data[node.cid] = {pos.x, pos.y, pos.z}
   end
-  obj:queueGameEngineLua("network.send_messagepack(4, false, \'"..jsonEncode(nodes_table).."\')")
+
+  return nodes_data
 end
 
-local function apply(nodes)
-  local nodes = jsonDecode(nodes)
-  for node, pos in pairs(nodes) do
-    node = tonumber(node)
-    obj:setNodePosition(node, float3(pos[1], pos[2], pos[3]))
-    local beam = v.data.beams[node]
-    local beamPrecompression = beam.beamPrecompression or 1
-    local deformLimit = type(beam.deformLimit) == 'number' and beam.deformLimit or math.huge
-    obj:setBeam(-1, beam.id1, beam.id2, beam.beamStrength, beam.beamSpring,
-                beam.beamDamp, type(beam.dampCutoffHz) == 'number' and beam.dampCutoffHz or 0,
-                beam.beamDeform, deformLimit, type(beam.deformLimitExpansion) == 'number' and beam.deformLimitExpansion or deformLimit,
-                beamPrecompression
-    )
+--- Apply node positions from authoritative snapshot
+--- Direct state replay - no prediction, no blending for Phase 1c
+--- BeamNG's physics solver handles intermediate dynamics locally
+---
+--- @param nodes_data table<number, [f32, f32, f32]> Node positions from authority
+local function apply_nodes(nodes_data)
+  if not nodes_data then return end
+
+  for node_id, pos in pairs(nodes_data) do
+    if pos and #pos >= 3 then
+      obj:setNodePosition(node_id, float3(pos[1], pos[2], pos[3]))
+    end
   end
 end
 
-M.send = send
-M.apply = apply
+--- Export public API
+M.capture_nodes = capture_nodes
+M.apply_nodes = apply_nodes
 
 return M

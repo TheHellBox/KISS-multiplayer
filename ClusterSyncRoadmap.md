@@ -58,20 +58,14 @@ Complete ClusterSync Phase 1 (single-vehicle sync with measurement primitives) f
     - [ ] Exit: four-player server, measurements confirm tolerances hold under 5–15% simulated packet loss
 
 - [ ] **Phase 2** — Same-owner trailers (declared coupler, single authority, no election)
-  - [ ] Wire format extension: broadcast carries root 6-DOF + joint DOFs for all cluster members
+  - [ ] Wire format: explicit per-body transforms for all cluster members (truck + trailer)
   - [ ] `component_id` field now distinguishes clusters (reserved in 1b, activated here)
-  - [ ] Forward kinematic evaluator: pure function `(root_pose, joint_θs, topology) → body_poses[]`
-  - [ ] Unit tests for forward kinematic evaluator (without networking)
-  - [ ] Joint state extraction: read θ_i and θ̇_i from BeamNG vehicle Lua API every tick
-  - [ ] One extractor per coupler type (fifth wheel, ball hitch)
+  - [ ] Direct state application on replay peers — no forward kinematics
   - [ ] Coupling handshake: `onCouplerAttached`/`onCouplerDetached` triggers topology-change broadcast
-  - [ ] Atomic wire format switch at commit tick across all clients
-  - [ ] Replay path: non-authority receivers apply forward evaluator using wire-received joint DOFs
-  - [ ] No local "snap to hitch" correction (no independent trailer pose to correct against)
+  - [ ] Atomic cluster membership switch at commit tick across all clients
   - [ ] **Open questions to resolve:**
-    - [ ] Does coupler API expose clean per-joint DOF access, or must joint state be reverse-engineered from node positions?
-    - [ ] Does L-key ball-hitch coupling issue reproduce on ForkedKISS? If so, root cause in coupling detection, handshake, or joint-state extraction?
-  - [ ] Exit: no pose snaps at hitch/unhitch, no drift during driving, no jackknife-correction artifacts
+    - [ ] Does L-key ball-hitch coupling issue reproduce on ForkedKISS? If so, root cause in coupling detection or handshake?
+  - [ ] Exit: no pose snaps at hitch/unhitch, no drift during driving
   - [ ] Exit: pose divergence stays within phase 1 tolerances for both truck and trailer
 
 - [ ] **Phase 3** — Cross-owner trailers (authority election, epoch system, handover)
@@ -209,29 +203,28 @@ This is where the foundation's theoretical model first meets the BeamNG coupler 
 - Declared couplers only (fifth wheel, ball hitch) — emergent contact and runtime beams are later phases
 - Single-owner only — cross-owner trailers are phase 3
 - Static cluster topology during a coupling lifetime — topology changes only at hitch/unhitch events
+- **Explicit per-body transforms** — all cluster members (truck + trailer bodies) broadcast their full state; no joint DOF transmission
 
 ### Work items
 
 | Item | Description |
 |---|---|
-| Wire format extension | Broadcast carries root 6-DOF + joint DOFs for all cluster members. `component_id` (reserved in 1b) now actually distinguishes clusters. |
-| Forward kinematic evaluator | Pure function, receiver-side: `(root_pose, joint_θs, topology) → body_poses[]`. Unit-testable without networking. |
-| Joint state extraction | Given an attached coupler, read $\theta_i$ and $\dot\theta_i$ from the BeamNG vehicle Lua API every tick. One extractor per coupler type. |
-| Coupling handshake | On owner's client, `onCouplerAttached`/`onCouplerDetached` triggers a topology-change event broadcast via server. All clients atomically switch wire format at the commit tick. |
-| Replay path | Non-authority receivers apply forward evaluator using wire-received joint DOFs. No local "snap to hitch" correction — there is no independent trailer pose to correct against. |
+| Wire format | Broadcast carries explicit per-body transforms for all cluster members. `component_id` (reserved in 1b) now distinguishes clusters. |
+| Direct state application | Receivers apply body transforms directly — no forward kinematics, no joint angle reconstruction. |
+| Coupling handshake | On owner's client, `onCouplerAttached`/`onCouplerDetached` triggers a topology-change event broadcast via server. All clients atomically update cluster membership at the commit tick. |
+| Replay path | Non-authority receivers apply direct state from wire-received body transforms. No local "snap to hitch" correction — there is no independent trailer pose to correct against. |
 
 ### Open questions to answer during phase 2
 
-- Does the existing coupler API on BeamNG expose clean per-joint DOF access, or does joint state have to be reverse-engineered from node positions?
-- Does the L-key ball-hitch coupling issue (from prior KissMP debugging) reproduce on ForkedKISS phase 2? If so, is the root cause in the coupling detection, the handshake, or the joint-state extraction?
+- Does the L-key ball-hitch coupling issue (from prior KissMP debugging) reproduce on ForkedKISS phase 2? If so, is the root cause in the coupling detection or the handshake?
 
 ### Exit criteria
 
 One player, one truck, one trailer. Hitch, drive aggressive course, unhitch, re-hitch. Across all observers:
 
 - No pose snaps at hitch or unhitch events
-- No drift during driving (joint DOF reconstruction exact, within float precision)
-- No jackknife-correction artifacts (there is no jackknife correction — the authority's solver produces whatever articulation is physical, and receivers replay it faithfully)
+- No drift during driving (direct state application is exact, within float precision)
+- No jackknife-correction artifacts (there is no jackknife correction — the authority's solver produces whatever articulation is physical, and receivers replay it faithfully via direct body transform application)
 - Pose divergence stays within phase 1 tolerances, applied to both truck and trailer
 
 ---

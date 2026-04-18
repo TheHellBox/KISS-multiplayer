@@ -92,6 +92,13 @@ local function set_target_transform(raw)
     current_time,
     0.15  -- 150ms blend duration
   )
+
+  -- Phase 1c: Apply node positions from deformation channel (direct state replay)
+  if transform.deformation and transform.deformation.node_positions then
+    if kiss_nodes and kiss_nodes.apply_nodes then
+      kiss_nodes.apply_nodes(transform.deformation.node_positions)
+    end
+  end
 end
 
 local function onExtensionLoaded()

@@ -66,6 +66,13 @@ local function send_vehicle_update(obj)
   end
   local position = obj:getPosition()
   local velocity = obj:getVelocity()
+
+  -- Phase 1c: Capture node positions for deformation sync
+  local deformation = nil
+  if kiss_nodes and kiss_nodes.capture_nodes then
+    deformation = { node_positions = kiss_nodes.capture_nodes() }
+  end
+
   local result = {
     transform = {
       position = {position.x, position.y, position.z},
@@ -77,7 +84,8 @@ local function send_vehicle_update(obj)
     gearbox = t.gearbox,
     vehicle_id = obj:getID(),
     generation = generation,
-    sent_at = get_current_time()
+    sent_at = get_current_time(),
+    deformation = deformation,  -- Phase 1c: Node positions for deformation sync
   }
   generation = generation + 1
   network.send_data(
@@ -94,7 +102,7 @@ local function send_vehicle_meta_updates()
     if vehicle then
       local changed = false
       local id = vehicle:getID()
-      
+
       local metal_data = vehicle:getMetallicPaintData()
       local color = vehicle.color
       local palete_0 = vehicle.colorPalette0
@@ -105,17 +113,17 @@ local function send_vehicle_meta_updates()
         color_to_table(palete_0, metal_data[2]),
         color_to_table(palete_1, metal_data[3])
       }
-      
+
       if plates_buffer[id] then
         changed = changed or plates_buffer[id] ~= plate
       end
       plates_buffer[id] = plate
-      
+
       if colors_buffer[id] then
         changed = changed or not colors_eq(colors, colors_buffer[id])
       end
       colors_buffer[id] = colors
-      
+
       if changed then
         local data = {
           VehicleMetaUpdate = {
@@ -226,9 +234,9 @@ local function spawn_vehicle(data)
     kissplayers.spawn_player(data)
     return
   end
-  
+
   print("Attempt to spawn vehicle "..name)
-  local options = { 
+  local options = {
     vehicleName = "mp_veh",
     pos = vec3(data.position),
     rot = quat(data.rotation),
@@ -239,7 +247,7 @@ local function spawn_vehicle(data)
     autoEnterVehicle = false
   }
   options = sanitizeVehicleSpawnOptions(name, options)
-  
+
   local spawned = spawn.spawnVehicle(name, options.config, options.pos, options.rot, options)
   if not spawned then return end
   local p = data.position
@@ -315,7 +323,7 @@ local function update_vehicle(data)
     kissplayers.player_transforms[data.vehicle_id].time_past = clamp(get_current_time() - data.sent_at, 0, 0.3) + 0.0001
     return
   end
- 
+
   local id = M.id_map[data.vehicle_id]
   if not id then return end
   if M.ownership[id] then return end
@@ -357,10 +365,10 @@ end
 local function reset_vehicle(data)
   local id = data.vehicle_id
   id = M.id_map[id] or -1
-  
+
   local position = data.position
   local rotation = data.rotation
-  
+
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
   if vehicle then
@@ -383,7 +391,7 @@ local function update_vehicle_meta(data)
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
   local plate = data.plate
-  
+
   local color = data.colors_table[1]
   local palete_0 = data.colors_table[2]
   local palete_1 = data.colors_table[3]
@@ -400,7 +408,7 @@ local function update_vehicle_meta(data)
   -- Apply colors
   local vd = extensions.core_vehicle_manager.getVehicleData(id)
   if not vd or not vd.config or not vd.config.paints then return end
-  
+
   for i=1,3 do
     local ct = color_tables[i]
     vd.config.paints[i] =  table_to_paint(ct)
@@ -548,7 +556,7 @@ local function onVehicleResetted(id)
     local rotation = quat(vehicle:getRefNodeMatrix():toQuatF())
     local position = vec3(vehicle:getPosition())
     local data = { vehicle_id = id, position = {position.x, position.y, position.z}, rotation = {rotation.x, rotation.y, rotation.z, rotation.w}}
-    
+
     network.send_data(
       {
         ResetVehicle = data,
