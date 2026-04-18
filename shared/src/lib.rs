@@ -1,6 +1,7 @@
 extern crate pretty_env_logger;
 
 pub mod vehicle;
+pub mod measurement;
 use serde::{Deserialize, Serialize};
 use vehicle::*;
 use std::io::Write;

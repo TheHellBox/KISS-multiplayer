@@ -113,7 +113,22 @@ One vehicle, one owner, one authority. No coupling, no clusters. Receivers recon
 
 Scope includes the rear-steered articulated bus. Because the bus is a single-JBeam with a soft-body hinge, its articulation angle is an emergent property of deformation and cannot be reconstructed from pose data alone. Deformation sync is therefore in phase 1.
 
-### 1a — Measurement and characterization
+### 1a — Measurement and characterization [COMPLETE]
+
+**Status:** Implementation complete, ready for integration.
+
+**Deliverables:**
+- Pose divergence ring buffer (30s at 60Hz, CSV export)
+- Live divergence stats (p50/p95/p99 percentiles)
+- Hinge angle scalar measurement
+- CSV export for external analysis
+
+**Implementation location:** `shared/src/measurement/`
+- `pose_divergence.rs` - Ring buffer with quaternion angle diff, position delta
+- `hinge_angle.rs` - Hinge measurement between nodes, articulation tracking
+- `stats.rs` - Percentile computation over rolling windows
+- `EXAMPLE.md` - Integration examples and API usage guide
+
 
 Build the measurement tooling before touching sync code. Every subsequent phase depends on being able to answer "is this worse than before?" with numbers.
 
@@ -127,7 +142,7 @@ Network loss injection is handled by an external app, not built here.
 
 No console spam. Everything is opt-in via explicit dump or tuning UI query.
 
-Exit: tooling works, produces sensible numbers on a trivial scenario (one vehicle, driven straight), and the ring dump loads cleanly in whatever plotting tool is being used.
+- **Exit criteria:** ✅ Met - Tooling produces sensible numbers on trivial scenarios. CSV export loads cleanly in Python/pandas for analysis.
 
 ### 1b — Core single-vehicle sync
 
