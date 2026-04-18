@@ -32,14 +32,26 @@ pub struct VehicleData {
     pub rotation: [f32; 4],
 }
 
-// A single packet that contains all of the vehicle updates.
+/// A single packet that contains all of the vehicle updates.
+///
+/// Phase 1b: Single vehicle sync - `component_id` equals `vehicle_id`.
+/// Phase 2: Cluster support - `component_id` identifies individual bodies within a cluster group.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VehicleUpdate {
+    /// Transform state (pose + twist) for this body/vehicle
     pub transform: Transform,
+    /// Electrics state (control inputs for telemetry)
     pub electrics: Electrics,
+    /// Gearbox state
     pub gearbox: Gearbox,
+    /// Unique vehicle ID on the server
     pub vehicle_id: u32,
+    /// Component/body ID within cluster group (equals vehicle_id in Phase 1)
+    /// Reserved for Phase 2 multi-body cluster support
+    pub component_id: u32,
+    /// Generation/tick number for ordering and deduplication
     pub generation: u64,
+    /// Timestamp when this update was sent (seconds since epoch)
     pub sent_at: f64,
 }
 

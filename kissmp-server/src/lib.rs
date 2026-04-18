@@ -555,6 +555,7 @@ impl Server {
                             electrics: electrics.clone(),
                             gearbox: gearbox.clone(),
                             vehicle_id: vehicle_id.clone(),
+                            component_id: vehicle_id.clone(), // Phase 1: component_id = vehicle_id
                             generation: self.tick,
                             sent_at: 0.0,
                         }))
