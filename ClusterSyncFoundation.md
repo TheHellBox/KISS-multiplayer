@@ -6,63 +6,66 @@ If you are reviewing a later PR in the sync series, the invariants in §6 are th
 
 ## 1. State model
 
-A **cluster** is a tree of $N$ rigid bodies $B_0, B_1, \ldots, B_{N-1}$ connected by $N-1$ joints. $B_0$ is the **root** — the owner-authoritative anchor. Every other body $B_i$ has a parent $B_{p(i)}$ and a joint $J_i$ connecting them.
+A **cluster group** is a set of $N$ rigid bodies $B_0, B_1, \ldots, B_{N-1}$ that move as a coupled unit. A truck with trailer is two bodies. An articulated bus is two bodies. The bodies may be connected via BeamNG couplers, but the sync model treats them as independent rigid bodies whose states are all tracked explicitly.
 
-The full cluster state at time $t$ is:
+The cluster group state at time $t$ is the collection of root states for all bodies:
 
-$$\mathbf{S}(t) = \left(\mathbf{x}_0, \mathbf{q}_0, \mathbf{v}_0, \boldsymbol{\omega}_0, \\{\theta_i, \dot\theta_i\\}_{i=1}^{N-1}\right)$$
+$$\mathbf{S}(t) = \{ (\mathbf{x}_i, \mathbf{q}_i, \mathbf{v}_i, \boldsymbol{\omega}_i) \}_{i=0}^{N-1}$$
 
-where $(\mathbf{x}_0, \mathbf{q}_0, \mathbf{v}_0, \boldsymbol{\omega}_0)$ is the root's 6-DOF pose and twist in world coordinates, and each $\theta_i$ is the joint's internal DOF vector — **not** the child body's world pose.
+where for each body $B_i$:
+- $\mathbf{x}_i \in \mathbb{R}^3$ is the body position in world coordinates [m].
+- $\mathbf{q}_i \in \mathbb{H}$ is the body orientation as a unit quaternion.
+- $\mathbf{v}_i \in \mathbb{R}^3$ is the linear velocity [m/s].
+- $\boldsymbol{\omega}_i \in \mathbb{R}^3$ is the angular velocity [rad/s].
 
-The child world pose is derived:
+**Invariant:** we sync the **outcome** of BeamNG's physics simulation, not joint DOFs. The authority simulates the coupled rig with native BeamNG couplers, and we transmit the resulting state of all bodies.
 
-$$T_i = T_{p(i)} \cdot H_i(\theta_i)$$
+Hitch/joint angles are **implicit** in the relative transforms between bodies — they are not part of wire state:
 
-where $T_i$ is the $i$-th body's world transform and $H_i$ is the joint's forward kinematic map parameterized by its internal DOFs.
+$$\theta_{\text{hitch}} = \text{angle}(\mathbf{q}_0^{-1} \cdot \mathbf{q}_1)$$
 
-**Invariant:** network state is the root pose plus joint internal coordinates. Child world poses are a view, never a source of truth.
+This is computed from synced body orientations, not transmitted explicitly.
 
-This is what kills trailer drift. Drift is the symptom of two sources of truth for the same pose; removing one source removes the drift.
+This is what kills trailer drift. Each body's pose comes from exactly one source (the wire), eliminating the two-source conflict that causes drift.
 
-## 2. Joint taxonomy as DOF count
+## 2. Coupling model
 
-Every joint reduces to a small set of $H_i$ functions distinguished by DOF count, not by BeamNG `couplerTag`:
+Bodies in a cluster group may be connected via BeamNG's native coupler system on the authority side. The coupler constraint is solved by BeamNG's physics, and we sync the **resulting body states**.
 
-| Joint type | DOFs | $\theta_i$ | Examples |
+| Coupling type | Bodies | Constraint | Examples |
 |---|---|---|---|
-| Rigid weld | 0 | — | Welded stacks, rigidly-mounted racks |
-| Revolute | 1 | $\mathbb{R}$ (yaw) | Fifth wheel, kingpin |
-| Universal | 2 | $\mathbb{R}^2$ (yaw, pitch) | Pintle hitch |
-| Ball | 3 | $\mathbb{R}^3$ (yaw, pitch, roll) | Tow ball, articulated bus joint |
-| Ball + roll-damper | 3 | $\mathbb{R}^3$ | Most articulated buses (roll constrained by internal forces, not by the kinematic map) |
+| Fifth wheel | 2 | Kingpin in jaw | Truck + semi-trailer |
+| Ball hitch | 2 | Ball in socket | SUV + utility trailer |
+| Pintle hook | 2 | Ring on hook | Military + cargo trailer |
+| Articulated joint | 2 | Hinge with damping | Articulated bus |
 
-The existing `couplerTag`-based dispatch collapses into "how many entries does $\theta_i$ have." The transform path no longer branches by hitch type; it branches only by DOF count.
+The sync model does not distinguish between coupling types — all are treated as multiple bodies whose root states are synced explicitly. The hitch angle emerges from the relative transform between bodies.
 
-Rear steering on a trailing body is **not** a joint property. It is an actuator on $B_i$'s wheels — see §5.
+Rear steering on a trailing body is **not** a coupling property. It is an actuator on $B_i$'s wheels — see §4.
 
 ## 3. Authority invariant
 
-Only the owner integrates physics for the whole cluster. All other peers run the cluster as **kinematic replay**: they receive $\mathbf{S}(t)$ snapshots and reconstruct body poses via the forward map. No peer ever integrates a non-root body from forces.
+The cluster group owner integrates physics for all bodies using BeamNG's native coupler constraints. All other peers perform **state replay**: they receive $\mathbf{S}(t)$ snapshots and set each body's pose and twist directly from the wire.
 
-Formally, for any peer $P$ and any body $B_i$ in a cluster owned by $O \neq P$:
+Formally, for any peer $P$ and any body $B_i$ in a cluster group owned by $O \neq P$:
 
-$$T_i^P(t) = T_0^P(t) \cdot \prod_{j \in \text{path}(0 \to i)} H_j(\theta_j^P(t))$$
+$$T_i^P(t) = T_i^{\text{wire}}(t)$$
 
-where all $\theta_j^P$ come from the wire, never from local simulation.
+where $T_i^{\text{wire}}(t)$ is the body's transform received directly from the wire — no forward kinematics, no chain multiplication.
 
-**Invariant:** replay peers have no dynamics for owned clusters, only kinematics.
+**Invariant:** replay peers set body states directly from wire, no forward kinematics, no independent dynamics.
 
-This generalizes the existing "snap at hitch" correction. In the old model, the replay peer had an independent trailer world pose and snapped it to match `tow + hitch offset` each frame. In this model the replay peer never had an independent trailer world pose at all — it only ever had $\theta_i$, which it applies to the parent's transform.
+This eliminates the "snap at hitch" problem entirely. In the old model, the replay peer had an independent trailer world pose and corrected it toward `tow + hitch offset` each frame. In this model, the replay peer never computes trailer pose independently — it receives the trailer's exact state from the wire, exactly as the authority's physics produced it.
 
 ## 4. Rear steering and bidirectional physics
 
-In a classic tractor-trailer, information flows tow → trailer: the tow's path determines the trailer's path, and the trailer's yaw rate is a consequence of the tow's motion and the hitch geometry. Replay is trivial because the trailer has no independent will.
+In a classic tractor-trailer, information flows tow → trailer: the tow's path determines the trailer's path, and the trailer's yaw rate is a consequence of the tow's motion and the hitch geometry.
 
-Rear-steered articulated buses are different. The rear body's steered axle generates a lateral force that feeds back through the joint into the leading body's yaw dynamics. The leading body's trajectory now depends on the rear body's actuation. The arrow is bidirectional at the physics layer.
+Rear-steered articulated buses are different. The rear body's steered axle generates a lateral force that feeds back through the coupler into the leading body's yaw dynamics. The leading body's trajectory now depends on the rear body's actuation. The physics coupling is bidirectional.
 
-This does not matter for sync. The owner simulates both bodies together. The bidirectional coupling happens entirely inside one peer's solver. The wire only carries the result — $(\mathbf{x}_0, \mathbf{q}_0, \mathbf{v}_0, \boldsymbol{\omega}_0, \theta_i, \dot\theta_i)$ — and replay peers reconstruct both body poses from that. The rear-steer input is part of the owner's control state, not part of the cluster state, and it enters the simulation through the owner's wheel model before $\mathbf{S}(t)$ is ever computed.
+This does not matter for sync. The owner simulates both bodies together with BeamNG's native coupler constraints. The bidirectional coupling happens entirely inside one peer's solver. The wire only carries the resulting body states, and replay peers set both body states directly from that. The rear-steer input is part of the owner's control state, not part of the cluster state, and it enters the simulation through the owner's wheel model before $\mathbf{S}(t)$ is ever computed.
 
-**Invariant:** control inputs and cluster state are separated. Steering angle at any axle on any body is an input that the owner consumes to produce $\mathbf{S}(t+\Delta t)$. Replay peers don't need to know the rear-steer angle to replay the cluster, because its effect is already baked into the root twist and joint rates they receive.
+**Invariant:** control inputs and cluster state are separated. Steering angle at any axle on any body is an input that the owner consumes to produce $\mathbf{S}(t+\Delta t)$. Replay peers don't need to know the rear-steer angle to replay the cluster group, because its effect is already baked into the body states they receive.
 
 ## 5. Split control
 
@@ -81,42 +84,42 @@ For the common single-driver case this collapses: the driver is the physics owne
 
 If these five hold, drift is impossible by construction — not "small and correctable," impossible.
 
-1. **Single integrator.** For each cluster, exactly one peer integrates forces. All others replay.
-2. **State minimality.** Wire state is (root 6-DOF, $\\{\theta_i, \dot\theta_i\\}$). No child world poses on the wire.
-3. **Derived kinematics.** Replay peers compute child poses via $T_i = T_{p(i)} H_i(\theta_i)$. Never cache, never predict forward on a replay peer without also advancing the root.
+1. **Single integrator.** For each cluster group, exactly one peer (the owner) integrates forces using BeamNG physics. All others replay state directly.
+2. **State completeness.** Wire state contains full root state (pose + twist) for every body in the cluster group. No body poses are derived via forward kinematics.
+3. **Direct replay.** Replay peers set body states directly from wire data. No forward kinematics, no independent dynamics, no cached predictions.
 4. **Control/state separation.** Control inputs flow peer → owner. State flows owner → peers. These are different message types with different guarantees.
-5. **Topological consistency.** Cluster topology (bodies, joints, DOFs, parent relationships) is established at handshake and versioned. Mid-flight topology changes go through the two-phase protocol in §8.
+5. **Group membership consistency.** Cluster group membership (which vehicles are coupled) is established at handshake and versioned. Coupling/uncoupling events go through a two-phase protocol.
 
-The only drift sources left after these hold are numerical (float precision in the forward map) and latency (peer sees old state). Both are bounded by how recently the owner's last $\mathbf{S}(t)$ arrived.
+The only drift sources left after these hold are numerical (float precision) and latency (peer sees old state). Both are bounded by how recently the owner's last $\mathbf{S}(t)$ arrived.
 
 ## 7. Prediction on replay peers
 
 Replay peers receive $\mathbf{S}(t)$ at discrete times $t_k$. Between snapshots they extrapolate.
 
-**Root body:** standard dead-reckoning. Extrapolate $\mathbf{x}_0, \mathbf{q}_0$ using $\mathbf{v}_0, \boldsymbol{\omega}_0$. Blend over a short window when a new snapshot arrives.
+**Each body:** standard dead-reckoning per body. Extrapolate $\mathbf{x}_i, \mathbf{q}_i$ using $\mathbf{v}_i, \boldsymbol{\omega}_i$. Blend over a short window when a new snapshot arrives.
 
-**Joint DOFs:** extrapolate $\theta_i$ using $\dot\theta_i$ with the same blend. Critically, extrapolate **in joint coordinates**, not in world pose. A trailer swinging behind a tow vehicle has a $\dot\theta$ that is well-behaved even when its world-pose angular velocity looks wild, because the world angular velocity is the sum of parent angular velocity plus joint rate. Extrapolating in joint coordinates avoids the "trailer flies off" failure mode when packet loss spikes.
+**Critical:** all bodies in a cluster group are extrapolated independently, but updated atomically when a new snapshot arrives. This prevents momentary desynchronization where the truck has moved but the trailer hasn't.
 
-**Invariant:** prediction happens in the coordinate system where dynamics are simplest. Root in world, joints in joint coordinates.
+**Invariant:** prediction happens in world coordinates for each body. No joint coordinate extrapolation is needed because joint angles are not part of wire state.
 
 ## 8. Topology changes
 
-Coupling and decoupling change cluster topology. Both go through a server-coordinated handshake; neither is a unilateral client decision.
+Coupling and decoupling change cluster group membership. Both go through a server-coordinated handshake; neither is a unilateral client decision.
 
-**Coupling** — two previously-separate clusters $A$ and $B$ merge at a new joint:
+**Coupling** — two previously-separate vehicles $A$ and $B$ form a new cluster group:
 
-1. Any peer detecting geometric coupling conditions sends `COUPLE_REQUEST(A_root, B_root, joint_spec, geometry)` to the designated merge arbiter (the server in ForkedKISS).
-2. Arbiter validates: are both clusters still in claimed poses? Is the joint geometrically feasible? If yes, broadcasts `COUPLE_COMMIT(merged_topology, initial_θ)`.
-3. All peers atomically switch to the new topology at the commit tick. The formerly-independent root of $B$ becomes a child in the merged tree; its world pose is now derived from the new root + joint chain.
+1. Any peer detecting geometric coupling conditions sends `COUPLE_REQUEST(A, B, coupler_spec, geometry)` to the designated merge arbiter (the server in ForkedKISS).
+2. Arbiter validates: are both vehicles still in claimed poses? Is the coupler geometrically feasible? If yes, broadcasts `COUPLE_COMMIT(group_id, [A, B])`.
+3. All peers atomically switch to the new cluster group at the commit tick. Both vehicles are now synced as a single group.
 
 The L-key ball-hitch coupling issue that has shown up in prior debugging is almost certainly a step-1 problem: `onCouplerAttached` fires on one peer but not the other, so the request is never sent, or it is sent but validation fails because the other peer still thinks the bodies are separate. The fix is not to make `onCouplerAttached` more reliable. It is to make coupling a negotiated event rather than a detected event. Detection is a hint; commitment is a handshake.
 
-**Decoupling** — owner broadcasts `DECOUPLE_COMMIT(joint_i, split_topology)` and both sub-clusters have their own owner from the next tick. The formerly-child $B$ is seeded with initial world pose and twist from $T_{p(i)} H_i(\theta_i)$ and the composed twist at the moment of decoupling. This prevents a pose jump at the split.
+**Decoupling** — owner broadcasts `DECOUPLE_COMMIT(group_id, [A], [B])` and both vehicles become independent cluster groups from the next tick. Each vehicle continues with its current pose and twist — no pose jump at the split because we're already syncing both bodies independently.
 
 ## 9. How this differs from prior KissMP sync approaches
 
-- Previous implementations have separate transform paths for fifth wheel vs ball hitch. In this model, those are the same code path with different $H_i$ functions selected by DOF count.
-- Replay peers in the old model ran their own trailer physics and corrected via forces at the hitch. In this model they run no physics for the cluster; they apply the forward evaluator and that is the entire replay logic. Force-based corrections at the hitch disappear.
+- Previous implementations have separate transform paths for fifth wheel vs ball hitch. In this model, there is no transform path — all body poses come directly from the wire.
+- Replay peers in the old model ran their own trailer physics and corrected via forces at the hitch. In this model they run no physics for the cluster group; they set body states directly from wire data. Force-based corrections at the hitch disappear.
 - The `applyClusterLinearAngularAccel` concern is confined to the owner. Replay peers do not call it. Its quirks become a local solver problem, not a sync problem.
 - Live-tuning parameters are owner-local (they affect how the owner simulates). They are not part of cluster state and do not need to match across peers unless explicitly synced via a separate config channel.
 
@@ -124,17 +127,20 @@ The L-key ball-hitch coupling issue that has shown up in prior debugging is almo
 
 Suggested order to lower this model into code. Each step produces working, testable behavior.
 
-1. Define the wire schema for $\mathbf{S}(t)$ with joint DOFs as a variable-length array keyed by joint index. Trivially extensible to N-joint.
-2. Write the forward kinematic evaluator: `(root_pose, joint_θs, topology) → body_poses[]`. Pure function, unit-testable without any networking.
-3. Replace the trailer-pose update path on replay peers with a call to the evaluator. The "snap at hitch" logic becomes a special case (single-joint cluster) of the general replay path.
+1. Define the wire schema for $\mathbf{S}(t)$ with per-body root state (pose + twist) for all bodies in cluster group. Trivially extensible to N-body groups.
+2. Implement direct state replay: set body transforms from wire data. Pure state application, unit-testable without any networking.
+3. Replace the trailer-pose update path on replay peers with direct state setting. The "snap at hitch" logic disappears entirely.
 4. Rebuild the coupling handshake as a two-phase protocol.
-5. Only then touch the owner's solver. The solver's job shrinks: integrate forces, publish $\mathbf{S}(t)$. It stops caring about sync, because sync is now a property of the wire format and the replay evaluator.
+5. Only then touch the owner's solver. The solver's job is unchanged: integrate forces with native BeamNG couplers, publish $\mathbf{S}(t)$. Sync is now a property of the wire format and direct replay.
 
 ---
 
 ## Known risks
 
-Two places this model meets the real BeamNG API and may need adjustment:
+Three places this model meets the real BeamNG API and may need adjustment:
 
-1. **`applyClusterLinearAngularAccel` compatibility.** The foundation assumes the owner can integrate the cluster through its solver without the API imposing sync assumptions that fight the "root is the only integrator" invariant. This needs to be verified in practice on phase 1/2 work.
+1. **`applyClusterLinearAngularAccel` compatibility.** The foundation assumes the owner can integrate the cluster group through its solver without the API imposing sync assumptions. Since we sync all body states directly (not via forward kinematics), this reduces to ensuring BeamNG's cluster API doesn't fight our per-body state setting on replay peers. This needs verification on phase 1/2 work.
+
 2. **Coupling handshake latency.** The two-phase protocol adds at least one round-trip between detection and commitment. If this is perceptible to the player pulling up to a hitch, the handshake may need a speculative commit with server rollback rather than a strict two-phase commit.
+
+3. **Multi-body sync atomicity.** We transmit N body states per cluster group. If packets are split or arrive out of order, bodies may momentarily desync. We need to ensure all bodies in a group are updated atomically on the receiver side.
