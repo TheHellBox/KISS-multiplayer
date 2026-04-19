@@ -8,6 +8,10 @@ local meta_timer = 0
 local colors_buffer = {}
 local plates_buffer = {}
 local first_vehicle = true
+local last_position_buffer = {}     -- Track last positions for teleport detection
+local teleport_reset_timers = {}    -- vehicle_id -> seconds remaining until reset is sent
+local TELEPORT_THRESHOLD = 200.0    -- Meters - position jump in one tick that indicates a teleport
+local TELEPORT_RESET_DELAY = 0.5    -- Seconds to wait after teleport before sending ResetVehicle
 
 M.loading_map = false
 M.id_map = {}
@@ -67,6 +71,19 @@ local function send_vehicle_update(obj)
   local position = obj:getPosition()
   local velocity = obj:getVelocity()
 
+  -- A position jump greater than TELEPORT_THRESHOLD in one tick is treated as a teleport.
+  -- Arm a debounced ResetVehicle so the remote replica resets at the new position once the
+  -- local physics have settled.
+  local vehicle_id = obj:getID()
+  if last_position_buffer[vehicle_id] then
+    local last_pos = last_position_buffer[vehicle_id]
+    local distance = vec3(position.x, position.y, position.z):distance(vec3(last_pos.x, last_pos.y, last_pos.z))
+    if distance > TELEPORT_THRESHOLD then
+      teleport_reset_timers[vehicle_id] = TELEPORT_RESET_DELAY
+    end
+  end
+  last_position_buffer[vehicle_id] = position
+
   -- Phase 1c: Capture node positions for deformation sync
   local deformation = nil
   if kiss_nodes and kiss_nodes.capture_nodes then
@@ -83,6 +100,7 @@ local function send_vehicle_update(obj)
     electrics = t.input,
     gearbox = t.gearbox,
     vehicle_id = obj:getID(),
+    component_id = obj:getID(),
     generation = generation,
     sent_at = get_current_time(),
     deformation = deformation,  -- Phase 1c: Node positions for deformation sync
@@ -263,6 +281,17 @@ local function spawn_vehicle(data)
   spawned:queueLuaCommand("extensions.hook('kissUpdateOwnership', false)")
 end
 
+local function send_reset_vehicle(id)
+  if not network.connection.connected then return end
+  if not M.ownership[id] then return end
+  local vehicle = be:getObjectByID(id)
+  if not vehicle then return end
+  local rotation = quat(vehicle:getRefNodeMatrix():toQuatF())
+  local position = vec3(vehicle:getPosition())
+  local data = { vehicle_id = id, position = {position.x, position.y, position.z}, rotation = {rotation.x, rotation.y, rotation.z, rotation.w}}
+  network.send_data({ ResetVehicle = data }, true)
+end
+
 local function onUpdate(dt)
   if not network.connection.connected then return end
   if (getMissionFilename():lower() ~= network.connection.server_info.map:lower()) and (getMissionPath():lower() ~= network.connection.server_info.map:lower()) and not M.loading_map then
@@ -308,6 +337,22 @@ local function onUpdate(dt)
     end
     for _, v in pairs(to_remove) do
       M.vehicle_buffer[v] = nil
+    end
+  end
+
+  -- Process received transforms and queue per-vehicle update commands
+  -- This is critical for remote vehicles to receive body position updates!
+  kisstransform.onUpdate(dt)
+
+  -- Fire debounced teleport resets: once physics have settled after the position jump,
+  -- send a ResetVehicle so the remote replica resets its cluster at the new location.
+  for vid, remaining in pairs(teleport_reset_timers) do
+    remaining = remaining - dt
+    if remaining <= 0 then
+      teleport_reset_timers[vid] = nil
+      send_reset_vehicle(vid)
+    else
+      teleport_reset_timers[vid] = remaining
     end
   end
 end
@@ -536,6 +581,8 @@ end
 
 local function onVehicleDestroyed(id)
   if not network.connection.connected then return end
+  last_position_buffer[id] = nil
+  teleport_reset_timers[id] = nil
   if M.ownership[id] then
     M.id_map[M.ownership[id]] = nil
     M.ownership[id] = nil
@@ -550,20 +597,7 @@ local function onVehicleDestroyed(id)
 end
 
 local function onVehicleResetted(id)
-  if not network.connection.connected then return end
-  if M.ownership[id] then
-    local vehicle = be:getObjectByID(id)
-    local rotation = quat(vehicle:getRefNodeMatrix():toQuatF())
-    local position = vec3(vehicle:getPosition())
-    local data = { vehicle_id = id, position = {position.x, position.y, position.z}, rotation = {rotation.x, rotation.y, rotation.z, rotation.w}}
-
-    network.send_data(
-      {
-        ResetVehicle = data,
-      },
-      true
-    )
-  end
+  send_reset_vehicle(id)
 end
 
 local function onVehicleSwitched(_id, new_id)
