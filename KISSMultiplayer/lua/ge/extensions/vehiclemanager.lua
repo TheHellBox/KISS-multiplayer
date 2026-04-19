@@ -84,10 +84,14 @@ local function send_vehicle_update(obj)
   end
   last_position_buffer[vehicle_id] = position
 
-  -- Phase 1c: Capture node positions for deformation sync
-  local deformation = nil
-  if kiss_nodes and kiss_nodes.capture_nodes then
-    deformation = { node_positions = kiss_nodes.capture_nodes() }
+  -- Per-node state captured in vehicle Lua and piped through t (local_transforms).
+  -- Direct replay of pos+vel on the receiver — no rigid-body formula.
+  local cluster_nodes = nil
+  if t.node_positions then
+    cluster_nodes = {
+      node_positions = t.node_positions,
+      node_velocities = t.node_velocities,
+    }
   end
 
   local result = {
@@ -103,7 +107,7 @@ local function send_vehicle_update(obj)
     component_id = obj:getID(),
     generation = generation,
     sent_at = get_current_time(),
-    deformation = deformation,  -- Phase 1c: Node positions for deformation sync
+    cluster_nodes = cluster_nodes,
   }
   generation = generation + 1
   network.send_data(

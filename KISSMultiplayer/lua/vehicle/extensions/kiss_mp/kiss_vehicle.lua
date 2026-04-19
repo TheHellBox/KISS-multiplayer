@@ -35,7 +35,6 @@ local function onExtensionLoaded()
         node_pos
       }
     )
-    --M.test_nodes_sync[node.cid] = vec3(obj:getNodePosition(node.cid))
     total_mass = total_mass + node_mass
   end
 
@@ -86,6 +85,10 @@ local function update_transform_info()
     steering_input = electrics.values.steering_input or 0,
   }
   local gearbox = kiss_gearbox.get_gearbox_data()
+  local node_positions, node_velocities = nil, nil
+  if kiss_nodes and kiss_nodes.capture_nodes then
+    node_positions, node_velocities = kiss_nodes.capture_nodes()
+  end
   local transform = {
     position  = {p.x, p.y, p.z},
     rotation  = {r.x, r.y, r.z, r.w},
@@ -94,6 +97,8 @@ local function update_transform_info()
     vel_pitch = obj:getPitchAngularVelocity(),
     vel_roll  = obj:getRollAngularVelocity(),
     vel_yaw   = obj:getYawAngularVelocity(),
+    node_positions = node_positions,
+    node_velocities = node_velocities,
   }
   obj:queueGameEngineLua("kisstransform.push_transform("..obj:getID()..", " .. string.format("%q", jsonEncode(transform)) .. ")")
 end
@@ -105,35 +110,6 @@ local function apply_linear_velocity(x, y, z)
     local node = nodes[k]
     if node[3] then
       local result = velocity * node[2]
-      force:set(result.x, result.y, result.z)
-      obj:applyForceVector(node[1], force)
-    end
-  end
-end
-
-local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw)
-  local velocity = vec3(x, y, z)
-  local nodes = nodes
-  -- 0.1 seems like the safe value we can use for low velocities
-  -- NOTE: Doesn't work as well as expected
-  if velocity:length() < 0.01 then
-    --nodes = ref_nodes
-  end
-  local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation()))
-  local node_position = vec3()
-  local node_velocity = vec3()
-  local force = float3(0, 0, 0)
-  for k=1, #nodes do
-    local node = nodes[k]
-    if node[3] then
-      node_position:set(obj:getNodePosition(node[1]))
-      node_velocity:set(obj:getNodeVelocity(node[1]))
-      -- Compute target node velocity from body twist: v_target = v_linear + ω × r
-      local v_target = velocity + node_position:cross(rot)
-      -- Compute velocity error: v_error = v_target - v_current
-      local v_error = v_target - node_velocity
-      -- Apply force proportional to velocity error: F = v_error * mass * FPS
-      local result = v_error * node[2]
       force:set(result.x, result.y, result.z)
       obj:applyForceVector(node[1], force)
     end
@@ -152,7 +128,6 @@ local function send_vehicle_config()
 end
 
 M.update_transform_info = update_transform_info
-M.apply_linear_velocity_ang_torque = apply_linear_velocity_ang_torque
 M.update_eligible_nodes = update_eligible_nodes
 M.apply_linear_velocity = apply_linear_velocity
 M.onExtensionLoaded = onExtensionLoaded

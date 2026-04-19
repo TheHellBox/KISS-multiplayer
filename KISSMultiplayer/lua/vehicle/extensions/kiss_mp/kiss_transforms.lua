@@ -58,7 +58,7 @@ local function update(dt)
   end
 
   -- Get synced transform from sync module (includes prediction + active blending)
-  local current_time = obj:getTime() or 0
+  local current_time = os.clock()
   M.last_update_time = current_time
 
   if M.debug then
@@ -87,14 +87,9 @@ local function update(dt)
     return
   end
 
-  -- Force-based velocity-matched replay - inject forces to match target velocity
-  if M.debug then
-    print("[kiss_transforms.update] APPLYING forces v=" .. tostring(synced_transform.velocity[1]) .. "," .. tostring(synced_transform.velocity[2]) .. "," .. tostring(synced_transform.velocity[3]) .. " w=" .. tostring(synced_transform.angular_velocity[1]) .. "," .. tostring(synced_transform.angular_velocity[2]) .. "," .. tostring(synced_transform.angular_velocity[3]))
-  end
-  kiss_vehicle.apply_linear_velocity_ang_torque(
-    synced_transform.velocity[1], synced_transform.velocity[2], synced_transform.velocity[3],
-    synced_transform.angular_velocity[1], synced_transform.angular_velocity[2], synced_transform.angular_velocity[3]
-  )
+  -- Per-node replay in set_target_transform handles velocity. The old
+  -- force-based rigid-body estimator lived here; it's been removed because its
+  -- single-ω assumption drifts on wheels, rotors, and articulated vehicles.
 
   if M.debug then
     draw_debug(synced_transform)
@@ -114,7 +109,7 @@ local function set_target_transform(raw)
   if not M.sync_id then return end
 
   -- Get current time for blend calculation
-  local current_time = obj:getTime() or transform.sent_at or 0
+  local current_time = os.clock()
 
   -- Apply snapshot to sync module (handles prediction + blending setup)
   kiss_sync.apply_snapshot(
@@ -126,11 +121,12 @@ local function set_target_transform(raw)
     0.15  -- 150ms blend duration
   )
 
-  -- Phase 1c: Apply node positions from deformation channel (direct state replay)
-  if transform.deformation and transform.deformation.node_positions then
-    if kiss_nodes and kiss_nodes.apply_nodes then
-      kiss_nodes.apply_nodes(transform.deformation.node_positions)
-    end
+  -- Direct per-node replay: position + velocity applied to the jbeam, no estimation.
+  if transform.cluster_nodes and kiss_nodes and kiss_nodes.apply_nodes then
+    kiss_nodes.apply_nodes(
+      transform.cluster_nodes.node_positions,
+      transform.cluster_nodes.node_velocities
+    )
   end
 end
 
@@ -141,7 +137,7 @@ local function onExtensionLoaded()
   local current_rot = quat(obj:getRotation())
 
   -- Set initial state to avoid snap on first update
-  local current_time = obj:getTime() or 0
+  local current_time = os.clock()
   local initial_transform = {
     position = {current_pos.x, current_pos.y, current_pos.z},
     rotation = {current_rot.x, current_rot.y, current_rot.z, current_rot.w},

@@ -10,13 +10,16 @@ pub use vehicle_meta::*;
 
 use serde::{Deserialize, Serialize};
 
-/// Deformation state - node positions for soft-body sync
-/// Phase 1c: Node-position-based deformation sync
+/// Per-node state of a cluster, carried on the wire for direct replay.
+/// The receiver applies both position and velocity per node rather than estimating
+/// velocity from cluster body twist (which only works for a single rigid body and
+/// drifts on wheels, rotors, and articulated vehicles).
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Deformation {
-    /// Node positions in world space: [(x, y, z), ...]
-    /// Index corresponds to node ID in JBeam
+pub struct ClusterNodes {
+    /// Node positions in world space: [(x, y, z), ...] indexed by node CID.
     pub node_positions: Vec<[f32; 3]>,
+    /// Node velocities in world space: [(vx, vy, vz), ...] indexed by node CID.
+    pub node_velocities: Vec<[f32; 3]>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -62,8 +65,8 @@ pub struct VehicleUpdate {
     pub generation: u64,
     /// Timestamp when this update was sent (seconds since epoch)
     pub sent_at: f64,
-    /// Deformation state (node positions) - Phase 1c
-    pub deformation: Option<Deformation>,
+    /// Per-node state (position + velocity) for direct replay on the receiver.
+    pub cluster_nodes: Option<ClusterNodes>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
