@@ -2,6 +2,7 @@ print("Executing KissMP modScript...")
 loadJsonMaterialsFile("art/shapes/kissmp_playermodels/main.materials.json")
 
 setExtensionUnloadMode("kissplayers", "manual")
+setExtensionUnloadMode("kissghosts", "manual")
 setExtensionUnloadMode("vehiclemanager", "manual")
 setExtensionUnloadMode("kisstransform", "manual")
 setExtensionUnloadMode("kissui", "manual")

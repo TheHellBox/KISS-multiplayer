@@ -5,6 +5,8 @@ local string_buffer = require("string.buffer")
 local nodes = {}
 local ref_nodes = {}
 
+M.collision = true
+
 local last_node = 1
 local nodes_per_frame = 32
 
@@ -155,11 +157,23 @@ local function send_vehicle_config()
     objectId, jsonEncode(config), string_buffer.encode(data)))
 end
 
+local function set_collision(collision)
+  M.collision = collision
+
+  if collision then
+    obj:setGhostEnabled(false)
+  else
+    obj:setGhostEnabled(true)
+  end
+end
+
 M.update_transform_info = update_transform_info
 M.apply_linear_velocity_ang_torque = apply_linear_velocity_ang_torque
 M.update_eligible_nodes = update_eligible_nodes
 M.apply_linear_velocity = apply_linear_velocity
 M.onExtensionLoaded = onExtensionLoaded
+
+M.set_collision = set_collision
 M.send_vehicle_config = send_vehicle_config
 
 return M

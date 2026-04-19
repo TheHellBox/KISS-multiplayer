@@ -7,12 +7,14 @@ local generation = 0
 local meta_timer = 0
 local colors_buffer = {}
 local plates_buffer = {}
+local global_ghost_state_buffer = {}
 local first_vehicle = true
 
 M.loading_map = false
 M.id_map = {}
 M.server_ids = {}
 M.ownership = {}
+M.id_to_owner_map = {}
 M.vehicle_updates_buffer = {}
 M.packet_gen_buffer = {}
 M.is_network_session = false
@@ -115,12 +117,19 @@ local function send_vehicle_meta_updates()
       end
       colors_buffer[id] = colors
 
+      local ghost_state = kissghosts.global_state[id] or 0
+      if global_ghost_state_buffer[id] then
+        changed = changed or global_ghost_state_buffer[id] ~= ghost_state
+      end
+      global_ghost_state_buffer[id] = ghost_state
+
       if changed then
         local data = {
           VehicleMetaUpdate = {
             id,
             plate,
-            colors
+            colors,
+            ghost_state
           }
         }
         network.send_data(data, true)
@@ -174,6 +183,7 @@ local function send_vehicle_config_inner(id, parts_config_json, buffer_data)
   vehicle_data.rotation = {rotation.x, rotation.y, rotation.z, rotation.w}
   vehicle_data.server_id = 0
   vehicle_data.owner = 0
+  vehicle_data.global_ghost_state = 0
   network.send_data(
     {
       VehicleData = vehicle_data
@@ -239,6 +249,7 @@ local function spawn_vehicle(server_data)
     M.vehicle_buffer[data.server_id] = server_data
     return
   end
+  M.id_to_owner_map[data.in_game_id] = data.owner
   if data.owner == network.get_client_id() then
     log("I", "kissmp.vehiclemanager.spawn_vehicle", "Vehicle belongs to local client, setting ownership")
     M.id_map[data.server_id] = data.in_game_id
@@ -466,6 +477,8 @@ local function update_vehicle_meta(data)
     extensions.core_vehicle_manager.liveUpdateVehicleColors(id, vehicle, i, table_to_color(ct))
   end
   vehicle:setField('partConfig', '', serialize(vd.config))
+
+  kissghosts.set_pause_override(id, data.global_ghost_state == 2, true)
 end
 
 local function attach_coupler_inner(buffer_data)
@@ -575,15 +588,10 @@ end
 local function onVehicleSpawned(id)
   if not network.connection.connected then return end
   local vehicle = getObjectByID(id)
-  tempVec1:set(vehicle:getPositionXYZ())
-  if first_vehicle then
-    tempVec2:set(tempVec1.x + math.random(-5, 5), tempVec1.y + math.random(-5, 5), tempVec1.z)
-    vehicle:setPosition(tempVec2)
-    vehicle:queueLuaCommand("recovery.saveHome()")
-    first_vehicle = false
-  end
   vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
+  vehicle:queueLuaCommand("rawset(_G, 'ghostOnReset', true)") -- this is important for ghosting
+
   send_vehicle_config(id)
   -- Attempt to workaround a bug from latest beamng update. Also prevents unicycle cloning(Somewhat)
   if vehicle:getJBeamFilename() == "unicycle" then
@@ -646,6 +654,7 @@ local function onMissionLoaded(mission)
   if not network.connection.connected then return end
   M.id_map = {}
   M.ownership = {}
+  M.id_to_owner_map = {}
   M.loading_map = false
   first_vehicle = true
 end
@@ -679,6 +688,7 @@ M.attach_coupler = attach_coupler
 M.detach_coupler = detach_coupler
 M.attach_coupler_inner = attach_coupler_inner
 M.detach_coupler_inner = detach_coupler_inner
+M.send_vehicle_meta_updates = send_vehicle_meta_updates
 
 M.set_position = set_position
 M.set_position_rotation = set_position_rotation

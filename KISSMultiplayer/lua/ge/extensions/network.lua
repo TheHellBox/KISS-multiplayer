@@ -34,6 +34,16 @@ M.connection = {
   time_offset = 0
 }
 
+local original_simTimeAuthorityFuncs = nil
+-- pushPauseRequest
+-- popPauseRequest
+
+local blocked_inputs = {"slower_motion", "faster_motion", "toggle_slow_motion", "pause"}
+local function block_inputs(block)
+  core_input_actionFilter.setGroup('kissmpActions', blocked_inputs)
+  core_input_actionFilter.addAction(0, 'kissmpActions', block)
+end
+
 local CHUNK_SIZE = 65000  -- Safe size under 65536 limit
 
 local message_handlers = {}
@@ -122,6 +132,12 @@ local function disconnect(data)
   if getMissionFilename() ~= "" then
     returnToMainMenu()
   end
+
+  if original_simTimeAuthorityFuncs then
+    simTimeAuthority.pushPauseRequest = original_simTimeAuthorityFuncs.pushPauseRequest
+    simTimeAuthority.popPauseRequest = original_simTimeAuthorityFuncs.popPauseRequest
+  end
+  block_inputs(false)
 end
 
 local function handle_player_info(player_info)
@@ -410,10 +426,20 @@ local function connect(addr, player_name, is_public)
     end
   end
   vehiclemanager.loading_map = true
+
+  original_simTimeAuthorityFuncs = {
+    pushPauseRequest = simTimeAuthority.pushPauseRequest,
+    popPauseRequest = simTimeAuthority.popPauseRequest,
+  }
+
+  simTimeAuthority.pushPauseRequest = kissghosts.attempt_pause
+  simTimeAuthority.popPauseRequest = kissghosts.attempt_unpause
+
   if #missing_mods == 0 then
     kissmods.mount_mods(mod_names)
     change_map(server_info.map)
   end
+  block_inputs(true)
   kissrichpresence.update()
   kissui.chat.add_message("Connected!")
 end
