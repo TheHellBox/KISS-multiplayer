@@ -28,21 +28,25 @@ end
 local function apply_nodes(positions, velocities)
   if not positions then return end
 
+  -- Keys arrive as strings because the wire format is JSON (object keys are strings).
+  -- BeamNG's node APIs expect numeric CIDs, so coerce with tonumber.
   for node_id, pos in pairs(positions) do
-    if pos and #pos >= 3 then
-      obj:setNodePosition(node_id, float3(pos[1], pos[2], pos[3]))
+    local cid = tonumber(node_id)
+    if cid and pos and #pos >= 3 then
+      obj:setNodePosition(cid, float3(pos[1], pos[2], pos[3]))
     end
   end
 
   if not velocities then return end
   local physics_fps = obj:getPhysicsFPS()
   for node_id, vel in pairs(velocities) do
-    if vel and #vel >= 3 then
-      local current = obj:getNodeVelocityVector(node_id)
-      local m = obj:getNodeMass(node_id)
+    local cid = tonumber(node_id)
+    if cid and vel and #vel >= 3 then
+      local current = obj:getNodeVelocityVector(cid)
+      local m = obj:getNodeMass(cid)
       local factor = m * physics_fps
       obj:applyForceVector(
-        node_id,
+        cid,
         float3(
           (vel[1] - current.x) * factor,
           (vel[2] - current.y) * factor,
