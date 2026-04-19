@@ -9,17 +9,21 @@ pub use transform::*;
 pub use vehicle_meta::*;
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Per-node state of a cluster, carried on the wire for direct replay.
 /// The receiver applies both position and velocity per node rather than estimating
 /// velocity from cluster body twist (which only works for a single rigid body and
 /// drifts on wheels, rotors, and articulated vehicles).
+///
+/// Keyed by node CID (integer, not necessarily contiguous or zero-indexed), which
+/// matches the Lua table shape `{ [cid] = {x, y, z} }` and survives JSON round-trip.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClusterNodes {
-    /// Node positions in world space: [(x, y, z), ...] indexed by node CID.
-    pub node_positions: Vec<[f32; 3]>,
-    /// Node velocities in world space: [(vx, vy, vz), ...] indexed by node CID.
-    pub node_velocities: Vec<[f32; 3]>,
+    /// Node positions in world space: { cid -> (x, y, z) }.
+    pub node_positions: HashMap<u32, [f32; 3]>,
+    /// Node velocities in world space: { cid -> (vx, vy, vz) }.
+    pub node_velocities: HashMap<u32, [f32; 3]>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

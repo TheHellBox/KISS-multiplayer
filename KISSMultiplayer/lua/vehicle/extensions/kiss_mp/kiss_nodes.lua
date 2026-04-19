@@ -13,7 +13,7 @@ local function capture_nodes()
 
   for _, node in pairs(v.data.nodes) do
     local p = obj:getNodePosition(node.cid)
-    local v_node = obj:getNodeVelocity(node.cid)
+    local v_node = obj:getNodeVelocityVector(node.cid)
     positions[node.cid] = {p.x, p.y, p.z}
     velocities[node.cid] = {v_node.x, v_node.y, v_node.z}
   end
@@ -38,7 +38,7 @@ local function apply_nodes(positions, velocities)
   local physics_fps = obj:getPhysicsFPS()
   for node_id, vel in pairs(velocities) do
     if vel and #vel >= 3 then
-      local current = obj:getNodeVelocity(node_id)
+      local current = obj:getNodeVelocityVector(node_id)
       local m = obj:getNodeMass(node_id)
       local factor = m * physics_fps
       obj:applyForceVector(
