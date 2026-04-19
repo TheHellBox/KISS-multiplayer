@@ -4,7 +4,7 @@
 local M = {}
 -- kiss_sync is loaded as a global vehicle extension module
 
-M.debug = false
+M.debug = true  -- Enable debug logging
 M.cooldown_timer = 2
 M.sync_id = nil  -- Vehicle ID for sync state tracking
 
@@ -40,28 +40,61 @@ local function draw_debug(synced_transform)
 end
 
 local function update(dt)
+  -- DEBUG: Log update call
+  if M.debug and dt <= 0.1 then
+    print("[kiss_transforms.update] obj=" .. tostring(obj) .. " id=" .. tostring(obj:getID()) .. " sync_id=" .. tostring(M.sync_id) .. " dt=" .. tostring(dt))
+  end
+
   if M.cooldown_timer > 0 then
     M.cooldown_timer = M.cooldown_timer - clamp(dt, 0, 0.02)
     return
   end
-  if dt > 0.1 then return end
+
+  if dt > 0.1 then
+    if M.debug then
+      print("[kiss_transforms.update] BLOCKED by large dt: " .. dt)
+    end
+    return
+  end
 
   -- Get synced transform from sync module (includes prediction + active blending)
   local current_time = obj:getTime() or 0
   M.last_update_time = current_time
+
+  if M.debug then
+    print("[kiss_transforms.update] current_time=" .. current_time .. " calling get_synced_transform")
+  end
+
   local synced_transform = get_synced_transform(current_time)
 
-  if not synced_transform then return end
-
-  -- Handle large corrections (teleport prevention)
-  if try_rude(synced_transform) then
-    if M.debug then draw_debug(synced_transform) end
+  if not synced_transform then
+    if M.debug then
+      print("[kiss_transforms.update] BLOCKED: get_synced_transform returned nil")
+    end
     return
   end
 
-  -- Direct state setting - no physics forces
-  obj:setPosition(synced_transform.position)
-  obj:setRotation(synced_transform.rotation)
+  if M.debug then
+    print("[kiss_transforms.update] Got synced_transform pos=(" .. synced_transform.position.x .. "," .. synced_transform.position.y .. "," .. synced_transform.position.z .. ")")
+  end
+
+  -- Handle large corrections (teleport prevention)
+  if try_rude(synced_transform) then
+    if M.debug then
+      print("[kiss_transforms.update] try_rude triggered - direct reset applied")
+      draw_debug(synced_transform)
+    end
+    return
+  end
+
+  -- Force-based velocity-matched replay - inject forces to match target velocity
+  if M.debug then
+    print("[kiss_transforms.update] APPLYING forces v=" .. tostring(synced_transform.velocity[1]) .. "," .. tostring(synced_transform.velocity[2]) .. "," .. tostring(synced_transform.velocity[3]) .. " w=" .. tostring(synced_transform.angular_velocity[1]) .. "," .. tostring(synced_transform.angular_velocity[2]) .. "," .. tostring(synced_transform.angular_velocity[3]))
+  end
+  kiss_vehicle.apply_linear_velocity_ang_torque(
+    synced_transform.velocity[1], synced_transform.velocity[2], synced_transform.velocity[3],
+    synced_transform.angular_velocity[1], synced_transform.angular_velocity[2], synced_transform.angular_velocity[3]
+  )
 
   if M.debug then
     draw_debug(synced_transform)

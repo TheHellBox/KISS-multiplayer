@@ -15,9 +15,18 @@ M.velocity_error_limit = 10
 
 M.hidden = {}
 
+local DEBUG_GLOBAL = true  -- Debug logging for global manager
 local function update(dt)
-  if not network.connection.connected then return end
-    -- Get rotation/angular velocity from vehicle lua
+  if DEBUG_GLOBAL then
+    print("[kisstransform.update] START dt=" .. tostring(dt) .. " received_transforms=" .. tostring(#M.received_transforms))
+  end
+
+  if not network.connection.connected then
+    if DEBUG_GLOBAL then print("[kisstransform.update] BLOCKED: not connected") end
+    return
+  end
+
+  -- Get rotation/angular velocity from vehicle lua
   for i = 0, be:getObjectCount() do
     local vehicle = be:getObject(i)
     if vehicle and (not M.inactive[vehicle:getID()]) then
@@ -27,12 +36,35 @@ local function update(dt)
 
   -- Don't apply velocity while paused. If we do, velocity gets stored up and released when the game resumes.
   local apply_velocity = not bullettime.getPause()
+  if DEBUG_GLOBAL and not apply_velocity then
+    print("[kisstransform.update] BLOCKED: game paused (bullettime.getPause()=true)")
+  end
+
+  if DEBUG_GLOBAL then
+    print("[kisstransform.update] apply_velocity=" .. tostring(apply_velocity) .. " iterating received_transforms...")
+  end
+
   for id, transform in pairs(M.received_transforms) do
+    if DEBUG_GLOBAL then
+      print("[kisstransform.update] Processing vehicle id=" .. tostring(id))
+    end
+
     --apply_transform(dt, id, transform, apply_velocity)
     local vehicle = be:getObjectByID(id)
     local p = vec3(transform.position)
-    if vehicle and apply_velocity and (not vehiclemanager.ownership[id]) then
+
+    if not vehicle then
+      if DEBUG_GLOBAL then print("[kisstransform.update] BLOCKED: vehicle " .. tostring(id) .. " not found") end
+    elseif not apply_velocity then
+      if DEBUG_GLOBAL then print("[kisstransform.update] BLOCKED: apply_velocity=false for vehicle " .. tostring(id)) end
+    elseif vehiclemanager.ownership[id] then
+      if DEBUG_GLOBAL then print("[kisstransform.update] BLOCKED: we own vehicle " .. tostring(id)) end
+    else
       if ((p:distance(vec3(getCameraPosition())) > kissui.view_distance[0])) and kissui.enable_view_distance[0] then
+        if DEBUG_GLOBAL then
+          local dist = p:distance(vec3(getCameraPosition()))
+          print("[kisstransform.update] BLOCKED: vehicle " .. tostring(id) .. " outside view distance (dist=" .. dist .. ")")
+        end
         if (not M.inactive[id]) then
           vehicle:setActive(0)
           M.inactive[id] = true
@@ -41,11 +73,19 @@ local function update(dt)
         if M.inactive[id] then
           vehicle:setActive(1)
           M.inactive[id] = false
+          if DEBUG_GLOBAL then print("[kisstransform.update] Reactivated vehicle " .. tostring(id)) end
+        end
+        if DEBUG_GLOBAL then
+          print("[kisstransform.update] QUEUING commands for vehicle " .. tostring(id))
         end
         vehicle:queueLuaCommand("kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
         vehicle:queueLuaCommand("kiss_transforms.update("..dt..")")
       end
     end
+  end
+
+  if DEBUG_GLOBAL then
+    print("[kisstransform.update] END")
   end
 end
 

@@ -45,7 +45,7 @@ Rear steering on a trailing body is **not** a coupling property. It is an actuat
 
 ## 3. Authority invariant
 
-The cluster group owner integrates physics for all bodies using BeamNG's native coupler constraints. All other peers perform **state replay**: they receive $\mathbf{S}(t)$ snapshots and set each body's pose and twist directly from the wire.
+The cluster group owner integrates physics for all bodies using BeamNG's native coupler constraints. All other peers perform **state replay**: they receive $\mathbf{S}(t)$ snapshots containing body pose and twist, then inject velocity-matching forces to replay the authoritative trajectory.
 
 Formally, for any peer $P$ and any body $B_i$ in a cluster group owned by $O \neq P$:
 
@@ -53,7 +53,7 @@ $$T_i^P(t) = T_i^{\text{wire}}(t)$$
 
 where $T_i^{\text{wire}}(t)$ is the body's transform received directly from the wire — no forward kinematics, no chain multiplication.
 
-**Invariant:** replay peers set body states directly from wire, no forward kinematics, no independent dynamics.
+**Invariant:** replay peers compute per-node target velocities from wire body state and inject velocity-matching forces. No direct position or velocity assignment; momentum is carried by the solver.
 
 This eliminates the "snap at hitch" problem entirely. In the old model, the replay peer had an independent trailer world pose and corrected it toward `tow + hitch offset` each frame. In this model, the replay peer never computes trailer pose independently — it receives the trailer's exact state from the wire, exactly as the authority's physics produced it.
 
@@ -86,7 +86,7 @@ If these five hold, drift is impossible by construction — not "small and corre
 
 1. **Single integrator.** For each cluster group, exactly one peer (the owner) integrates forces using BeamNG physics. All others replay state directly.
 2. **State completeness.** Wire state contains full root state (pose + twist) for every body in the cluster group. No body poses are derived via forward kinematics.
-3. **Direct replay.** Replay peers set body states directly from wire data. No forward kinematics, no independent dynamics, no cached predictions.
+3. **Force-based replay.** Replay peers compute per-node target velocities from the wire body state and inject velocity-matching forces. No direct position or velocity assignment; momentum is carried by the solver. Replay does not set node positions, does not set node velocities, and does not run an independent rigid-body simulation on the peer side.
 4. **Control/state separation.** Control inputs flow peer → owner. State flows owner → peers. These are different message types with different guarantees.
 5. **Group membership consistency.** Cluster group membership (which vehicles are coupled) is established at handshake and versioned. Coupling/uncoupling events go through a two-phase protocol.
 
@@ -139,7 +139,7 @@ Suggested order to lower this model into code. Each step produces working, testa
 
 Three places this model meets the real BeamNG API and may need adjustment:
 
-1. **`applyClusterLinearAngularAccel` compatibility.** The foundation assumes the owner can integrate the cluster group through its solver without the API imposing sync assumptions. Since we sync all body states directly (not via forward kinematics), this reduces to ensuring BeamNG's cluster API doesn't fight our per-body state setting on replay peers. This needs verification on phase 1/2 work.
+1. **Replay primitive selection.** The chosen replay primitive is per-node force injection with velocity feed-forward. This is a design decision, not a risk — the implementation uses `applyForceVector` per node with target velocity computed from wire body state.
 
 2. **Coupling handshake latency.** The two-phase protocol adds at least one round-trip between detection and commitment. If this is perceptible to the player pulling up to a hitch, the handshake may need a speculative commit with server rollback rather than a strict two-phase commit.
 

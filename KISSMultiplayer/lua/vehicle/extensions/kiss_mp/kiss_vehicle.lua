@@ -70,13 +70,13 @@ end
 local function update_transform_info()
   local r = quat(obj:getRotation())
   local p = obj:getPosition()
-  
+
   local throttle_input = electrics.values.throttle_input or 0
   local brake_input = electrics.values.brake_input or 0
   if electrics.values.gearboxMode == "arcade" and electrics.values.gearIndex < 0 then
     throttle_input, brake_input = brake_input, throttle_input
   end
-  
+
   local input = {
     vehicle_id = obj:getID() or 0,
     throttle_input = throttle_input,
@@ -121,12 +121,19 @@ local function apply_linear_velocity_ang_torque(x, y, z, pitch, roll, yaw)
   end
   local rot = vec3(pitch, roll, yaw):rotated(quat(obj:getRotation()))
   local node_position = vec3()
+  local node_velocity = vec3()
   local force = float3(0, 0, 0)
   for k=1, #nodes do
     local node = nodes[k]
     if node[3] then
       node_position:set(obj:getNodePosition(node[1]))
-      local result = (velocity + node_position:cross(rot)) * node[2]
+      node_velocity:set(obj:getNodeVelocity(node[1]))
+      -- Compute target node velocity from body twist: v_target = v_linear + ω × r
+      local v_target = velocity + node_position:cross(rot)
+      -- Compute velocity error: v_error = v_target - v_current
+      local v_error = v_target - node_velocity
+      -- Apply force proportional to velocity error: F = v_error * mass * FPS
+      local result = v_error * node[2]
       force:set(result.x, result.y, result.z)
       obj:applyForceVector(node[1], force)
     end
