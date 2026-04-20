@@ -13,6 +13,19 @@ local teleport_reset_timers = {}    -- vehicle_id -> seconds remaining until res
 local TELEPORT_THRESHOLD = 200.0    -- Meters - position jump in one tick that indicates a teleport
 local TELEPORT_RESET_DELAY = 0.5    -- Seconds to wait after teleport before sending ResetVehicle
 
+local cluster_nodes_tick = {}       -- vehicle_id -> monotonic tick counter for cluster nodes fragments
+local cluster_nodes_last_rx = {}    -- server_vehicle_id -> highest tick_id applied from received fragments
+local CLUSTER_NODES_PER_FRAGMENT = 30  -- Node entries per fragment; sized so a fragment fits one datagram
+local U32_MAX = 0xFFFFFFFF
+local U32_HALF = 0x80000000
+
+local function tick_id_is_newer(candidate, reference)
+  -- Wrap-aware comparison: true if `candidate` is newer than `reference` modulo 2^32.
+  -- Handles session restarts / counter resets naturally without special-casing wrap.
+  local diff = (candidate - reference) % (U32_MAX + 1)
+  return diff > 0 and diff < U32_HALF
+end
+
 M.loading_map = false
 M.id_map = {}
 M.server_ids = {}
@@ -57,6 +70,43 @@ local function colors_eq(a, b)
   return color_eq(a[1], b[1]) and color_eq(a[2], b[2]) and color_eq(a[3], b[3])
 end
 
+local function send_cluster_nodes_fragments(vehicle_id, tick_id, positions, velocities)
+  -- Split positions/velocities into fragments of CLUSTER_NODES_PER_FRAGMENT entries.
+  -- Iteration order is arbitrary (pairs) which is fine — receiver applies per-CID.
+  local buffer_pos, buffer_vel, count, fragments = {}, {}, 0, {}
+  for cid, pos in pairs(positions) do
+    buffer_pos[cid] = pos
+    buffer_vel[cid] = velocities and velocities[cid] or nil
+    count = count + 1
+    if count >= CLUSTER_NODES_PER_FRAGMENT then
+      table.insert(fragments, { positions = buffer_pos, velocities = buffer_vel })
+      buffer_pos, buffer_vel, count = {}, {}, 0
+    end
+  end
+  if count > 0 then
+    table.insert(fragments, { positions = buffer_pos, velocities = buffer_vel })
+  end
+
+  local total = #fragments
+  for i, frag in ipairs(fragments) do
+    network.send_data(
+      {
+        ClusterNodesFragment = {
+          vehicle_id = vehicle_id,
+          tick_id = tick_id,
+          fragment_index = i - 1,
+          total_fragments = total,
+          nodes = {
+            node_positions = frag.positions,
+            node_velocities = frag.velocities,
+          },
+        },
+      },
+      false
+    )
+  end
+end
+
 local function send_vehicle_update(obj)
   if not kisstransform.local_transforms[obj:getID()] then return end
   local t = kisstransform.local_transforms[obj:getID()]
@@ -84,16 +134,6 @@ local function send_vehicle_update(obj)
   end
   last_position_buffer[vehicle_id] = position
 
-  -- Per-node state captured in vehicle Lua and piped through t (local_transforms).
-  -- Direct replay of pos+vel on the receiver — no rigid-body formula.
-  local cluster_nodes = nil
-  if t.node_positions then
-    cluster_nodes = {
-      node_positions = t.node_positions,
-      node_velocities = t.node_velocities,
-    }
-  end
-
   local result = {
     transform = {
       position = {position.x, position.y, position.z},
@@ -107,7 +147,6 @@ local function send_vehicle_update(obj)
     component_id = obj:getID(),
     generation = generation,
     sent_at = get_current_time(),
-    cluster_nodes = cluster_nodes,
   }
   generation = generation + 1
   network.send_data(
@@ -116,6 +155,16 @@ local function send_vehicle_update(obj)
     },
     false
   )
+
+  -- Send per-node state as one or more ClusterNodesFragment messages.
+  -- Each fragment is sized to fit a single QUIC datagram; the receiver applies
+  -- fragments independently as they arrive. Dropped fragments just mean those
+  -- nodes don't update this tick — next tick re-sends them.
+  if t.node_positions then
+    local tick_id = (cluster_nodes_tick[vehicle_id] or 0) + 1
+    cluster_nodes_tick[vehicle_id] = tick_id
+    send_cluster_nodes_fragments(obj:getID(), tick_id, t.node_positions, t.node_velocities)
+  end
 end
 
 local function send_vehicle_meta_updates()
@@ -361,6 +410,35 @@ local function onUpdate(dt)
   end
 end
 
+local function update_cluster_nodes_fragment(data)
+  -- Each fragment applies independently. Drop fragments older than the highest
+  -- tick_id we've seen for this vehicle (wrap-aware comparison).
+  local server_vid = data.vehicle_id
+  local local_id = M.id_map[server_vid]
+  if not local_id then return end  -- vehicle not spawned locally (buffered or unknown)
+  if M.ownership[local_id] then return end  -- we own it; don't apply own data
+
+  local last_rx = cluster_nodes_last_rx[server_vid]
+  if last_rx and not tick_id_is_newer(data.tick_id, last_rx) and data.tick_id ~= last_rx then
+    return  -- strictly older fragment; drop
+  end
+  cluster_nodes_last_rx[server_vid] = data.tick_id
+
+  local vehicle = be:getObjectByID(local_id)
+  if not vehicle then return end
+  if kisstransform.inactive[local_id] then return end  -- frozen; skip apply
+
+  local positions = data.nodes and data.nodes.node_positions
+  local velocities = data.nodes and data.nodes.node_velocities
+  if not positions then return end
+
+  local pos_arg = "jsonDecode(" .. string.format("%q", jsonEncode(positions)) .. ")"
+  local vel_arg = velocities
+    and ("jsonDecode(" .. string.format("%q", jsonEncode(velocities)) .. ")")
+    or "nil"
+  vehicle:queueLuaCommand("kiss_nodes.apply_nodes(" .. pos_arg .. ", " .. vel_arg .. ")")
+end
+
 local function update_vehicle(data)
   kisstransform.raw_transforms[data.vehicle_id] = data.transform
     -- If vehicle is a unicycle(Walking mode character), sync it differently
@@ -587,6 +665,9 @@ local function onVehicleDestroyed(id)
   if not network.connection.connected then return end
   last_position_buffer[id] = nil
   teleport_reset_timers[id] = nil
+  cluster_nodes_tick[id] = nil
+  local server_vid = M.server_ids[id]
+  if server_vid then cluster_nodes_last_rx[server_vid] = nil end
   if M.ownership[id] then
     M.id_map[M.ownership[id]] = nil
     M.ownership[id] = nil
@@ -633,6 +714,7 @@ end
 M.onUpdate = onUpdate
 M.get_current_time = get_current_time
 M.update_vehicle = update_vehicle
+M.update_cluster_nodes_fragment = update_cluster_nodes_fragment
 M.send_vehicle_config = send_vehicle_config
 M.send_vehicle_config_inner = send_vehicle_config_inner
 M.spawn_vehicle = spawn_vehicle

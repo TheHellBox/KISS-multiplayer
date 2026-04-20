@@ -5,7 +5,6 @@ pub struct Vehicle {
     pub transform: Option<Transform>,
     pub electrics: Option<Electrics>,
     pub gearbox: Option<Gearbox>,
-    pub cluster_nodes: Option<ClusterNodes>,
     pub data: VehicleData,
 }
 
@@ -117,7 +116,6 @@ impl crate::Server {
                 gearbox: None,
                 electrics: None,
                 transform: None,
-                cluster_nodes: None,
             },
         );
 
