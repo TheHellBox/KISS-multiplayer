@@ -125,20 +125,37 @@ async fn connect_to_server(
 
         client_cfg.transport_config(Arc::new(transport));
 
-        let mut endpoint = quinn::Endpoint::client(
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)
-        ).unwrap();
+        let local_bind_addr = match addr {
+            SocketAddr::V4(_) => SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            SocketAddr::V6(_) => SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0),
+        };
+        let mut endpoint = match quinn::Endpoint::client(local_bind_addr) {
+            Ok(endpoint) => endpoint,
+            Err(e) => {
+                error!(
+                    "Failed to create client endpoint for {} using local bind {}: {}",
+                    addr, local_bind_addr, e
+                );
+                return;
+            }
+        };
         endpoint.set_default_client_config(client_cfg);
         endpoint
     };
 
-    let server_connection = match endpoint.connect(addr, "kissmp").unwrap().await {
-        Ok(c) => {
-            info!("Successfully connected to the server at {}", addr);
-            c
-        }
+    let server_connection = match endpoint.connect(addr, "kissmp") {
+        Ok(connecting) => match connecting.await {
+            Ok(c) => {
+                info!("Successfully connected to the server at {}", addr);
+                c
+            }
+            Err(e) => {
+                error!("Failed to connect to the server at {}: {}", addr, e);
+                return;
+            }
+        },
         Err(e) => {
-            error!("Failed to connect to the server at {}: {}", addr, e);
+            error!("Failed to start connection to the server at {}: {}", addr, e);
             return;
         }
     };
