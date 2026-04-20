@@ -65,7 +65,9 @@ If you are hosting and connecting on the same PC:
 For a friend to connect over the internet:
 1. Ensure they have access to your network (via port-forwarding port `3698` UDP; a VPN like Hamachi/Tailscale; or any other means).
 2. Ensure you have allowed the server through your Windows or Linux Firewall.
-3. They launch the bridge, open the game and Direct Connect using your public/VPN IPv4 address.
+3. They launch the bridge, open the game and Direct Connect using your domain (recommended) or public/VPN address.
+
+If you host a public server and want the server list to use a domain instead of an IP, set `public_host` in `kissmp-server/config.json` to your hostname (for example `play.example.com`).
 
 More detailed guides on server configuration and addons can be found on our [Docs](https://github.com/TheHellBox/KISS-multiplayer/blob/master/docs/src/SUMMARY.md).
 

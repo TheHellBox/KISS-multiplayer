@@ -4,6 +4,7 @@ Hosting a server with KissMP is very easy.
 - The server software was included in your download of KissMP, simply extract the "kissmp-server" directory to where you would like to set up your server.
 - Run the kissmp-server executable, it will generate a config file that you can edit.
 - Edit the config.json file to set the level, player limit, whether it's public, etc.
+- If you want the server list to show a domain instead of your IP, set `public_host` in `config.json` (for example: `play.example.com`).
 - That's basically all there is to it.
 
 # How do I connect to my server?
@@ -13,8 +14,8 @@ If your server is running on your own PC, connect using 127.0.0.1 as the address
 First of all, make sure that the port specified in your config.json is forwarded ([How To Port Forward - General Guide to Multiple Router Brands](https://www.noip.com/support/knowledgebase/general-port-forwarding-guide/)).
 
 If enabled in your config, your server will show up in the server list and others can just click the Connect button. Otherwise:
-- If you're not using any networking software like Hamachi, people connect to your server with your public IP address ([https://www.whatismyip.com](https://www.whatismyip.com/)).
-- If you're using networking software like Hamachi, use the IP address assigned to you by that software.
+- If you're not using any networking software like Hamachi, people connect to your server with your domain name (recommended) or public IP address ([https://www.whatismyip.com](https://www.whatismyip.com/)).
+- If you're using networking software like Hamachi, use the address assigned to you by that software.
 
 # How do i change the level/map?
 To change what level the server is set on, simply specify your desired maps level path in your server configs  `map` field.
