@@ -12,18 +12,24 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Per-node state of a cluster, carried on the wire for direct replay.
-/// The receiver applies both position and velocity per node rather than estimating
-/// velocity from cluster body twist (which only works for a single rigid body and
-/// drifts on wheels, rotors, and articulated vehicles).
 ///
-/// Keyed by node CID (integer, not necessarily contiguous or zero-indexed), which
-/// matches the Lua table shape `{ [cid] = {x, y, z} }` and survives JSON round-trip.
+/// Positions are transmitted as **quantized body-frame offsets from rest pose**.
+/// Chassis nodes stay within a submillimeter of rest while driving, so their
+/// offsets quantize to zero and get omitted from the map entirely — only nodes
+/// with meaningful motion or deformation appear in `node_positions`. Receiver
+/// reconstructs each node's world position from `rest_body + offset_body` via
+/// the current body rotation.
+///
+/// Velocities are quantized world-frame values.
+///
+/// Quantization: positions at mm precision (scale 1000, range ±32.767 m);
+/// velocities at cm/s precision (scale 100, range ±327.67 m/s).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClusterNodes {
-    /// Node positions in world space: { cid -> (x, y, z) }.
-    pub node_positions: HashMap<u32, [f32; 3]>,
-    /// Node velocities in world space: { cid -> (vx, vy, vz) }.
-    pub node_velocities: HashMap<u32, [f32; 3]>,
+    /// Quantized body-frame offset from rest per node (mm). Zero entries omitted.
+    pub node_positions: HashMap<u32, [i16; 3]>,
+    /// Quantized world-frame velocity per node (cm/s).
+    pub node_velocities: HashMap<u32, [i16; 3]>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
