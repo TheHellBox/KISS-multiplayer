@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use shared::VERSION;
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use warp::Filter;
 
@@ -18,12 +18,28 @@ pub struct ServerInfo {
     require_scripts: bool,
     #[serde(default)]
     require_mods: bool,
+    #[serde(default)]
+    host: Option<String>,
     #[serde(skip)]
     update_time: Option<std::time::Instant>,
+    #[serde(skip)]
+    reporter_ip: Option<IpAddr>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ServerList(HashMap<SocketAddr, ServerInfo>);
+pub struct ServerList(HashMap<String, ServerInfo>);
+
+fn sanitize_host(host: Option<String>) -> Option<String> {
+    let host = host?;
+    let host = host.trim().to_lowercase();
+    if host.is_empty() {
+        return None;
+    }
+    if host.contains('/') || host.contains('\\') || host.contains(' ') {
+        return None;
+    }
+    Some(host)
+}
 
 #[tokio::main]
 async fn main() {
@@ -75,9 +91,15 @@ async fn main() {
                         .unwrap()
                         .insert(server_info.port, true);
                 }
-                let addr = SocketAddr::new(addr.ip(), server_info.port);
+                let host = sanitize_host(server_info.host.clone());
+                let list_addr = match host {
+                    Some(host) => format!("{}:{}", host, server_info.port),
+                    None => format!("{}:{}", addr.ip(), server_info.port),
+                };
                 server_info.update_time = Some(std::time::Instant::now());
-                server_list.0.insert(addr, server_info);
+                server_info.host = sanitize_host(server_info.host);
+                server_info.reporter_ip = Some(addr.ip());
+                server_list.0.insert(list_addr, server_info);
             }
             return "ok";
         });
@@ -103,8 +125,10 @@ async fn main() {
             for (k, server) in server_list.0.clone() {
                 if server.update_time.unwrap().elapsed().as_secs() > 10 {
                     server_list.0.remove(&k);
-                    if let Some(ports) = addresses.get_mut(&k.ip()) {
-                        ports.remove(&k.port());
+                    if let Some(reporter_ip) = server.reporter_ip {
+                        if let Some(ports) = addresses.get_mut(&reporter_ip) {
+                            ports.remove(&server.port);
+                        }
                     }
                 }
             }
@@ -158,7 +182,7 @@ fn outdated_ver(master_outdated: bool) -> String {
     };
 
     for k in 0..5 {
-        server_list.0.insert(SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)), k), ServerInfo {
+        server_list.0.insert(format!("127.0.0.1:{}", k), ServerInfo {
             name: name_str.to_string(),
             player_count: 0,
             max_players: 0,
@@ -169,6 +193,8 @@ fn outdated_ver(master_outdated: bool) -> String {
             update_time: None,
             require_scripts: false,
             require_mods: false,
+            host: None,
+            reporter_ip: None,
         });
     }
     serde_json::to_string(&server_list).unwrap()

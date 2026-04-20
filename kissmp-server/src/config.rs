@@ -12,6 +12,7 @@ pub struct Config {
     pub max_vehicles_per_client: u8,
     pub show_in_server_list: bool,
     pub upnp_enabled: bool,
+    pub public_host: Option<String>,
     pub server_identifier: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mods: Option<Vec<String>>,
@@ -30,6 +31,7 @@ impl Default for Config {
             port: 3698,
             show_in_server_list: false,
             upnp_enabled: false,
+            public_host: None,
             server_identifier: rand_string(),
             mods: None,
             require_scripts: false,

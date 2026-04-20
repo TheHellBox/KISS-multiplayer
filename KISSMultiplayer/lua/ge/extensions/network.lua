@@ -265,12 +265,35 @@ end
 local function sanitize_addr(addr)
   -- Trim leading and trailing spaces that might occur during a copy/paste
   local sanitized = addr:gsub("^%s*(.-)%s*$", "%1")
+  if sanitized:len() == 0 then
+    return nil, "Please enter a server address."
+  end
+  if sanitized:find("://", 1, true) then
+    return nil, "Address must use host:port, without http:// or https://."
+  end
+  if sanitized:find("/") or sanitized:find("\\") then
+    return nil, "Address must not contain a path. Use only host:port."
+  end
+  if sanitized:find("%s") then
+    return nil, "Address must not contain spaces."
+  end
 
   -- Check if port is missing, add default port if so
   if not sanitized:find(":") then
-    sanitized = sanitized .. ":3698" 
+    sanitized = sanitized .. ":3698"
   end
-  return sanitized
+
+  local host, port = sanitized:match("^([^:]+):(%d+)$")
+  if not host or not port then
+    return nil, "Address format is invalid. Use host:port."
+  end
+
+  local port_num = tonumber(port)
+  if not port_num or port_num < 1 or port_num > 65535 then
+    return nil, "Port must be between 1 and 65535."
+  end
+
+  return sanitized, nil
 end
 
 local function generate_secret(server_identifier)
@@ -301,7 +324,12 @@ local function connect(addr, player_name, is_public)
   M.download_total_bytes = 0
   M.downloaded_bytes = 0
 
-  addr = sanitize_addr(addr)
+  local err = nil
+  addr, err = sanitize_addr(addr)
+  if not addr then
+    kissui.chat.add_message("Connection failed: "..err, kissui.COLOR_RED)
+    return
+  end
   log("I", "kissmp.network.connect", "Connecting to "..addr.."...")
   kissui.chat.add_message("Connecting to "..addr.."...")
   M.connection.tcp = socket.tcp()

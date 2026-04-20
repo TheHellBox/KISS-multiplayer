@@ -95,7 +95,7 @@ local function draw_add_favorite_window()
     imgui.InputText("##favorite_name", add_favorite_name)
     imgui.PopItemWidth()
 
-    imgui.Text("Address:")
+    imgui.Text("Address (domain or IP):")
     imgui.SameLine()
     imgui.PushItemWidth(-1)
     imgui.InputText("##favorite_addr", add_favorite_addr)
@@ -183,7 +183,7 @@ local function draw()
       if imgui.Button("Connect###connect_button_" .. tostring(favorites_count)) then
         local player_name = ffi.string(kissui.player_name)
         kissconfig.set_setting("ui.name", player_name)
-        -- if it was added manually (direct IP), trust it (false); otherwise, it's public (true)
+        -- if it was added manually (direct address), trust it (false); otherwise, it's public (true)
         network.connect(addr, player_name, not server.added_manually)
       end
       imgui.SameLine()

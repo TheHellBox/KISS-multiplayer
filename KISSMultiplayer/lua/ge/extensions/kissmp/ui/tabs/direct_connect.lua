@@ -2,7 +2,8 @@ local M = {}
 local imgui = ui_imgui
 
 local function draw()
-  imgui.Text("Server address:")
+  imgui.Text("Server address (domain or IP):")
+  imgui.Text("Use host:port, e.g. play.example.com:3698")
   imgui.InputText("##addr", kissui.addr)
   imgui.SameLine()
   if imgui.Button("Connect") then

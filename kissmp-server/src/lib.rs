@@ -85,6 +85,7 @@ pub struct Server {
     upnp_enabled: bool,
     upnp_port: Option<u16>,
     public_address: Option<String>,
+    public_host: Option<String>,
     mods: Option<Vec<String>>,
     tick: u64,
     require_scripts: bool,
@@ -119,6 +120,7 @@ impl Server {
             server_identifier: config.server_identifier,
             upnp_enabled: config.upnp_enabled,
             public_address: None,
+            public_host: config.public_host,
             mods: config.mods.clone(),
             tick: 0,
             require_scripts: config.require_scripts,
@@ -290,6 +292,7 @@ impl Server {
             "version": shared::VERSION,
             "require_scripts": self.require_scripts,
             "require_mods": self.require_mods,
+            "host": self.public_host.clone(),
         })
         .to_string();
 
