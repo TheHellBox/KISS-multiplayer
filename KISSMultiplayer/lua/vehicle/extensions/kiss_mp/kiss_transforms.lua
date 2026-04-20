@@ -121,8 +121,13 @@ local function set_target_transform(raw)
     0.15  -- 150ms blend duration
   )
 
-  -- Per-node replay is handled separately now via ClusterNodesFragment messages,
-  -- applied directly by kiss_nodes.apply_nodes from vehiclemanager's fragment handler.
+  -- Direct per-node replay: position + velocity applied to the jbeam, no estimation.
+  if transform.cluster_nodes and kiss_nodes and kiss_nodes.apply_nodes then
+    kiss_nodes.apply_nodes(
+      transform.cluster_nodes.node_positions,
+      transform.cluster_nodes.node_velocities
+    )
+  end
 end
 
 local function onExtensionLoaded()

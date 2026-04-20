@@ -558,6 +558,7 @@ impl Server {
                             component_id: vehicle_id.clone(), // Phase 1: component_id = vehicle_id
                             generation: self.tick,
                             sent_at: 0.0,
+                            cluster_nodes: vehicle.cluster_nodes.clone(),
                         }))
                         .await;
                 }

@@ -26,24 +26,6 @@ pub struct ClusterNodes {
     pub node_velocities: HashMap<u32, [f32; 3]>,
 }
 
-/// A fragment of a ClusterNodes update, sized to fit inside a single QUIC datagram.
-/// Each fragment is independently applicable on the receiver — it carries a subset
-/// of the node state for one tick. Dropped fragments just mean those nodes don't
-/// update that tick; next tick's fragments will include them (or a later keyframe
-/// resyncs them). See ClusterNodesKeyframe for the recovery path.
-///
-/// `tick_id` is monotonic per vehicle with wrap-aware comparison on the receiver;
-/// fragments older than the highest seen `tick_id` are dropped.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ClusterNodesFragment {
-    pub vehicle_id: u32,
-    pub tick_id: u32,
-    pub fragment_index: u8,
-    pub total_fragments: u8,
-    /// Subset of the full ClusterNodes carried by this fragment.
-    pub nodes: ClusterNodes,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VehicleReset {
     pub vehicle_id: u32,
@@ -87,6 +69,8 @@ pub struct VehicleUpdate {
     pub generation: u64,
     /// Timestamp when this update was sent (seconds since epoch)
     pub sent_at: f64,
+    /// Per-node state (position + velocity) for direct replay on the receiver.
+    pub cluster_nodes: Option<ClusterNodes>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

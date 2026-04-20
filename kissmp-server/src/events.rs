@@ -132,23 +132,7 @@ impl Server {
                                 vehicle.transform = Some(data.transform);
                                 vehicle.electrics = Some(data.electrics);
                                 vehicle.gearbox = Some(data.gearbox);
-                            }
-                        }
-                    }
-                    ClusterNodesFragment(mut fragment) => {
-                        // Pass-through relay: fit-in-datagram fragments go straight to other
-                        // clients on the unreliable channel, rewriting the vehicle_id from
-                        // game-id to server-id. No storage, no reassembly — each fragment
-                        // applies independently on the receiver.
-                        if let Some(server_id) =
-                            self.get_server_id_from_game_id(client_id, fragment.vehicle_id)
-                        {
-                            fragment.vehicle_id = server_id;
-                            for (cid, client) in &mut self.connections {
-                                if *cid == client_id { continue; }
-                                let _ = client.unreliable.send(
-                                    ServerCommand::ClusterNodesFragment(fragment.clone())
-                                ).await;
+                                vehicle.cluster_nodes = data.cluster_nodes;
                             }
                         }
                     }

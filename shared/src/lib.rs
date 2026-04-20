@@ -79,7 +79,6 @@ impl Default for ClientInfoPublic {
 pub enum ClientCommand {
     ClientInfo(ClientInfoPrivate),
     VehicleUpdate(VehicleUpdate),
-    ClusterNodesFragment(ClusterNodesFragment),
     VehicleData(VehicleData),
     GearboxUpdate(Gearbox),
     RemoveVehicle(u32),
@@ -109,7 +108,6 @@ pub enum ClientCommand {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerCommand {
     VehicleUpdate(VehicleUpdate),
-    ClusterNodesFragment(ClusterNodesFragment),
     VehicleSpawn(VehicleData),
     RemoveVehicle(u32),
     ResetVehicle(VehicleReset),

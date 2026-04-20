@@ -176,7 +176,6 @@ end
 
 local function onExtensionLoaded()
   message_handlers.VehicleUpdate = vehiclemanager.update_vehicle
-  message_handlers.ClusterNodesFragment = vehiclemanager.update_cluster_nodes_fragment
   message_handlers.VehicleSpawn = vehiclemanager.spawn_vehicle
   message_handlers.RemoveVehicle = vehiclemanager.remove_vehicle
   message_handlers.ResetVehicle = vehiclemanager.reset_vehicle
