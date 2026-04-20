@@ -549,7 +549,7 @@ impl Server {
                     (&vehicle.transform, &vehicle.electrics, &vehicle.gearbox)
                 {
                     let _ = client
-                        .unreliable
+                        .ordered
                         .send(ServerCommand::VehicleUpdate(VehicleUpdate {
                             transform: transform.clone(),
                             electrics: electrics.clone(),
