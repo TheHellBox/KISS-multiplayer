@@ -24,7 +24,17 @@ local function save_config()
     window_opacity = kissui.window_opacity[0],
     enable_view_distance = kissui.enable_view_distance[0],
     view_distance = kissui.view_distance[0],
-    base_secret_v2 = secret
+    base_secret_v2 = secret,
+    tuning = {
+      position_scale     = kissui.tuning.position_scale[0],
+      velocity_scale     = kissui.tuning.velocity_scale[0],
+      position_epsilon   = kissui.tuning.position_epsilon[0],
+      velocity_epsilon   = kissui.tuning.velocity_epsilon[0],
+      position_pull_gain = kissui.tuning.position_pull_gain[0],
+      position_deadband  = kissui.tuning.position_deadband[0],
+      velocity_deadband  = kissui.tuning.velocity_deadband[0],
+      max_delta_v        = kissui.tuning.max_delta_v[0],
+    },
   }
   local file = io.open("./settings/kissmp_config.json", "w")
   file:write(jsonEncode(result))
@@ -66,6 +76,32 @@ local function load_config()
   end
   if config.base_secret_v2 ~= nil then
     network.base_secret = config.base_secret_v2
+  end
+  if config.tuning ~= nil then
+    if config.tuning.position_scale ~= nil then
+      kissui.tuning.position_scale[0] = config.tuning.position_scale
+    end
+    if config.tuning.velocity_scale ~= nil then
+      kissui.tuning.velocity_scale[0] = config.tuning.velocity_scale
+    end
+    if config.tuning.position_epsilon ~= nil then
+      kissui.tuning.position_epsilon[0] = config.tuning.position_epsilon
+    end
+    if config.tuning.velocity_epsilon ~= nil then
+      kissui.tuning.velocity_epsilon[0] = config.tuning.velocity_epsilon
+    end
+    if config.tuning.position_pull_gain ~= nil then
+      kissui.tuning.position_pull_gain[0] = config.tuning.position_pull_gain
+    end
+    if config.tuning.position_deadband ~= nil then
+      kissui.tuning.position_deadband[0] = config.tuning.position_deadband
+    end
+    if config.tuning.velocity_deadband ~= nil then
+      kissui.tuning.velocity_deadband[0] = config.tuning.velocity_deadband
+    end
+    if config.tuning.max_delta_v ~= nil then
+      kissui.tuning.max_delta_v[0] = config.tuning.max_delta_v
+    end
   end
   io.close(file)
 end

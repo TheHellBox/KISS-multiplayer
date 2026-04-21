@@ -14,6 +14,7 @@ M.tabs = {
   settings = require("kissmp.ui.tabs.settings"),
   direct_connect = require("kissmp.ui.tabs.direct_connect"),
   create_server = require("kissmp.ui.tabs.create_server"),
+  tuning = require("kissmp.ui.tabs.tuning"),
 }
 
 M.dependencies = {"ui_imgui"}
@@ -44,6 +45,19 @@ M.show_drivers = imgui.BoolPtr(true)
 M.window_opacity = imgui.FloatPtr(0.8)
 M.enable_view_distance = imgui.BoolPtr(true)
 M.view_distance = imgui.IntPtr(300)
+
+-- Layer-2 sync tuning. Live-editable via the imgui Tuning tab; changes are
+-- propagated to every vehicle's kiss_nodes module via queueLuaCommand.
+M.tuning = {
+  position_scale     = imgui.IntPtr(1000),   -- i16 units per metre
+  velocity_scale     = imgui.IntPtr(100),    -- i16 units per m/s
+  position_epsilon   = imgui.IntPtr(1),      -- sender-side quantized-unit threshold
+  velocity_epsilon   = imgui.IntPtr(1),      -- sender-side quantized-unit threshold
+  position_pull_gain = imgui.IntPtr(30),     -- spring gain: velocity-per-metre-of-error (0 disables)
+  position_deadband  = imgui.FloatPtr(0.01), -- metres: receiver skips impulse if |Δp| below this
+  velocity_deadband  = imgui.FloatPtr(0.1),  -- m/s: receiver skips impulse if |Δv| below this
+  max_delta_v        = imgui.FloatPtr(10.0), -- m/s: per-tick Δv ceiling (structural safety)
+}
 
 local function show_ui()
   M.gui.showWindow("KissMP")

@@ -66,7 +66,7 @@ local function update_eligible_nodes()
   if last_node == #nodes then last_node = 1 end
 end
 
-local function update_transform_info()
+local function update_transform_info(we_own_this_vehicle)
   local r = quat(obj:getRotation())
   local p = obj:getPosition()
 
@@ -85,8 +85,11 @@ local function update_transform_info()
     steering_input = electrics.values.steering_input or 0,
   }
   local gearbox = kiss_gearbox.get_gearbox_data()
+  -- Only capture per-node state for vehicles we own — remote vehicles' captures
+  -- are never used (only owned vehicles send VehicleUpdate packets), so doing
+  -- ~1000 obj:getNodePosition/Velocity reads per tick on them is pure overhead.
   local node_positions, node_velocities = nil, nil
-  if kiss_nodes and kiss_nodes.capture_nodes then
+  if we_own_this_vehicle and kiss_nodes and kiss_nodes.capture_nodes then
     node_positions, node_velocities = kiss_nodes.capture_nodes()
   end
   local transform = {

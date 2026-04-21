@@ -26,11 +26,17 @@ local function update(dt)
     return
   end
 
-  -- Get rotation/angular velocity from vehicle lua
+  -- Get rotation/angular velocity from vehicle lua. Pass ownership so the
+  -- vehicle-side code can skip the expensive per-node capture for non-owned
+  -- vehicles — their captured data would be unused (only owned vehicles send
+  -- VehicleUpdate packets) and the ~1000 getNode reads per tick per non-owned
+  -- vehicle was pegging vehicle Lua threads.
   for i = 0, be:getObjectCount() do
     local vehicle = be:getObject(i)
-    if vehicle and (not M.inactive[vehicle:getID()]) then
-      vehicle:queueLuaCommand("kiss_vehicle.update_transform_info()")
+    local vid = vehicle and vehicle:getID()
+    if vehicle and (not M.inactive[vid]) then
+      local owned = vehiclemanager.ownership[vid] ~= nil
+      vehicle:queueLuaCommand("kiss_vehicle.update_transform_info(" .. tostring(owned) .. ")")
     end
   end
 
@@ -73,6 +79,18 @@ local function update(dt)
         if M.inactive[id] then
           vehicle:setActive(1)
           M.inactive[id] = false
+          -- Snap the replica to the authority's current pose on reactivation.
+          -- Without this, the vehicle's position is wherever it was frozen when
+          -- we setActive(0)-ed it, which can be hundreds of meters behind
+          -- authority's current position. Velocity-forward sync alone can't
+          -- close that gap until the next sparse position-correction tick, and
+          -- the intermediate motion looks like haywire jiggle as the replica
+          -- oscillates between its stale pose and authoritative state.
+          local r = transform.rotation
+          vehicle:setPositionRotation(
+            transform.position[1], transform.position[2], transform.position[3],
+            r[1], r[2], r[3], r[4]
+          )
           if DEBUG_GLOBAL then print("[kisstransform.update] Reactivated vehicle " .. tostring(id)) end
         end
         if DEBUG_GLOBAL then

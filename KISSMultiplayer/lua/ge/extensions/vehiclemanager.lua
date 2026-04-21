@@ -114,7 +114,7 @@ local function send_vehicle_update(obj)
     {
       VehicleUpdate = result
     },
-    false
+    true  -- reliable: payload with cluster_nodes exceeds QUIC datagram MTU for large vehicles
   )
 end
 
@@ -272,8 +272,14 @@ local function spawn_vehicle(data)
 
   local spawned = spawn.spawnVehicle(name, options.config, options.pos, options.rot, options)
   if not spawned then return end
-  local p = data.position
-  local r = data.rotation
+  -- Prefer the authority's most recent pose (from raw_transforms) over the
+  -- possibly-stale data.position that came with the original VehicleData packet.
+  -- If the buffered spawn took a while to fire (e.g., the vehicle entered view
+  -- distance well after its VehicleData was received), raw_transforms tracks
+  -- where the authority *actually is now*.
+  local fresh = kisstransform.raw_transforms[data.server_id]
+  local p = (fresh and fresh.position) or data.position
+  local r = (fresh and fresh.rotation) or data.rotation
   spawned:setPositionRotation(p[1], p[2], p[3], r[1], r[2], r[3], r[4])
   if plate ~= nil then
     extensions.core_vehicles.setPlateText(plate, spawned:getID())
@@ -571,6 +577,22 @@ local function onVehicleSpawned(id)
   end
   vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
+  -- Push current Tuning-tab values to the freshly-loaded kiss_nodes so it
+  -- starts with user-chosen constants, not only the module-file defaults.
+  if kissui and kissui.tuning then
+    local t = kissui.tuning
+    vehicle:queueLuaCommand(string.format(
+      "kiss_nodes.set_tuning(%d, %d, %d, %d, %d, %f, %f, %f)",
+      t.position_scale[0],
+      t.velocity_scale[0],
+      t.position_epsilon[0],
+      t.velocity_epsilon[0],
+      t.position_pull_gain[0],
+      t.position_deadband[0],
+      t.velocity_deadband[0],
+      t.max_delta_v[0]
+    ))
+  end
   send_vehicle_config(id)
   -- Attempt to workaround a bug from latest beamng update. Also prevents unicycle cloning(Somewhat)
   if vehicle:getJBeamFilename() == "unicycle" then

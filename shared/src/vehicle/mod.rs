@@ -11,24 +11,30 @@ pub use vehicle_meta::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Per-node state of a cluster, carried on the wire for direct replay.
+/// Layer 2 of the layered sync model: per-node **deviations** from the rigid
+/// cluster motion that Layer 1 (Transform) already describes.
 ///
-/// Positions are transmitted as **quantized body-frame offsets from rest pose**.
-/// Chassis nodes stay within a submillimeter of rest while driving, so their
-/// offsets quantize to zero and get omitted from the map entirely — only nodes
-/// with meaningful motion or deformation appear in `node_positions`. Receiver
-/// reconstructs each node's world position from `rest_body + offset_body` via
-/// the current body rotation.
+/// The two layers are orthogonal by construction — Layer 1 carries cluster
+/// pose/twist, Layer 2 carries only what Layer 1 cannot reconstruct (soft-body
+/// deformation, wheel spin tangential motion, suspension travel, crash damage).
+/// Receiver reconstructs absolute per-node state as `rigid_prediction +
+/// deviation`; this structurally prevents the double-counting that happens if
+/// you transmit absolute per-node state alongside cluster state.
 ///
-/// Velocities are quantized world-frame values.
+/// - `node_positions`: body-frame deviation from rest pose, per node
+/// - `node_velocities`: world-frame deviation from `v_cluster + ω_cluster × r`, per node
 ///
-/// Quantization: positions at mm precision (scale 1000, range ±32.767 m);
-/// velocities at cm/s precision (scale 100, range ±327.67 m/s).
+/// Nodes whose deviation magnitude falls below the sender's threshold are
+/// omitted entirely — chassis nodes during steady driving deviate zero and
+/// cost nothing on the wire.
+///
+/// Default quantization: mm precision for positions, cm/s for velocities.
+/// Both scales are runtime-tunable via imgui sliders on the sender.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClusterNodes {
-    /// Quantized body-frame offset from rest per node (mm). Zero entries omitted.
+    /// Quantized body-frame deviation from jbeam rest pose. Omitted when near-zero.
     pub node_positions: HashMap<u32, [i16; 3]>,
-    /// Quantized world-frame velocity per node (cm/s).
+    /// Quantized world-frame deviation from rigid cluster prediction. Omitted when near-zero.
     pub node_velocities: HashMap<u32, [i16; 3]>,
 }
 

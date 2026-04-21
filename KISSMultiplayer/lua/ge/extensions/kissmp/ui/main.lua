@@ -41,6 +41,10 @@ local function draw(dt)
         kissui.tabs.settings.draw()
         imgui.EndTabItem()
       end
+      if imgui.BeginTabItem("Tuning") then
+        kissui.tabs.tuning.draw()
+        imgui.EndTabItem()
+      end
       imgui.EndTabBar()
     end
   end

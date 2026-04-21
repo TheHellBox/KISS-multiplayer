@@ -19,10 +19,16 @@ local function try_rude(synced_transform)
   local current_pos = vec3(obj:getPosition())
   local distance = synced_transform.position:distance(current_pos)
   if distance > 6 then
-    -- Large correction needed - use direct position reset
+    -- Large correction needed - jump both position and rotation via GE-side API
+    -- (obj:setRotation does not exist in vehicle Lua; setPositionRotation does,
+    -- on the GE-side object, so we queue there).
     local p = synced_transform.position
-    obj:queueGameEngineLua("be:getObjectByID("..obj:getID().."):setPositionNoPhysicsReset(Point3F("..p.x..", "..p.y..", "..p.z.."))")
-    obj:setRotation(synced_transform.rotation)
+    local r = synced_transform.rotation
+    obj:queueGameEngineLua(
+      "be:getObjectByID("..obj:getID().."):setPositionRotation("
+      ..p.x..","..p.y..","..p.z..","
+      ..r.x..","..r.y..","..r.z..","..r.w..")"
+    )
     return true
   end
   return false
@@ -121,9 +127,25 @@ local function set_target_transform(raw)
     0.15  -- 150ms blend duration
   )
 
-  -- Direct per-node replay: position + velocity applied to the jbeam, no estimation.
+  -- Layer 1 + Layer 2 reconstruction: pass the cluster transform (Layer 1) alongside
+  -- the per-node deviation maps (Layer 2) so kiss_nodes can reconstruct absolute
+  -- targets via `rigid_prediction + deviation`. All sampled from the same sender
+  -- tick, so no snapshot skew.
   if transform.cluster_nodes and kiss_nodes and kiss_nodes.apply_nodes then
+    local cluster_rot = quat(
+      transform.rotation[1], transform.rotation[2],
+      transform.rotation[3], transform.rotation[4]
+    )
+    local cluster_linvel = vec3(
+      transform.velocity[1], transform.velocity[2], transform.velocity[3]
+    )
+    local cluster_angvel = vec3(
+      transform.angular_velocity[1], transform.angular_velocity[2], transform.angular_velocity[3]
+    ):rotated(cluster_rot)  -- body frame → world frame
     kiss_nodes.apply_nodes(
+      cluster_rot,
+      cluster_linvel,
+      cluster_angvel,
       transform.cluster_nodes.node_positions,
       transform.cluster_nodes.node_velocities
     )
