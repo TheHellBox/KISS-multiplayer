@@ -178,6 +178,10 @@ For detailed design rationale, protocol specs, and implementation notes, see `Ho
   - [ ] Inspector panel improvements:
     - [ ] Arrow gizmos for velocity
     - [ ] Drag handles for position in 3D
+    - [ ] Electrics/controller event inspector for game-side commands
+      - [ ] Show raw electrics diffs and handler hits live
+      - [ ] Show controller-driven events like police lightbar / beacon / siren toggles
+      - [ ] Make it obvious which gameplay command maps to which electric/controller state before adding new sync hooks
   - [ ] "Save and Run" shortcut from Edit mode (skip trip through Inactive)
   - [ ] Test scenario list filtering and search
   - [ ] Better error messages when identities, server, or required mods are missing

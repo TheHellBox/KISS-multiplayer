@@ -46,17 +46,33 @@ M.window_opacity = imgui.FloatPtr(0.8)
 M.enable_view_distance = imgui.BoolPtr(true)
 M.view_distance = imgui.IntPtr(300)
 
--- Layer-2 sync tuning. Live-editable via the imgui Tuning tab; changes are
--- propagated to every vehicle's kiss_nodes module via queueLuaCommand.
+-- Sync tuning. Live-editable via the imgui Tuning tab; changes are
+-- propagated to active vehicles via queueLuaCommand.
 M.tuning = {
-  position_scale     = imgui.IntPtr(1000),   -- i16 units per metre
-  velocity_scale     = imgui.IntPtr(100),    -- i16 units per m/s
-  position_epsilon   = imgui.IntPtr(1),      -- sender-side quantized-unit threshold
-  velocity_epsilon   = imgui.IntPtr(1),      -- sender-side quantized-unit threshold
   position_pull_gain = imgui.IntPtr(30),     -- spring gain: velocity-per-metre-of-error (0 disables)
   position_deadband  = imgui.FloatPtr(0.01), -- metres: receiver skips impulse if |Δp| below this
   velocity_deadband  = imgui.FloatPtr(0.1),  -- m/s: receiver skips impulse if |Δv| below this
   max_delta_v        = imgui.FloatPtr(10.0), -- m/s: per-tick Δv ceiling (structural safety)
+  layer1_frame_planar_gain = imgui.FloatPtr(1.5),
+  layer1_yaw_gain = imgui.FloatPtr(1.75),
+  layer1_yaw_rate_gain = imgui.FloatPtr(1.75),
+  layer1_support_gain = imgui.FloatPtr(0.35),
+  layer1_frame_planar_max_dv = imgui.FloatPtr(12.0),
+  layer1_yaw_max_dv = imgui.FloatPtr(12.0),
+  layer1_shell_inset_cm = imgui.FloatPtr(8.0),
+  layer1_debug_viz = imgui.BoolPtr(false),
+  layer1_drift_nudge_gain = imgui.FloatPtr(0.02),
+  layer1_use_drift_integral = imgui.BoolPtr(false),
+  layer1_enable_yaw_prediction = imgui.BoolPtr(false),
+  layer1_heading_hold_yaw_trim_gain = imgui.FloatPtr(0.75),
+  layer1_z_weight = imgui.FloatPtr(0.2),
+  layer1_tilt_weight = imgui.FloatPtr(0.15),
+  layer1_vz_weight = imgui.FloatPtr(0.25),
+  layer1_tilt_rate_weight = imgui.FloatPtr(0.2),
+  layer1_z_deadband = imgui.FloatPtr(0.03),
+  layer1_tilt_deadband_deg = imgui.FloatPtr(1.5),
+  layer1_vz_deadband = imgui.FloatPtr(0.15),
+  layer1_tilt_rate_deadband = imgui.FloatPtr(0.15),
 }
 
 local function show_ui()

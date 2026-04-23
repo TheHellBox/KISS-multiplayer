@@ -11,30 +11,24 @@ pub use vehicle_meta::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Layer 2 of the layered sync model: per-node **deviations** from the rigid
-/// cluster motion that Layer 1 (Transform) already describes.
+/// Layer 2 of the layered sync model: per-node deviations layered on top of
+/// Layer 1 rigid motion.
 ///
-/// The two layers are orthogonal by construction — Layer 1 carries cluster
-/// pose/twist, Layer 2 carries only what Layer 1 cannot reconstruct (soft-body
-/// deformation, wheel spin tangential motion, suspension travel, crash damage).
-/// Receiver reconstructs absolute per-node state as `rigid_prediction +
-/// deviation`; this structurally prevents the double-counting that happens if
-/// you transmit absolute per-node state alongside cluster state.
-///
-/// - `node_positions`: body-frame deviation from rest pose, per node
-/// - `node_velocities`: world-frame deviation from `v_cluster + ω_cluster × r`, per node
-///
-/// Nodes whose deviation magnitude falls below the sender's threshold are
-/// omitted entirely — chassis nodes during steady driving deviate zero and
-/// cost nothing on the wire.
-///
-/// Default quantization: mm precision for positions, cm/s for velocities.
-/// Both scales are runtime-tunable via imgui sliders on the sender.
+/// Lua is the source of truth here. The current sender only transmits
+/// persistent deformation in `node_positions`; Layer 1 covers the rigid shell
+/// motion. `node_velocities` remains as a legacy/compatibility field so the
+/// Rust bridge/server path can continue to accept older payloads, but new Lua
+/// payloads may omit it entirely.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClusterNodes {
-    /// Quantized body-frame deviation from jbeam rest pose. Omitted when near-zero.
+    /// Quantized body-frame deviation from jbeam rest pose. This is the active
+    /// Layer 2 payload in the current deformation-only model.
+    #[serde(default)]
     pub node_positions: HashMap<u32, [i16; 3]>,
-    /// Quantized world-frame deviation from rigid cluster prediction. Omitted when near-zero.
+    /// Legacy field from the older residual-velocity Layer 2 path. Missing on
+    /// current Lua payloads; deserialize as empty so bridge JSON decoding does
+    /// not fail when the sender omits it.
+    #[serde(default)]
     pub node_velocities: HashMap<u32, [i16; 3]>,
 }
 
@@ -81,7 +75,9 @@ pub struct VehicleUpdate {
     pub generation: u64,
     /// Timestamp when this update was sent (seconds since epoch)
     pub sent_at: f64,
-    /// Per-node state (position + velocity) for direct replay on the receiver.
+    /// Per-node state layered on top of Transform. Current Lua sender uses
+    /// deformation-only `node_positions`; velocity residuals are optional legacy
+    /// data.
     pub cluster_nodes: Option<ClusterNodes>,
 }
 
@@ -105,4 +101,73 @@ pub struct ServerSetupResult {
     pub addr: String,
     pub port: u16,
     pub is_upnp: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ClusterNodes;
+    use crate::ClientCommand;
+
+    #[test]
+    fn cluster_nodes_accept_missing_node_velocities() {
+        let nodes: ClusterNodes = serde_json::from_str(
+            r#"{
+                "node_positions": {
+                    "42": [1, 2, 3]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(nodes.node_positions.get(&42), Some(&[1, 2, 3]));
+        assert!(nodes.node_velocities.is_empty());
+    }
+
+    #[test]
+    fn vehicle_update_accepts_deformation_only_cluster_nodes() {
+        let command: ClientCommand = serde_json::from_str(
+            r#"{
+                "VehicleUpdate": {
+                    "transform": {
+                        "position": [0.0, 0.0, 0.0],
+                        "rotation": [0.0, 0.0, 0.0, 1.0],
+                        "velocity": [0.0, 0.0, 0.0],
+                        "angular_velocity": [0.0, 0.0, 0.0]
+                    },
+                    "electrics": {
+                        "throttle_input": 0.0,
+                        "brake_input": 0.0,
+                        "clutch": 0.0,
+                        "parkingbrake": 0.0,
+                        "steering_input": 0.0
+                    },
+                    "gearbox": {
+                        "arcade": false,
+                        "lock_coef": 0.0,
+                        "mode": null,
+                        "gear_indices": [0, 0]
+                    },
+                    "vehicle_id": 100,
+                    "component_id": 100,
+                    "generation": 1,
+                    "sent_at": 0.0,
+                    "cluster_nodes": {
+                        "node_positions": {
+                            "42": [1, 2, 3]
+                        }
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        match command {
+            ClientCommand::VehicleUpdate(update) => {
+                let nodes = update.cluster_nodes.unwrap();
+                assert_eq!(nodes.node_positions.get(&42), Some(&[1, 2, 3]));
+                assert!(nodes.node_velocities.is_empty());
+            }
+            other => panic!("unexpected command: {:?}", other),
+        }
+    }
 }

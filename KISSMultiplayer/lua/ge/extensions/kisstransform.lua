@@ -15,7 +15,26 @@ M.velocity_error_limit = 10
 
 M.hidden = {}
 
-local DEBUG_GLOBAL = true  -- Debug logging for global manager
+local DEBUG_GLOBAL = false  -- Debug logging for global manager
+
+-- Finite-number guard. Rejects NaN and +/-Inf by checking against a sane
+-- world-coordinate range. Used to prevent garbage from flowing into
+-- setPositionRotation (which silently accepts NaN and then breaks the
+-- vehicle) and as the common shape for future wire-side validation.
+local function is_finite_number(x)
+  if type(x) ~= "number" then return false end
+  -- NaN != NaN; also reject absurd magnitudes that indicate physics blow-up.
+  if x ~= x then return false end
+  if x > 1e8 or x < -1e8 then return false end
+  return true
+end
+
+local function is_finite_transform(p, r)
+  if #p < 3 or #r < 4 then return false end
+  return is_finite_number(p[1]) and is_finite_number(p[2]) and is_finite_number(p[3])
+    and is_finite_number(r[1]) and is_finite_number(r[2])
+    and is_finite_number(r[3]) and is_finite_number(r[4])
+end
 local function update(dt)
   if DEBUG_GLOBAL then
     print("[kisstransform.update] START dt=" .. tostring(dt) .. " received_transforms=" .. tostring(#M.received_transforms))
@@ -94,9 +113,13 @@ local function update(dt)
           if DEBUG_GLOBAL then print("[kisstransform.update] Reactivated vehicle " .. tostring(id)) end
         end
         if DEBUG_GLOBAL then
-          print("[kisstransform.update] QUEUING commands for vehicle " .. tostring(id))
+          print("[kisstransform.update] QUEUING update for vehicle " .. tostring(id))
         end
-        vehicle:queueLuaCommand("kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
+        -- set_target_transform fires only on packet arrival (caches cluster
+        -- state). update(dt) is queued every frame; it reads the cache and
+        -- applies Layer 1 (ref-node rigid pull) + Layer 2 (deviation map
+        -- impulses) as sustained forces. No GE-side setPositionRotation —
+        -- try_rude in vehicle Lua still catches >6m drift.
         vehicle:queueLuaCommand("kiss_transforms.update("..dt..")")
       end
     end
@@ -120,7 +143,10 @@ local function update_vehicle_transform(data)
   local vehicle = be:getObjectByID(id)
   if vehicle and (not M.inactive[id]) then
     transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
-    transform.cluster_nodes = data.cluster_nodes
+    -- Packet arrival: deliver the full decoded transform to vehicle Lua once.
+    -- set_target_transform caches it; apply happens every frame from update(dt).
+    -- No setPositionRotation, no teleport semantics, no glass-cycling side
+    -- effect. try_rude in vehicle Lua remains the >6m escape hatch.
     vehicle:queueLuaCommand("kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
   end
 end

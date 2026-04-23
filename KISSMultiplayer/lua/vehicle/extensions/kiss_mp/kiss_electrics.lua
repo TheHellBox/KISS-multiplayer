@@ -3,6 +3,7 @@ local prev_electrics = {}
 local prev_signal_electrics = {}
 local last_engine_state = true
 local engine_timer = 0
+local starter_pulse_timer = 0
 local ownership = false
 
 local ignored_keys = {
@@ -111,17 +112,28 @@ local function update_engine_state()
   if not electrics.values.engineRunning then return end
   local engine_running = electrics.values.engineRunning > 0.5
 
-  -- Trigger starter to swap the engine state
+  -- Trigger a short starter pulse to converge to the owner's engineRunning
+  -- outcome. This is intentionally outcome-oriented rather than trying to
+  -- exactly replay local anti-stall/powertrain behavior.
   if engine_running ~= last_engine_state then
     controller.mainController.setStarter(true)
+    starter_pulse_timer = 0.15
   end
 end
 
 local function updateGFX(dt)
+  if starter_pulse_timer > 0 then
+    starter_pulse_timer = starter_pulse_timer - dt
+    if starter_pulse_timer <= 0 then
+      controller.mainController.setStarter(false)
+      starter_pulse_timer = 0
+    end
+  end
+
   engine_timer = engine_timer + dt
-  if engine_timer > 5 then
+  if engine_timer > 0.25 then
     update_engine_state()
-    engine_timer = engine_timer - 5
+    engine_timer = engine_timer - 0.25
   end
 end
 
@@ -229,21 +241,9 @@ local function onExtensionLoaded()
   -- Ignore controller electrics
   if v.data.controller and type(v.data.controller) == 'table' then
     for _, controller_data in pairs(v.data.controller) do
-      if controller_data.fileName == "lightbar" and controller_data.modes then
-        -- ignore lightbar electrics
-        local modes = tableFromHeaderTable(controller_data.modes)
-        for _, vm in pairs(modes) do
-          local configEntries = tableFromHeaderTable(deepcopy(vm.config))
-          for _, j in pairs(configEntries) do
-            ignore_key(j.electric)
-          end
-        end
-      elseif controller_data.fileName == "jato" then
+      if controller_data.fileName == "jato" then
         -- ignore jato fuel
         ignore_key("jatofuel")
-      elseif controller_data.fileName == "beaconSpin" and controller_data.electricsName then
-        -- ignore beacon spin
-        ignore_key(controller_data.electricsName)
       elseif controller_data.fileName == "driveModes" and controller_data.modes then
         -- register handlers for syncing drive modes
         for _, vm in pairs(controller_data.modes) do
@@ -287,6 +287,10 @@ local function onExtensionLoaded()
   end
 
   -- Register handlers
+  -- TODO: Properly debug and sync game-side police/beacon/siren commands with
+  -- the future hot-reloading debugger/event inspector. Some vehicles appear to
+  -- use controller/event paths that do not show up as the simple generic
+  -- `lightbar` electric we currently replay here.
   electrics_handlers["lights_state"] = function(v) electrics.setLightsState(v) end
   electrics_handlers["fog"] = function(v) electrics.set_fog_lights(v) end
   electrics_handlers["lightbar"] = function(v) electrics.set_lightbar_signal(v) end

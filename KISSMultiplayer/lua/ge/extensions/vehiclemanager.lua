@@ -10,8 +10,11 @@ local plates_buffer = {}
 local first_vehicle = true
 local last_position_buffer = {}     -- Track last positions for teleport detection
 local teleport_reset_timers = {}    -- vehicle_id -> seconds remaining until reset is sent
+local last_bad_packet_log = {}      -- vehicle_id -> last timestamp we warned about NaN/Inf (throttle)
 local TELEPORT_THRESHOLD = 200.0    -- Meters - position jump in one tick that indicates a teleport
 local TELEPORT_RESET_DELAY = 0.5    -- Seconds to wait after teleport before sending ResetVehicle
+local CLUSTER_LINEAR_DEADBAND = 0.05
+local CLUSTER_ANGULAR_DEADBAND = 0.05
 
 M.loading_map = false
 M.id_map = {}
@@ -57,19 +60,31 @@ local function colors_eq(a, b)
   return color_eq(a[1], b[1]) and color_eq(a[2], b[2]) and color_eq(a[3], b[3])
 end
 
+local function zero_small_vec_components(x, y, z, deadband)
+  if math.sqrt(x * x + y * y + z * z) < deadband then
+    return 0, 0, 0
+  end
+  return x, y, z
+end
+
 local function send_vehicle_update(obj)
   if not kisstransform.local_transforms[obj:getID()] then return end
   local t = kisstransform.local_transforms[obj:getID()]
   if not t.input then return end
   if not t.gearbox then return end
+  if not t.position or not t.rotation or not t.velocity or not t.angular_velocity then return end
   local rotation = t.rotation
   if obj:getJBeamFilename() == "unicycle" then
     local q = quat(getCameraQuat()):toEulerYXZ()
     local q = quatFromEuler(0.0, 0.0, q.x)
     rotation = {q.x, q.y, q.z, q.w}
   end
-  local position = obj:getPosition()
-  local velocity = obj:getVelocity()
+  local position = t.position
+  local position_vec = vec3(position[1], position[2], position[3])
+  local velocity = t.velocity
+  local vel_x, vel_y, vel_z = zero_small_vec_components(velocity[1], velocity[2], velocity[3], CLUSTER_LINEAR_DEADBAND)
+  local angular_velocity = t.angular_velocity
+  local ang_x, ang_y, ang_z = zero_small_vec_components(angular_velocity[1], angular_velocity[2], angular_velocity[3], CLUSTER_ANGULAR_DEADBAND)
 
   -- A position jump greater than TELEPORT_THRESHOLD in one tick is treated as a teleport.
   -- Arm a debounced ResetVehicle so the remote replica resets at the new position once the
@@ -77,29 +92,39 @@ local function send_vehicle_update(obj)
   local vehicle_id = obj:getID()
   if last_position_buffer[vehicle_id] then
     local last_pos = last_position_buffer[vehicle_id]
-    local distance = vec3(position.x, position.y, position.z):distance(vec3(last_pos.x, last_pos.y, last_pos.z))
+    local distance = position_vec:distance(vec3(last_pos.x, last_pos.y, last_pos.z))
     if distance > TELEPORT_THRESHOLD then
       teleport_reset_timers[vehicle_id] = TELEPORT_RESET_DELAY
     end
   end
-  last_position_buffer[vehicle_id] = position
+  last_position_buffer[vehicle_id] = position_vec
 
-  -- Per-node state captured in vehicle Lua and piped through t (local_transforms).
-  -- Direct replay of pos+vel on the receiver — no rigid-body formula.
-  local cluster_nodes = nil
-  if t.node_positions then
-    cluster_nodes = {
-      node_positions = t.node_positions,
-      node_velocities = t.node_velocities,
-    }
+  -- Finite-number sanity check. If physics on this client blows up (NaN /
+  -- Inf in position / velocity / rotation), dropping the packet is the
+  -- right call — sending garbage triggers serde errors on the Rust side
+  -- and corrupts remote-client state. Per-vehicle throttle log so a
+  -- persistent blow-up doesn't spam the console.
+  local function ok(n)
+    return type(n) == "number" and n == n and n < 1e8 and n > -1e8
+  end
+  if not (ok(position[1]) and ok(position[2]) and ok(position[3])
+      and ok(vel_x) and ok(vel_y) and ok(vel_z)
+      and ok(rotation[1]) and ok(rotation[2]) and ok(rotation[3]) and ok(rotation[4])
+      and ok(ang_x) and ok(ang_y) and ok(ang_z)) then
+    local vid = obj:getID()
+    if not last_bad_packet_log[vid] or (get_current_time() - last_bad_packet_log[vid]) > 5 then
+      print(string.format("[vehiclemanager] non-finite values in vehicle %d transform; dropping packet", vid))
+      last_bad_packet_log[vid] = get_current_time()
+    end
+    return
   end
 
   local result = {
     transform = {
-      position = {position.x, position.y, position.z},
+      position = {position[1], position[2], position[3]},
       rotation = rotation,
-      velocity = {velocity.x, velocity.y, velocity.z},
-      angular_velocity = {t.vel_pitch, t.vel_roll, t.vel_yaw}
+      velocity = {vel_x, vel_y, vel_z},
+      angular_velocity = {ang_x, ang_y, ang_z}
     },
     electrics = t.input,
     gearbox = t.gearbox,
@@ -107,14 +132,13 @@ local function send_vehicle_update(obj)
     component_id = obj:getID(),
     generation = generation,
     sent_at = get_current_time(),
-    cluster_nodes = cluster_nodes,
   }
   generation = generation + 1
   network.send_data(
     {
       VehicleUpdate = result
     },
-    true  -- reliable: payload with cluster_nodes exceeds QUIC datagram MTU for large vehicles
+    true
   )
 end
 
@@ -577,20 +601,56 @@ local function onVehicleSpawned(id)
   end
   vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
-  -- Push current Tuning-tab values to the freshly-loaded kiss_nodes so it
-  -- starts with user-chosen constants, not only the module-file defaults.
+  -- Push current Tuning-tab values to the freshly-loaded Layer 1 filter path.
   if kissui and kissui.tuning then
     local t = kissui.tuning
     vehicle:queueLuaCommand(string.format(
-      "kiss_nodes.set_tuning(%d, %d, %d, %d, %d, %f, %f, %f)",
-      t.position_scale[0],
-      t.velocity_scale[0],
-      t.position_epsilon[0],
-      t.velocity_epsilon[0],
+      "kiss_transforms.set_layer1_tuning(%d, %f, %f, %f)",
       t.position_pull_gain[0],
       t.position_deadband[0],
       t.velocity_deadband[0],
       t.max_delta_v[0]
+    ))
+    vehicle:queueLuaCommand(string.format(
+      "kiss_transforms.set_drift_tuning(%f)",
+      t.layer1_drift_nudge_gain[0]
+    ))
+    vehicle:queueLuaCommand(string.format(
+      "kiss_transforms.set_drift_mode(%s)",
+      t.layer1_use_drift_integral[0] and "true" or "false"
+    ))
+    vehicle:queueLuaCommand(string.format(
+      "kiss_transforms.set_prediction_tuning(%s)",
+      t.layer1_enable_yaw_prediction[0] and "true" or "false"
+    ))
+    vehicle:queueLuaCommand(string.format(
+      "kiss_transforms.set_heading_hold_tuning(%f)",
+      t.layer1_heading_hold_yaw_trim_gain[0]
+    ))
+    vehicle:queueLuaCommand(string.format(
+      "kiss_transforms.set_filter_tuning(%f, %f, %f, %f, %f, %f, %f, %f)",
+      t.layer1_z_weight[0],
+      t.layer1_tilt_weight[0],
+      t.layer1_vz_weight[0],
+      t.layer1_tilt_rate_weight[0],
+      t.layer1_z_deadband[0],
+      math.rad(t.layer1_tilt_deadband_deg[0]),
+      t.layer1_vz_deadband[0],
+      t.layer1_tilt_rate_deadband[0]
+    ))
+    vehicle:queueLuaCommand(string.format(
+      "kiss_vehicle.set_controller_tuning(%f, %f, %f, %f, %f, %f)",
+      t.layer1_frame_planar_gain[0],
+      t.layer1_yaw_gain[0],
+      t.layer1_yaw_rate_gain[0],
+      t.layer1_support_gain[0],
+      t.layer1_frame_planar_max_dv[0],
+      t.layer1_yaw_max_dv[0]
+    ))
+    vehicle:queueLuaCommand(string.format(
+      "kiss_vehicle.set_geometry_tuning(%f, %s)",
+      t.layer1_shell_inset_cm[0],
+      t.layer1_debug_viz[0] and "true" or "false"
     ))
   end
   send_vehicle_config(id)

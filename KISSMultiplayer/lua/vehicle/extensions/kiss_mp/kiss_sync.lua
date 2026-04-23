@@ -12,7 +12,7 @@ local function vec3_add(a, b)
 end
 
 local function vec3_scale(v, s)
-  return vec3(v.x * s, v.y * s, v.y * s, v.z * s)
+  return vec3(v.x * s, v.y * s, v.z * s)
 end
 
 local function vec3_lerp(a, b, t)
@@ -26,10 +26,10 @@ end
 --- Quaternion multiplication: q_result = q1 ⊗ q2
 local function quat_multiply(q1, q2)
   return quat(
-    q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z,
     q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,
     q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x,
-    q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w
+    q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,
+    q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z
   )
 end
 
@@ -54,10 +54,10 @@ local function extrapolate_quaternion(q, omega, delta_time)
 
   local axis_scale = sin_half_theta / omega_magnitude
   local delta_q = quat(
-    cos_half_theta,
     omega.x * axis_scale,
     omega.y * axis_scale,
-    omega.z * axis_scale
+    omega.z * axis_scale,
+    cos_half_theta
   )
 
   return quat_multiply(delta_q, q)  -- World-frame: delta ⊗ q
@@ -72,7 +72,7 @@ local function slerp_quaternion(q1, q2, t)
   local q2_interp = q2
   if dot < 0.0 then
     dot = -dot
-    q2_interp = quat(-q2.w, -q2.x, -q2.y, -q2.z)
+    q2_interp = quat(-q2.x, -q2.y, -q2.z, -q2.w)
   end
 
   -- Clamp dot to [-1, 1] to handle floating point errors
@@ -81,10 +81,10 @@ local function slerp_quaternion(q1, q2, t)
   -- If quaternions are nearly identical, use linear interpolation
   if dot > 0.9995 then
     local result = quat(
-      q1.w + (q2_interp.w - q1.w) * t,
       q1.x + (q2_interp.x - q1.x) * t,
       q1.y + (q2_interp.y - q1.y) * t,
-      q1.z + (q2_interp.z - q1.z) * t
+      q1.z + (q2_interp.z - q1.z) * t,
+      q1.w + (q2_interp.w - q1.w) * t
     )
     return result:normalized()
   end
@@ -95,10 +95,10 @@ local function slerp_quaternion(q1, q2, t)
 
   if sin_theta < 1e-8 then
     local result = quat(
-      q1.w + (q2_interp.w - q1.w) * t,
       q1.x + (q2_interp.x - q1.x) * t,
       q1.y + (q2_interp.y - q1.y) * t,
-      q1.z + (q2_interp.z - q1.z) * t
+      q1.z + (q2_interp.z - q1.z) * t,
+      q1.w + (q2_interp.w - q1.w) * t
     )
     return result:normalized()
   end
@@ -107,10 +107,10 @@ local function slerp_quaternion(q1, q2, t)
   local ratio_b = math.sin(t * theta) / sin_theta
 
   local result = quat(
-    q1.w * ratio_a + q2_interp.w * ratio_b,
     q1.x * ratio_a + q2_interp.x * ratio_b,
     q1.y * ratio_a + q2_interp.y * ratio_b,
-    q1.z * ratio_a + q2_interp.z * ratio_b
+    q1.z * ratio_a + q2_interp.z * ratio_b,
+    q1.w * ratio_a + q2_interp.w * ratio_b
   )
   return result:normalized()
 end
@@ -146,6 +146,8 @@ local function create_sync_state(id)
     applied_transform = {
       position = vec3(0, 0, 0),
       rotation = quat(0, 0, 0, 1),
+      velocity = vec3(0, 0, 0),
+      angular_velocity = vec3(0, 0, 0),
     },
   }
 end
@@ -249,8 +251,15 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
   -- Compute predicted state based on last snapshot (for blending from where we thought we were)
   -- Skip extrapolation for stale state, first snapshot, or if prediction is disabled
   local predicted
-  if is_stale or is_first_snapshot or not USE_PREDICTION then
+  if is_stale or is_first_snapshot then
     predicted = authoritative
+  elseif not USE_PREDICTION then
+    predicted = {
+      position = state.applied_transform.position,
+      rotation = state.applied_transform.rotation,
+      velocity = state.applied_transform.velocity,
+      angular_velocity = state.applied_transform.angular_velocity,
+    }
   elseif state.base_timestamp > 0 then
     predicted = extrapolate_transform(state.base_transform, state.base_timestamp, timestamp)
   else
@@ -273,6 +282,8 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
     state.applied_transform = {
       position = authoritative.position,
       rotation = authoritative.rotation,
+      velocity = authoritative.velocity,
+      angular_velocity = authoritative.angular_velocity,
     }
     state.is_blending = false
   else
@@ -287,6 +298,8 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
     state.applied_transform = {
       position = predicted.position,
       rotation = predicted.rotation,
+      velocity = predicted.velocity,
+      angular_velocity = predicted.angular_velocity,
     }
   end
 
@@ -334,6 +347,13 @@ local function update_and_get_transform(id, current_time)
     if t >= 1.0 then
       state.is_blending = false
     end
+  else
+    state.applied_transform = {
+      position = state.predicted_transform.position,
+      rotation = state.predicted_transform.rotation,
+      velocity = state.predicted_transform.velocity,
+      angular_velocity = state.predicted_transform.angular_velocity,
+    }
   end
 
   return state.applied_transform

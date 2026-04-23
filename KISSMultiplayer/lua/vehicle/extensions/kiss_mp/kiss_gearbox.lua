@@ -8,14 +8,17 @@ local vehicle_is_electric = false
 local gearbox_is_manual = false
 
 local last_requseted_gear = nil
+local target_gear_index = nil
 local sequential_lock = false
 local ownership = false
 local ownership_known = false
 local cooldown_timer = 0
+local resync_timer = 0
 
 local function set_gear_indices(indices)
   if mainController and cooldown_timer <= 0 then
     local index = indices[1]
+    target_gear_index = index
     local canShift = true
     
     -- there's a neutralRejectTimer that will lock sequentials into neutral if we try it more than once
@@ -76,6 +79,13 @@ local function updateGFX(dt)
   if sequential_lock and electrics.values.gearIndex == 0 then
     sequential_lock = false
   end
+  resync_timer = resync_timer + dt
+  if target_gear_index ~= nil and resync_timer >= 0.1 then
+    resync_timer = 0
+    if electrics.values.gearIndex ~= target_gear_index then
+      set_gear_indices({target_gear_index, 0})
+    end
+  end
   if gearbox_is_manual and last_requseted_gear ~= 0 and electrics.values.gearIndex == 0 then
     electrics.values.clutchOverride = 1
   else
@@ -85,6 +95,7 @@ end
 
 local function onReset()
   cooldown_timer = 0.2
+  resync_timer = 0
   sequential_lock = false
 end
 
