@@ -13,7 +13,13 @@ local current_download = nil
 
 local socket = require("socket")
 local messagepack = require("lua/common/libs/Lua-MessagePack/MessagePack")
-local ping_send_time = 0
+local ping_seq = 0
+local pending_pings = {}
+local last_pong_seq = 0
+local RTT_ALPHA = 0.15
+local JITTER_ALPHA = 0.15
+local RTT_MIN_WINDOW_S = 5.0
+local MAX_RTT_SAMPLE_S = 1.0
 
 M.players = {}
 M.socket = socket
@@ -27,7 +33,11 @@ M.connection = {
   tickrate = 33,
   mods_left = 0,
   ping = 0,
-  time_offset = 0
+  time_offset = 0,
+  rtt_raw_ms = 0,
+  rtt_smooth_ms = 0,
+  rtt_min_ms = 0,
+  jitter_ms = 0,
 }
 
 local FILE_TRANSFER_CHUNK_SIZE = 16384;
@@ -56,6 +66,48 @@ time_offset_smoother.get = function(new_sample)
   return sum / n
 end
 
+local rtt_min_window = {}
+
+local function update_rtt_min_window(now_s, rtt_s)
+  rtt_min_window[#rtt_min_window + 1] = {time = now_s, rtt = rtt_s}
+  local keep_from = now_s - RTT_MIN_WINDOW_S
+  local write = 1
+  local min_rtt = nil
+
+  for read = 1, #rtt_min_window do
+    local sample = rtt_min_window[read]
+    if sample.time >= keep_from then
+      rtt_min_window[write] = sample
+      write = write + 1
+      if not min_rtt or sample.rtt < min_rtt then
+        min_rtt = sample.rtt
+      end
+    end
+  end
+
+  for i = #rtt_min_window, write, -1 do
+    rtt_min_window[i] = nil
+  end
+
+  return min_rtt or rtt_s
+end
+
+local function push_latency_to_all_vehicles()
+  local cmd = string.format(
+    "kiss_transforms.set_latency_tuning(%f, %f, %f)",
+    (M.connection.rtt_smooth_ms or 0) * 0.001,
+    (M.connection.rtt_min_ms or 0) * 0.001,
+    (M.connection.jitter_ms or 0) * 0.001
+  )
+
+  for i = 0, be:getObjectCount() do
+    local vehicle = be:getObject(i)
+    if vehicle then
+      vehicle:queueLuaCommand(cmd)
+    end
+  end
+end
+
 local function bytesToU32(str)
   if not str or #str < 4 then return 0 end
   local b1, b2, b3, b4 = str:byte(1, 4)
@@ -75,6 +127,16 @@ local function disconnect(data)
   kissui.chat.add_message(text)
   M.connection.connected = false
   M.connection.tcp:close()
+  pending_pings = {}
+  rtt_min_window = {}
+  ping_seq = 0
+  last_pong_seq = 0
+  M.connection.ping = 0
+  M.connection.time_offset = 0
+  M.connection.rtt_raw_ms = 0
+  M.connection.rtt_smooth_ms = 0
+  M.connection.rtt_min_ms = 0
+  M.connection.jitter_ms = 0
   M.players = {}
   kissplayers.players = {}
   kissplayers.player_transforms = {}
@@ -156,13 +218,37 @@ local function handle_vehicle_lua(data)
 end
 
 local function handle_pong(data)
-  local server_time = data
   local local_time = socket.gettime()
-  local ping = local_time - ping_send_time
-  if ping > 1 then return end
-  local time_diff = server_time - local_time + (ping / 2)
+  if not data or not data.seq then return end
+  if data.seq <= last_pong_seq then return end
+
+  local sent = pending_pings[data.seq]
+  pending_pings[data.seq] = nil
+  if not sent then return end
+
+  local ping = local_time - (data.client_send_time or sent.client_send_time or local_time)
+  if ping <= 0 or ping > MAX_RTT_SAMPLE_S then return end
+
+  last_pong_seq = data.seq
+  local previous_smooth_s = (M.connection.rtt_smooth_ms or 0) * 0.001
+  local smooth_s = previous_smooth_s > 0
+    and (previous_smooth_s + (ping - previous_smooth_s) * RTT_ALPHA)
+    or ping
+  local jitter_sample_s = previous_smooth_s > 0 and math.abs(ping - previous_smooth_s) or 0
+  local previous_jitter_s = (M.connection.jitter_ms or 0) * 0.001
+  local jitter_s = previous_jitter_s > 0
+    and (previous_jitter_s + (jitter_sample_s - previous_jitter_s) * JITTER_ALPHA)
+    or jitter_sample_s
+  local min_rtt_s = update_rtt_min_window(local_time, ping)
+
+  local time_diff = (data.server_send_time or local_time) - local_time + (ping * 0.5)
   M.connection.time_offset = time_offset_smoother.get(time_diff)
   M.connection.ping = ping * 1000
+  M.connection.rtt_raw_ms = ping * 1000
+  M.connection.rtt_smooth_ms = smooth_s * 1000
+  M.connection.rtt_min_ms = min_rtt_s * 1000
+  M.connection.jitter_ms = jitter_s * 1000
+  push_latency_to_all_vehicles()
 end
 
 local function handle_player_disconnected(data)
@@ -189,6 +275,7 @@ local function onExtensionLoaded()
   message_handlers.CouplerAttached = vehiclemanager.attach_coupler
   message_handlers.CouplerDetached = vehiclemanager.detach_coupler
   message_handlers.ElectricsUndefinedUpdate = vehiclemanager.electrics_diff_update
+  message_handlers.SessionTuningUpdate = kissui.tabs.tuning.apply_session_tuning
 
   message_handlers.VehicleSetPosition = vehiclemanager.set_position
   message_handlers.VehicleSetPositionRotation = vehiclemanager.set_position_rotation
@@ -395,10 +482,23 @@ local function on_finished_download()
 end
 
 local function send_ping()
-  ping_send_time = socket.gettime()
+  local now = socket.gettime()
+  ping_seq = ping_seq + 1
+  for seq, sample in pairs(pending_pings) do
+    if (now - (sample.client_send_time or now)) > MAX_RTT_SAMPLE_S then
+      pending_pings[seq] = nil
+    end
+  end
+  pending_pings[ping_seq] = {
+    client_send_time = now,
+  }
   send_data(
     {
-      Ping = math.floor(M.connection.ping),
+      Ping = {
+        seq = ping_seq,
+        client_send_time = now,
+        reported_ping_ms = math.floor(M.connection.rtt_smooth_ms or M.connection.ping or 0),
+      },
     },
     false
   )

@@ -241,9 +241,21 @@ local function onExtensionLoaded()
   -- Ignore controller electrics
   if v.data.controller and type(v.data.controller) == 'table' then
     for _, controller_data in pairs(v.data.controller) do
-      if controller_data.fileName == "jato" then
+      if controller_data.fileName == "lightbar" and controller_data.modes then
+        -- ignore lightbar electrics
+        local modes = tableFromHeaderTable(controller_data.modes)
+        for _, vm in pairs(modes) do
+          local configEntries = tableFromHeaderTable(deepcopy(vm.config))
+          for _, j in pairs(configEntries) do
+            ignore_key(j.electric)
+          end
+        end
+      elseif controller_data.fileName == "jato" then
         -- ignore jato fuel
         ignore_key("jatofuel")
+      elseif controller_data.fileName == "beaconSpin" and controller_data.electricsName then
+        -- ignore beacon spin
+        ignore_key(controller_data.electricsName)
       elseif controller_data.fileName == "driveModes" and controller_data.modes then
         -- register handlers for syncing drive modes
         for _, vm in pairs(controller_data.modes) do

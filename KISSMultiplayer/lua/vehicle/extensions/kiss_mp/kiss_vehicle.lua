@@ -1025,6 +1025,7 @@ end
 -- set when possible. If symmetry is unavailable, fall back to the strict
 -- refnode trio conservatively.
 local function apply_rigid_pull(cluster_pos, cluster_rot, cluster_linvel, cluster_angvel_world,
+                                cluster_planar_correction_vel,
                                 exclude_cids,
                                 pull_gain, dp_deadband, dv_deadband, max_dv)
   if not M.layer1_enabled or #layer1_actuator_states == 0 then return end
@@ -1048,6 +1049,7 @@ local function apply_rigid_pull(cluster_pos, cluster_rot, cluster_linvel, cluste
   local max_dv_sq = max_dv * max_dv
   local exclude = exclude_cids or {}
   local factor = layer1_actuator_force_factor > 0 and layer1_actuator_force_factor or 1
+  local planar_correction_vel = cluster_planar_correction_vel or vec3(0, 0, 0)
 
   if M.layer1_geometry_mode == "mirrored_pairs" or M.layer1_geometry_mode == "mirrored_pairs_long_vehicle" then
     local current_euler = current_rot:toEulerYXZ()
@@ -1063,15 +1065,18 @@ local function apply_rigid_pull(cluster_pos, cluster_rot, cluster_linvel, cluste
       yaw_settle_boost = 1.0 + (1.75 * error_scale * calm_scale)
     end
     local yaw_rot = quatFromEuler(current_euler.y, current_euler.z, target_euler.x)
-    local planar_pos = vec3(cpx, cpy, ccz)
+    local planar_pos = vec3(ccx, ccy, ccz)
     local planar_rot = current_rot
-    local planar_linvel = vec3(lvx, lvy, 0)
+    local planar_linvel = vec3(
+      lvx + (planar_correction_vel.x * M.layer1_frame_planar_gain),
+      lvy + (planar_correction_vel.y * M.layer1_frame_planar_gain),
+      0
+    )
     local planar_angvel = vec3(0, 0, 0)
     local yaw_only_pos = vec3(ccx, ccy, ccz)
     local yaw_only_linvel = vec3(current_centroid_linvel.x, current_centroid_linvel.y, 0)
     local yaw_only_angvel = vec3(0, 0, az * M.layer1_frame_yaw_rate_gain)
     local frame_factor = average_factor(layer1_frame_refnode_states)
-    local planar_pull_gain = pull_gain * M.layer1_frame_planar_gain
     local yaw_pull_gain = pull_gain * M.layer1_frame_yaw_gain * yaw_settle_boost
     local frame_planar_max_dv = M.layer1_frame_planar_max_dv
     local frame_max_dv = M.layer1_frame_yaw_max_dv * math.min(2.0, yaw_settle_boost)
@@ -1088,7 +1093,7 @@ local function apply_rigid_pull(cluster_pos, cluster_rot, cluster_linvel, cluste
       current_centroid_offset, ccx, ccy, ccz, centroid_body,
       planar_pos, planar_rot, planar_linvel, planar_angvel,
       exclude,
-      planar_pull_gain, dp_deadband_sq, dv_deadband_sq,
+      0, dp_deadband_sq, dv_deadband_sq,
       frame_planar_max_dv, frame_planar_max_dv * frame_planar_max_dv,
       true
     )

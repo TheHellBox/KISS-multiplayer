@@ -603,54 +603,50 @@ local function onVehicleSpawned(id)
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
   -- Push current Tuning-tab values to the freshly-loaded Layer 1 filter path.
   if kissui and kissui.tuning then
-    local t = kissui.tuning
+    local d = kissui.get_derived_sync_tuning()
     vehicle:queueLuaCommand(string.format(
       "kiss_transforms.set_layer1_tuning(%d, %f, %f, %f)",
-      t.position_pull_gain[0],
-      t.position_deadband[0],
-      t.velocity_deadband[0],
-      t.max_delta_v[0]
-    ))
-    vehicle:queueLuaCommand(string.format(
-      "kiss_transforms.set_drift_tuning(%f)",
-      t.layer1_drift_nudge_gain[0]
-    ))
-    vehicle:queueLuaCommand(string.format(
-      "kiss_transforms.set_drift_mode(%s)",
-      t.layer1_use_drift_integral[0] and "true" or "false"
+      d.position_pull_gain,
+      d.position_deadband,
+      d.velocity_deadband,
+      d.max_delta_v
     ))
     vehicle:queueLuaCommand(string.format(
       "kiss_transforms.set_prediction_tuning(%s)",
-      t.layer1_enable_yaw_prediction[0] and "true" or "false"
+      d.layer1_enable_yaw_prediction and "true" or "false"
     ))
     vehicle:queueLuaCommand(string.format(
       "kiss_transforms.set_heading_hold_tuning(%f)",
-      t.layer1_heading_hold_yaw_trim_gain[0]
+      d.layer1_heading_hold_yaw_trim_gain
+    ))
+    vehicle:queueLuaCommand(string.format(
+      "kiss_transforms.set_cross_track_tuning(%f)",
+      d.layer1_cross_track_hold_gain
     ))
     vehicle:queueLuaCommand(string.format(
       "kiss_transforms.set_filter_tuning(%f, %f, %f, %f, %f, %f, %f, %f)",
-      t.layer1_z_weight[0],
-      t.layer1_tilt_weight[0],
-      t.layer1_vz_weight[0],
-      t.layer1_tilt_rate_weight[0],
-      t.layer1_z_deadband[0],
-      math.rad(t.layer1_tilt_deadband_deg[0]),
-      t.layer1_vz_deadband[0],
-      t.layer1_tilt_rate_deadband[0]
+      d.layer1_z_weight,
+      d.layer1_tilt_weight,
+      d.layer1_vz_weight,
+      d.layer1_tilt_rate_weight,
+      d.layer1_z_deadband,
+      math.rad(d.layer1_tilt_deadband_deg),
+      d.layer1_vz_deadband,
+      d.layer1_tilt_rate_deadband
     ))
     vehicle:queueLuaCommand(string.format(
       "kiss_vehicle.set_controller_tuning(%f, %f, %f, %f, %f, %f)",
-      t.layer1_frame_planar_gain[0],
-      t.layer1_yaw_gain[0],
-      t.layer1_yaw_rate_gain[0],
-      t.layer1_support_gain[0],
-      t.layer1_frame_planar_max_dv[0],
-      t.layer1_yaw_max_dv[0]
+      d.layer1_frame_planar_gain,
+      d.layer1_yaw_gain,
+      d.layer1_yaw_rate_gain,
+      d.layer1_support_gain,
+      d.layer1_frame_planar_max_dv,
+      d.layer1_yaw_max_dv
     ))
     vehicle:queueLuaCommand(string.format(
       "kiss_vehicle.set_geometry_tuning(%f, %s)",
-      t.layer1_shell_inset_cm[0],
-      t.layer1_debug_viz[0] and "true" or "false"
+      d.layer1_shell_inset_cm,
+      d.layer1_debug_viz and "true" or "false"
     ))
   end
   send_vehicle_config(id)

@@ -8,6 +8,9 @@ M.debug = false  -- Enable debug logging
 M.cooldown_timer = 2
 M.sync_id = nil  -- Vehicle ID for sync state tracking
 
+local MAX_TARGET_PATH_SAMPLES = 6
+local MIN_PATH_SEGMENT_LEN_SQ = 0.25
+
 local function build_position_replay_cid_set(positions)
   local out = nil
   if not positions then return nil end
@@ -77,11 +80,6 @@ local function blend_angle_toward_current(target, current, weight, deadband)
   return current + delta * weight
 end
 
-local function clear_drift_nudge_state()
-  M.layer1_drift_nudge_time = 0
-  M.layer1_drift_nudge_cooldown = 0
-end
-
 local function decay_toward_zero(value, amount)
   if value > 0 then
     return math.max(0, value - amount)
@@ -91,91 +89,44 @@ local function decay_toward_zero(value, amount)
   return 0
 end
 
-local function clamp_planar_bias(x, y, max_len)
-  local len_sq = x * x + y * y
-  local max_sq = max_len * max_len
-  if len_sq > max_sq and len_sq > 0 then
-    local scale = max_len / math.sqrt(len_sq)
-    return x * scale, y * scale
-  end
-  return x, y
-end
-
-local function clear_drift_integral_state()
-  M.layer1_planar_bias_x = 0
-  M.layer1_planar_bias_y = 0
-  M.layer1_yaw_bias = 0
-end
-
 local function clear_course_heading_state()
   M.layer1_target_course_heading_xy = nil
   M.layer1_target_course_sample_pos = nil
   M.layer1_target_course_sample_age = 0
+  M.layer1_target_path_samples = {}
   M.layer1_current_course_heading_xy = nil
   M.layer1_current_course_sample_pos = nil
   M.layer1_current_course_sample_age = 0
   M.layer1_course_yaw_trim = 0
+  M.layer1_cross_track_correction_speed = 0
+  M.layer1_along_track_correction_speed = 0
 end
 
 local function clear_drift_state()
-  clear_drift_nudge_state()
-  clear_drift_integral_state()
   clear_course_heading_state()
 end
 
-local function decay_drift_integral_state(dt)
-  local planar_decay = dt * 0.35
-  local yaw_decay = dt * math.rad(0.5)
-  M.layer1_planar_bias_x = decay_toward_zero(M.layer1_planar_bias_x or 0, planar_decay)
-  M.layer1_planar_bias_y = decay_toward_zero(M.layer1_planar_bias_y or 0, planar_decay)
-  M.layer1_yaw_bias = decay_toward_zero(M.layer1_yaw_bias or 0, yaw_decay)
+local function clamp01(value)
+  return clamp(value, 0, 1)
 end
 
-local function update_drift_integral(dt, current_centroid_pos, raw_centroid_pos,
-                                     current_centroid_linvel, raw_centroid_linvel,
-                                     current_local_omega, raw_local_omega,
-                                     current_yaw, target_yaw)
-  if not M.layer1_use_drift_integral then
-    clear_drift_integral_state()
-    return
+local function get_transport_stability()
+  local rtt_smooth = M.layer1_rtt_smooth_s or 0
+  local jitter = M.layer1_jitter_s or 0
+  if rtt_smooth <= 0 then
+    return 1.0
   end
 
-  local gain = M.layer1_drift_gain or 0
-  if gain <= 0 then
-    clear_drift_integral_state()
-    return
-  end
+  local jitter_limit = math.max(0.01, (rtt_smooth * 0.75) + 0.01)
+  return 1.0 - clamp01(jitter / jitter_limit)
+end
 
-  local planar_error_x = raw_centroid_pos.x - current_centroid_pos.x
-  local planar_error_y = raw_centroid_pos.y - current_centroid_pos.y
-  local planar_error = math.sqrt(planar_error_x * planar_error_x + planar_error_y * planar_error_y)
-  local yaw_error = wrap_angle_pi(target_yaw - current_yaw)
-  local target_planar_speed = math.sqrt(raw_centroid_linvel.x * raw_centroid_linvel.x + raw_centroid_linvel.y * raw_centroid_linvel.y)
-  local current_planar_speed = math.sqrt(current_centroid_linvel.x * current_centroid_linvel.x + current_centroid_linvel.y * current_centroid_linvel.y)
-  local yaw_rate_error = math.abs(raw_local_omega.z - current_local_omega.z)
-  local vertical_velocity_error = math.abs(raw_centroid_linvel.z - current_centroid_linvel.z)
-
-  local calm = math.max(target_planar_speed, current_planar_speed) > 2.0
-    and planar_error < 3.0
-    and math.abs(yaw_error) < 0.35
-    and yaw_rate_error < 1.0
-    and vertical_velocity_error < 1.0
-    and (M.rude_error_time or 0) <= 0
-
-  if calm then
-    M.layer1_planar_bias_x = (M.layer1_planar_bias_x or 0) + (planar_error_x * gain * dt)
-    M.layer1_planar_bias_y = (M.layer1_planar_bias_y or 0) + (planar_error_y * gain * dt)
-    M.layer1_planar_bias_x, M.layer1_planar_bias_y = clamp_planar_bias(
-      M.layer1_planar_bias_x, M.layer1_planar_bias_y, 0.6
-    )
-    M.layer1_yaw_bias = clamp(
-      (M.layer1_yaw_bias or 0) + (yaw_error * gain * dt),
-      -math.rad(5),
-      math.rad(5)
-    )
-  else
-    decay_drift_integral_state(dt)
-  end
+local function get_latency_lookahead_s()
+  local rtt_smooth = M.layer1_rtt_smooth_s or 0
+  local jitter = M.layer1_jitter_s or 0
+  local base = clamp((rtt_smooth * 0.25) + (jitter * 0.25), 0.0, 0.08)
+  local stability = get_transport_stability()
+  return base * (0.5 + 0.5 * stability)
 end
 
 local function apply_short_horizon_yaw_prediction(dt, target_yaw, current_yaw, raw_local_omega)
@@ -202,8 +153,15 @@ local function apply_short_horizon_yaw_prediction(dt, target_yaw, current_yaw, r
     return target_yaw
   end
 
-  local prediction_horizon = 0.06
-  local prediction_blend = 0.6
+  local prediction_horizon = get_latency_lookahead_s()
+  if prediction_horizon <= 0 then
+    return target_yaw
+  end
+  prediction_horizon = clamp(prediction_horizon, 0.03, 0.08)
+  local prediction_blend = 0.6 * get_transport_stability()
+  if prediction_blend <= 0.05 then
+    return target_yaw
+  end
   local max_delta = math.rad(10)
   local predicted_delta = clamp(yaw_rate * prediction_horizon, -max_delta, max_delta)
 
@@ -217,7 +175,42 @@ local function blend_angle(current, target, weight)
   return current + wrap_angle_pi(target - current) * weight
 end
 
-local function update_smoothed_course_heading(dt, pos, linvel, sample_pos_key, sample_age_key, heading_key)
+local function push_target_path_sample(pos)
+  local samples = M.layer1_target_path_samples
+  if not samples then
+    samples = {}
+    M.layer1_target_path_samples = samples
+  end
+
+  local last = samples[#samples]
+  if last then
+    local dx = pos.x - last.x
+    local dy = pos.y - last.y
+    if (dx * dx + dy * dy) < 0.04 then
+      samples[#samples] = vec3(pos.x, pos.y, pos.z)
+      return
+    end
+  end
+
+  samples[#samples + 1] = vec3(pos.x, pos.y, pos.z)
+  while #samples > MAX_TARGET_PATH_SAMPLES do
+    table.remove(samples, 1)
+  end
+end
+
+local function build_lookahead_pos(pos, linvel, lookahead_s)
+  if lookahead_s <= 0 then
+    return vec3(pos.x, pos.y, pos.z)
+  end
+  return vec3(
+    pos.x + (linvel.x * lookahead_s),
+    pos.y + (linvel.y * lookahead_s),
+    pos.z
+  )
+end
+
+local function update_smoothed_course_heading(dt, pos, linvel, sample_pos_key, sample_age_key, heading_key,
+                                             store_target_path, lookahead_s)
   local planar_speed = math.sqrt(linvel.x * linvel.x + linvel.y * linvel.y)
 
   M[sample_age_key] = (M[sample_age_key] or 0) + dt
@@ -245,11 +238,109 @@ local function update_smoothed_course_heading(dt, pos, linvel, sample_pos_key, s
 
   if measured_heading ~= nil then
     M[heading_key] = blend_angle(M[heading_key], measured_heading, 0.35)
+    if store_target_path then
+      push_target_path_sample(build_lookahead_pos(pos, linvel, lookahead_s or 0))
+    end
   end
 
   M[sample_pos_key] = vec3(pos.x, pos.y, pos.z)
   M[sample_age_key] = 0
   return M[heading_key]
+end
+
+local function get_target_path_frame(raw_centroid_pos, current_centroid_pos, fallback_heading)
+  local samples = M.layer1_target_path_samples or {}
+  if #samples >= 2 then
+    local best = nil
+    local best_distance_sq = nil
+
+    for i = 1, (#samples - 1) do
+      local prev_pos = samples[i]
+      local curr_pos = samples[i + 1]
+      local dx = curr_pos.x - prev_pos.x
+      local dy = curr_pos.y - prev_pos.y
+      local len_sq = dx * dx + dy * dy
+      if len_sq > MIN_PATH_SEGMENT_LEN_SQ then
+        local rel_x = current_centroid_pos.x - prev_pos.x
+        local rel_y = current_centroid_pos.y - prev_pos.y
+        local seg_t = clamp(((rel_x * dx) + (rel_y * dy)) / len_sq, 0, 1)
+        local closest_x = prev_pos.x + dx * seg_t
+        local closest_y = prev_pos.y + dy * seg_t
+        local off_x = current_centroid_pos.x - closest_x
+        local off_y = current_centroid_pos.y - closest_y
+        local distance_sq = off_x * off_x + off_y * off_y
+
+        if not best_distance_sq or distance_sq < best_distance_sq then
+          best_distance_sq = distance_sq
+          best = {
+            prev_pos = prev_pos,
+            curr_pos = curr_pos,
+            closest_x = closest_x,
+            closest_y = closest_y,
+            seg_len_sq = len_sq,
+            tangent_x = dx / math.sqrt(len_sq),
+            tangent_y = dy / math.sqrt(len_sq),
+            has_segment = true,
+          }
+        end
+      end
+    end
+
+    if best then
+      best.normal_x = -best.tangent_y
+      best.normal_y = best.tangent_x
+      best.heading_xy = atan2(best.tangent_y, best.tangent_x)
+      return best
+    end
+  end
+
+  local heading_xy = fallback_heading
+  if heading_xy == nil then
+    return nil
+  end
+
+  local tangent_x = math.cos(heading_xy)
+  local tangent_y = math.sin(heading_xy)
+  return {
+    prev_pos = nil,
+    curr_pos = raw_centroid_pos,
+    closest_x = raw_centroid_pos.x,
+    closest_y = raw_centroid_pos.y,
+    tangent_x = tangent_x,
+    tangent_y = tangent_y,
+    normal_x = -tangent_y,
+    normal_y = tangent_x,
+    heading_xy = heading_xy,
+    has_segment = false,
+  }
+end
+
+local function compute_motion_trust_factors(current_course_heading_xy, current_body_yaw, current_centroid_linvel,
+                                            current_local_omega, current_vertical_speed)
+  if current_course_heading_xy == nil then
+    return nil
+  end
+
+  local planar_speed = math.sqrt(
+    current_centroid_linvel.x * current_centroid_linvel.x +
+    current_centroid_linvel.y * current_centroid_linvel.y
+  )
+  local yaw_rate = math.abs(current_local_omega.z or 0)
+  local body_course_error = math.abs(wrap_angle_pi(current_body_yaw - current_course_heading_xy))
+  local speed_factor = clamp((planar_speed - 4.0) / 10.0, 0, 1)
+  local heading_slip_factor = 1.0 - clamp(body_course_error / math.rad(15), 0, 1)
+  heading_slip_factor = heading_slip_factor * heading_slip_factor
+  local path_slip_factor = 1.0 - clamp(body_course_error / math.rad(30), 0, 1)
+  local vertical_noise_factor = 1.0 - clamp(math.abs(current_vertical_speed or 0) / 2.0, 0, 1)
+  local heading_yaw_rate_factor = 1.0 - clamp(yaw_rate / 1.2, 0, 1)
+  local path_yaw_rate_factor = 1.0 - clamp(yaw_rate / 2.4, 0, 1)
+  local transport_stability = get_transport_stability()
+
+  return {
+    heading = speed_factor * heading_slip_factor * vertical_noise_factor * heading_yaw_rate_factor * transport_stability,
+    cross_track = speed_factor * path_slip_factor * vertical_noise_factor * path_yaw_rate_factor * (0.6 + 0.4 * transport_stability),
+    along_track = speed_factor * path_slip_factor * vertical_noise_factor * path_yaw_rate_factor * 0.45 * transport_stability,
+  }
 end
 
 local function update_course_yaw_trim(dt, target_course_heading_xy, current_course_heading_xy,
@@ -261,17 +352,10 @@ local function update_course_yaw_trim(dt, target_course_heading_xy, current_cour
     return
   end
 
-  local planar_speed = math.sqrt(
-    current_centroid_linvel.x * current_centroid_linvel.x +
-    current_centroid_linvel.y * current_centroid_linvel.y
+  local trust = compute_motion_trust_factors(
+    current_course_heading_xy, current_body_yaw, current_centroid_linvel, current_local_omega, current_vertical_speed
   )
-  local yaw_rate = math.abs(current_local_omega.z or 0)
-  local body_course_error = math.abs(wrap_angle_pi(current_body_yaw - current_course_heading_xy))
-  local speed_factor = clamp((planar_speed - 4.0) / 10.0, 0, 1)
-  local body_course_factor = 1.0 - clamp(body_course_error / math.rad(25), 0, 1)
-  local vertical_noise_factor = 1.0 - clamp(math.abs(current_vertical_speed or 0) / 2.0, 0, 1)
-  local yaw_rate_factor = 1.0 - clamp(yaw_rate / 1.2, 0, 1)
-  local heading_trust = speed_factor * body_course_factor * vertical_noise_factor * yaw_rate_factor
+  local heading_trust = trust and trust.heading or 0
   local error = wrap_angle_pi(target_course_heading_xy - current_course_heading_xy)
 
   if heading_trust <= 0 or (M.rude_error_time or 0) > 0 then
@@ -284,6 +368,66 @@ local function update_course_yaw_trim(dt, target_course_heading_xy, current_cour
     -math.rad(6),
     math.rad(6)
   )
+end
+
+local function update_path_correction_speeds(dt, path_frame,
+                                             current_centroid_pos, raw_centroid_pos,
+                                             current_course_heading_xy, current_body_yaw,
+                                             current_centroid_linvel, current_local_omega, current_vertical_speed)
+  local cross_track_gain = M.layer1_cross_track_hold_gain or 0
+  if cross_track_gain <= 0 or not path_frame or current_course_heading_xy == nil then
+    M.layer1_cross_track_correction_speed = decay_toward_zero(M.layer1_cross_track_correction_speed or 0, dt * 3.5)
+    M.layer1_along_track_correction_speed = decay_toward_zero(M.layer1_along_track_correction_speed or 0, dt * 2.0)
+    return
+  end
+
+  local trust = compute_motion_trust_factors(
+    current_course_heading_xy, current_body_yaw, current_centroid_linvel, current_local_omega, current_vertical_speed
+  )
+  local cross_track_trust = trust and trust.cross_track or 0
+  local along_track_trust = trust and trust.along_track or 0
+  if (cross_track_trust <= 0 and along_track_trust <= 0) or (M.rude_error_time or 0) > 0 then
+    M.layer1_cross_track_correction_speed = decay_toward_zero(M.layer1_cross_track_correction_speed or 0, dt * 3.5)
+    M.layer1_along_track_correction_speed = decay_toward_zero(M.layer1_along_track_correction_speed or 0, dt * 2.0)
+    return
+  end
+
+  local closest_x = path_frame.closest_x or path_frame.curr_pos.x
+  local closest_y = path_frame.closest_y or path_frame.curr_pos.y
+  local delta_x = current_centroid_pos.x - closest_x
+  local delta_y = current_centroid_pos.y - closest_y
+  local cross_track_error = delta_x * path_frame.normal_x + delta_y * path_frame.normal_y
+  local target_delta_x = raw_centroid_pos.x - current_centroid_pos.x
+  local target_delta_y = raw_centroid_pos.y - current_centroid_pos.y
+  local along_track_error = (target_delta_x * path_frame.tangent_x) + (target_delta_y * path_frame.tangent_y)
+
+  local max_correction_speed = 4.0
+  local desired_cross_track_speed = 0
+  if math.abs(cross_track_error) >= 0.05 then
+    desired_cross_track_speed = clamp(
+      -cross_track_error * cross_track_gain * cross_track_trust * 2.5,
+      -max_correction_speed,
+      max_correction_speed
+    )
+  end
+
+  local along_track_gain = cross_track_gain * 0.2
+  local max_along_track_speed = 1.5
+  local desired_along_track_speed = 0
+  if math.abs(along_track_error) >= 0.2 then
+    desired_along_track_speed = clamp(
+      along_track_error * along_track_gain * along_track_trust,
+      -max_along_track_speed,
+      max_along_track_speed
+    )
+  end
+
+  local cross_track_speed = M.layer1_cross_track_correction_speed or 0
+  local along_track_speed = M.layer1_along_track_correction_speed or 0
+  local cross_track_response = math.min(1.0, dt * 4.0)
+  local along_track_response = math.min(1.0, dt * 2.0)
+  M.layer1_cross_track_correction_speed = cross_track_speed + (desired_cross_track_speed - cross_track_speed) * cross_track_response
+  M.layer1_along_track_correction_speed = along_track_speed + (desired_along_track_speed - along_track_speed) * along_track_response
 end
 
 local function filter_layer1_target(dt, raw_origin_pos, raw_rot, raw_origin_linvel, raw_local_omega)
@@ -318,25 +462,35 @@ local function filter_layer1_target(dt, raw_origin_pos, raw_rot, raw_origin_linv
   local current_angvel = current_local_omega:rotated(current_rot)
   local current_centroid_linvel = current_origin_linvel + current_angvel:cross(current_centroid_offset)
   local raw_centroid_linvel = raw_origin_linvel + raw_local_omega:rotated(raw_rot):cross(raw_centroid_offset)
+  local trajectory_lookahead_s = get_latency_lookahead_s()
+  local raw_centroid_path_pos = build_lookahead_pos(raw_centroid_pos, raw_centroid_linvel, trajectory_lookahead_s)
   local target_course_heading_xy = update_smoothed_course_heading(
     dt, raw_centroid_pos, raw_centroid_linvel,
-    "layer1_target_course_sample_pos", "layer1_target_course_sample_age", "layer1_target_course_heading_xy"
+    "layer1_target_course_sample_pos", "layer1_target_course_sample_age", "layer1_target_course_heading_xy",
+    true, trajectory_lookahead_s
   )
   local current_course_heading_xy = update_smoothed_course_heading(
     dt, current_centroid_pos, current_centroid_linvel,
-    "layer1_current_course_sample_pos", "layer1_current_course_sample_age", "layer1_current_course_heading_xy"
+    "layer1_current_course_sample_pos", "layer1_current_course_sample_age", "layer1_current_course_heading_xy",
+    false, 0
   )
+  local target_path_frame = get_target_path_frame(raw_centroid_path_pos, current_centroid_pos, target_course_heading_xy)
+  local target_path_heading_xy = target_path_frame and target_path_frame.heading_xy or target_course_heading_xy
 
-  update_drift_integral(
-    dt,
-    current_centroid_pos, raw_centroid_pos,
-    current_centroid_linvel, raw_centroid_linvel,
-    current_local_omega, raw_local_omega,
-    current_euler.x, target_euler.x
-  )
   update_course_yaw_trim(
     dt,
-    target_course_heading_xy,
+    target_path_heading_xy,
+    current_course_heading_xy,
+    current_euler.x,
+    current_centroid_linvel,
+    current_local_omega,
+    current_centroid_linvel.z
+  )
+  update_path_correction_speeds(
+    dt,
+    target_path_frame,
+    current_centroid_pos,
+    raw_centroid_pos,
     current_course_heading_xy,
     current_euler.x,
     current_centroid_linvel,
@@ -346,7 +500,7 @@ local function filter_layer1_target(dt, raw_origin_pos, raw_rot, raw_origin_linv
 
   local corrected_target_yaw = apply_short_horizon_yaw_prediction(
     dt,
-    target_euler.x + (M.layer1_yaw_bias or 0) + (M.layer1_course_yaw_trim or 0),
+    target_euler.x + (M.layer1_course_yaw_trim or 0),
     current_euler.x,
     raw_local_omega
   )
@@ -360,9 +514,15 @@ local function filter_layer1_target(dt, raw_origin_pos, raw_rot, raw_origin_linv
     raw_local_omega.z
   )
   local filtered_angvel = filtered_local_omega:rotated(filtered_rot)
+  local cross_track_correction_speed = M.layer1_cross_track_correction_speed or 0
+  local along_track_correction_speed = M.layer1_along_track_correction_speed or 0
+  local tangent_x = target_path_frame and target_path_frame.tangent_x or 0
+  local tangent_y = target_path_frame and target_path_frame.tangent_y or 0
+  local normal_x = target_path_frame and target_path_frame.normal_x or 0
+  local normal_y = target_path_frame and target_path_frame.normal_y or 0
   local filtered_centroid_pos = vec3(
-    raw_centroid_pos.x + (M.layer1_planar_bias_x or 0),
-    raw_centroid_pos.y + (M.layer1_planar_bias_y or 0),
+    raw_centroid_pos.x,
+    raw_centroid_pos.y,
     blend_scalar_toward_current(raw_centroid_pos.z, current_centroid_pos.z, z_weight, z_deadband)
   )
   local filtered_centroid_linvel = vec3(
@@ -370,8 +530,13 @@ local function filter_layer1_target(dt, raw_origin_pos, raw_rot, raw_origin_linv
     raw_centroid_linvel.y,
     blend_scalar_toward_current(raw_centroid_linvel.z, current_centroid_linvel.z, vz_weight, vz_deadband)
   )
+  local filtered_planar_correction_vel = vec3(
+    (normal_x * cross_track_correction_speed) + (tangent_x * along_track_correction_speed),
+    (normal_y * cross_track_correction_speed) + (tangent_y * along_track_correction_speed),
+    0
+  )
 
-  return filtered_centroid_pos, filtered_rot, filtered_centroid_linvel, filtered_angvel
+  return filtered_centroid_pos, filtered_rot, filtered_centroid_linvel, filtered_angvel, filtered_planar_correction_vel
 end
 
 -- Get current transform from sync module (includes prediction + blending)
@@ -384,85 +549,6 @@ local function clear_cached_nodes()
   M.cached_positions_dev = nil
   M.cached_velocities_dev = nil
   M.cached_position_replay_cids = nil
-end
-
-local function try_drift_nudge(filtered_centroid_pos, filtered_rot, filtered_centroid_linvel, dt)
-  if M.layer1_use_drift_integral then
-    clear_drift_nudge_state()
-    return false
-  end
-
-  local gain = M.layer1_drift_gain or 0
-  if gain <= 0 then
-    clear_drift_nudge_state()
-    return false
-  end
-
-  if kiss_vehicle and kiss_vehicle.is_rigid_prop and kiss_vehicle.is_rigid_prop() then
-    clear_drift_nudge_state()
-    return false
-  end
-
-  M.layer1_drift_nudge_cooldown = math.max(0, (M.layer1_drift_nudge_cooldown or 0) - dt)
-
-  local current_rot = quat(obj:getRotation())
-  local current_origin_pos = vec3(obj:getPosition())
-  local current_origin_linvel = vec3(obj:getVelocity())
-  local current_centroid_pos = current_origin_pos + current_rot * get_layer1_centroid_body()
-  local current_euler = current_rot:toEulerYXZ()
-  local target_euler = filtered_rot:toEulerYXZ()
-
-  local planar_error_x = filtered_centroid_pos.x - current_centroid_pos.x
-  local planar_error_y = filtered_centroid_pos.y - current_centroid_pos.y
-  local planar_error = math.sqrt(planar_error_x * planar_error_x + planar_error_y * planar_error_y)
-  local yaw_error = math.abs(wrap_angle_pi(target_euler.x - current_euler.x))
-  local target_planar_speed = math.sqrt(
-    filtered_centroid_linvel.x * filtered_centroid_linvel.x
-    + filtered_centroid_linvel.y * filtered_centroid_linvel.y
-  )
-  local current_planar_speed = math.sqrt(
-    current_origin_linvel.x * current_origin_linvel.x
-    + current_origin_linvel.y * current_origin_linvel.y
-  )
-
-  local calm = (M.rude_error_time or 0) <= 0
-    and math.max(target_planar_speed, current_planar_speed) > 2.0
-    and planar_error > 1.5
-    and planar_error < 6.0
-    and yaw_error < math.rad(20)
-    and math.abs(current_origin_linvel.z) < 1.5
-
-  if not calm then
-    M.layer1_drift_nudge_time = math.max(0, (M.layer1_drift_nudge_time or 0) - (dt * 2.0))
-    return false
-  end
-
-  M.layer1_drift_nudge_time = (M.layer1_drift_nudge_time or 0) + dt
-  if (M.layer1_drift_nudge_time or 0) < 0.75 or (M.layer1_drift_nudge_cooldown or 0) > 0 then
-    return false
-  end
-
-  local nudge_len = clamp(planar_error * gain * 2.0, 0, 0.05)
-  if nudge_len <= 1e-4 or planar_error <= 1e-4 then
-    return false
-  end
-
-  local dir_x = planar_error_x / planar_error
-  local dir_y = planar_error_y / planar_error
-  local nudged_origin = vec3(
-    current_origin_pos.x + dir_x * nudge_len,
-    current_origin_pos.y + dir_y * nudge_len,
-    current_origin_pos.z
-  )
-
-  obj:queueGameEngineLua(
-    "be:getObjectByID("..obj:getID().."):setPositionNoPhysicsReset(Point3F("
-    ..nudged_origin.x..","..nudged_origin.y..","..nudged_origin.z.."))"
-  )
-
-  M.layer1_drift_nudge_time = 0
-  M.layer1_drift_nudge_cooldown = 0.75
-  return true
 end
 
 -- Handle large corrections (teleport prevention) using filtered centroid/path
@@ -556,15 +642,23 @@ local function update(dt)
     print("[kiss_transforms.update] Got synced_transform pos=(" .. synced_transform.position.x .. "," .. synced_transform.position.y .. "," .. synced_transform.position.z .. ")")
   end
 
-  local cluster_centroid_pos, cluster_rot, cluster_linvel, cluster_angvel = filter_layer1_target(
+  if kiss_vehicle and kiss_vehicle.get_layer1_geometry_mode then
+    local geometry_mode = kiss_vehicle.get_layer1_geometry_mode()
+    if geometry_mode ~= M.layer1_last_geometry_mode then
+      M.layer1_last_geometry_mode = geometry_mode
+      if geometry_mode ~= "mirrored_pairs" and geometry_mode ~= "mirrored_pairs_long_vehicle" then
+        print(string.format("[kiss_transforms] vehicle %d using %s geometry mode; trajectory tracking may be degraded", obj:getID(), tostring(geometry_mode)))
+      end
+    end
+  end
+
+  local cluster_centroid_pos, cluster_rot, cluster_linvel, cluster_angvel, cluster_planar_correction_vel = filter_layer1_target(
     dt,
     synced_transform.position,
     synced_transform.rotation,
     synced_transform.velocity or vec3(0, 0, 0),
     synced_transform.angular_velocity or vec3(0, 0, 0)
   )
-
-  try_drift_nudge(cluster_centroid_pos, cluster_rot, cluster_linvel, dt)
 
   -- Handle large corrections (teleport prevention) after filtering.
   if try_rude(cluster_centroid_pos, cluster_rot, dt) then
@@ -592,6 +686,7 @@ local function update(dt)
     kiss_vehicle.apply_rigid_pull(
       cluster_centroid_pos, cluster_rot,
       cluster_linvel, cluster_angvel,
+      cluster_planar_correction_vel,
       nil,
       layer1_pull_gain, layer1_dp_deadband, layer1_dv_deadband, layer1_max_dv
     )
@@ -623,22 +718,23 @@ M.layer1_z_deadband = 0.03
 M.layer1_tilt_deadband = math.rad(1.5)
 M.layer1_vz_deadband = 0.15
 M.layer1_tilt_rate_deadband = 0.15
-M.layer1_drift_gain = 0.02
-M.layer1_use_drift_integral = false
 M.layer1_enable_yaw_prediction = false
-M.layer1_drift_nudge_time = 0
-M.layer1_drift_nudge_cooldown = 0
-M.layer1_planar_bias_x = 0
-M.layer1_planar_bias_y = 0
-M.layer1_yaw_bias = 0
 M.layer1_target_course_heading_xy = nil
 M.layer1_target_course_sample_pos = nil
 M.layer1_target_course_sample_age = 0
+M.layer1_target_path_samples = {}
 M.layer1_current_course_heading_xy = nil
 M.layer1_current_course_sample_pos = nil
 M.layer1_current_course_sample_age = 0
 M.layer1_course_yaw_trim = 0
 M.layer1_heading_hold_yaw_trim_gain = 0.75
+M.layer1_cross_track_correction_speed = 0
+M.layer1_along_track_correction_speed = 0
+M.layer1_cross_track_hold_gain = 0.75
+M.layer1_last_geometry_mode = nil
+M.layer1_rtt_smooth_s = 0
+M.layer1_rtt_min_s = 0
+M.layer1_jitter_s = 0
 M.rude_error_time = 0
 
 local function set_layer1_tuning(pull_gain, dp_deadband, dv_deadband, max_dv)
@@ -660,23 +756,6 @@ local function set_filter_tuning(z_weight, tilt_weight, vz_weight, tilt_rate_wei
   if tilt_rate_deadband ~= nil then M.layer1_tilt_rate_deadband = math.max(0, tilt_rate_deadband) end
 end
 
-local function set_drift_tuning(drift_gain)
-  if drift_gain ~= nil then
-    M.layer1_drift_gain = math.max(0, drift_gain)
-  end
-end
-
-local function set_bias_tuning(drift_bias_gain)
-  set_drift_tuning(drift_bias_gain)
-end
-
-local function set_drift_mode(use_integral)
-  if use_integral ~= nil then
-    M.layer1_use_drift_integral = use_integral and true or false
-    clear_drift_state()
-  end
-end
-
 local function set_prediction_tuning(enable_yaw_prediction)
   if enable_yaw_prediction ~= nil then
     M.layer1_enable_yaw_prediction = enable_yaw_prediction and true or false
@@ -686,6 +765,24 @@ end
 local function set_heading_hold_tuning(heading_hold_yaw_trim_gain)
   if heading_hold_yaw_trim_gain ~= nil then
     M.layer1_heading_hold_yaw_trim_gain = math.max(0, heading_hold_yaw_trim_gain)
+  end
+end
+
+local function set_cross_track_tuning(cross_track_hold_gain)
+  if cross_track_hold_gain ~= nil then
+    M.layer1_cross_track_hold_gain = math.max(0, cross_track_hold_gain)
+  end
+end
+
+local function set_latency_tuning(rtt_smooth_s, rtt_min_s, jitter_s)
+  if rtt_smooth_s ~= nil then
+    M.layer1_rtt_smooth_s = math.max(0, rtt_smooth_s)
+  end
+  if rtt_min_s ~= nil then
+    M.layer1_rtt_min_s = math.max(0, rtt_min_s)
+  end
+  if jitter_s ~= nil then
+    M.layer1_jitter_s = math.max(0, jitter_s)
   end
 end
 
@@ -753,10 +850,9 @@ M.get_synced_transform = get_synced_transform
 M.clear_cached_nodes = clear_cached_nodes
 M.set_layer1_tuning = set_layer1_tuning
 M.set_filter_tuning = set_filter_tuning
-M.set_drift_tuning = set_drift_tuning
-M.set_bias_tuning = set_bias_tuning
-M.set_drift_mode = set_drift_mode
 M.set_prediction_tuning = set_prediction_tuning
 M.set_heading_hold_tuning = set_heading_hold_tuning
+M.set_cross_track_tuning = set_cross_track_tuning
+M.set_latency_tuning = set_latency_tuning
 
 return M

@@ -37,6 +37,10 @@ local imgui = ui_imgui
 
 local ui_showing = false
 
+local function clamp_scalar(value, min_value, max_value)
+  return math.max(min_value, math.min(max_value, value))
+end
+
 -- TODO: Move all this somewhere else. Some of settings aren't even related to UI
 M.addr = imgui.ArrayChar(128)
 M.player_name = imgui.ArrayChar(32, "Unknown")
@@ -49,31 +53,55 @@ M.view_distance = imgui.IntPtr(300)
 -- Sync tuning. Live-editable via the imgui Tuning tab; changes are
 -- propagated to active vehicles via queueLuaCommand.
 M.tuning = {
-  position_pull_gain = imgui.IntPtr(30),     -- spring gain: velocity-per-metre-of-error (0 disables)
-  position_deadband  = imgui.FloatPtr(0.01), -- metres: receiver skips impulse if |Δp| below this
-  velocity_deadband  = imgui.FloatPtr(0.1),  -- m/s: receiver skips impulse if |Δv| below this
-  max_delta_v        = imgui.FloatPtr(10.0), -- m/s: per-tick Δv ceiling (structural safety)
-  layer1_frame_planar_gain = imgui.FloatPtr(1.5),
-  layer1_yaw_gain = imgui.FloatPtr(1.75),
-  layer1_yaw_rate_gain = imgui.FloatPtr(1.75),
-  layer1_support_gain = imgui.FloatPtr(0.35),
-  layer1_frame_planar_max_dv = imgui.FloatPtr(12.0),
-  layer1_yaw_max_dv = imgui.FloatPtr(12.0),
-  layer1_shell_inset_cm = imgui.FloatPtr(8.0),
-  layer1_debug_viz = imgui.BoolPtr(false),
-  layer1_drift_nudge_gain = imgui.FloatPtr(0.02),
-  layer1_use_drift_integral = imgui.BoolPtr(false),
-  layer1_enable_yaw_prediction = imgui.BoolPtr(false),
-  layer1_heading_hold_yaw_trim_gain = imgui.FloatPtr(0.75),
-  layer1_z_weight = imgui.FloatPtr(0.2),
-  layer1_tilt_weight = imgui.FloatPtr(0.15),
-  layer1_vz_weight = imgui.FloatPtr(0.25),
-  layer1_tilt_rate_weight = imgui.FloatPtr(0.2),
-  layer1_z_deadband = imgui.FloatPtr(0.03),
-  layer1_tilt_deadband_deg = imgui.FloatPtr(1.5),
-  layer1_vz_deadband = imgui.FloatPtr(0.15),
-  layer1_tilt_rate_deadband = imgui.FloatPtr(0.15),
+  path_strength = imgui.FloatPtr(1.0),
+  heading_strength = imgui.FloatPtr(1.0),
+  heading_hold = imgui.FloatPtr(1.0),
+  cross_track_hold = imgui.FloatPtr(1.0),
+  body_support = imgui.FloatPtr(1.0),
+  noise_rejection = imgui.FloatPtr(1.0),
+  yaw_prediction = imgui.BoolPtr(true),
 }
+
+function M.get_derived_sync_tuning()
+  local t = M.tuning
+  local path_strength = clamp_scalar(t.path_strength[0], 0.0, 3.0)
+  local heading_strength = clamp_scalar(t.heading_strength[0], 0.0, 3.0)
+  local heading_hold = clamp_scalar(t.heading_hold[0], 0.0, 3.0)
+  local cross_track_hold = clamp_scalar(t.cross_track_hold[0], 0.0, 3.0)
+  local body_support = clamp_scalar(t.body_support[0], 0.0, 3.0)
+  local noise_rejection = clamp_scalar(t.noise_rejection[0], 0.0, 3.0)
+
+  return {
+    position_pull_gain = math.floor(30.0 * path_strength + 0.5),
+    position_deadband = 0.01 * noise_rejection,
+    velocity_deadband = 0.10 * noise_rejection,
+    max_delta_v = 2.0 + (8.0 * path_strength),
+
+    layer1_frame_planar_gain = 1.5 * path_strength,
+    layer1_yaw_gain = 1.75 * heading_strength,
+    layer1_yaw_rate_gain = 1.75 * heading_strength,
+    layer1_support_gain = 0.35 * body_support,
+    layer1_frame_planar_max_dv = 4.0 + (8.0 * path_strength),
+    layer1_yaw_max_dv = 4.0 + (8.0 * heading_strength),
+
+    layer1_heading_hold_yaw_trim_gain = 0.75 * heading_hold,
+    layer1_cross_track_hold_gain = 0.75 * cross_track_hold,
+    layer1_enable_yaw_prediction = t.yaw_prediction[0] and true or false,
+
+    layer1_z_weight = 0.20 * body_support,
+    layer1_tilt_weight = 0.15 * body_support,
+    layer1_vz_weight = 0.25 * body_support,
+    layer1_tilt_rate_weight = 0.20 * body_support,
+
+    layer1_z_deadband = 0.03 * noise_rejection,
+    layer1_tilt_deadband_deg = 1.5 * noise_rejection,
+    layer1_vz_deadband = 0.15 * noise_rejection,
+    layer1_tilt_rate_deadband = 0.15 * noise_rejection,
+
+    layer1_shell_inset_cm = 8.0,
+    layer1_debug_viz = false,
+  }
+end
 
 local function show_ui()
   M.gui.showWindow("KissMP")
@@ -126,6 +154,9 @@ local function onUpdate(dt)
     return
   end
   main_window.draw(dt)
+  if M.tabs and M.tabs.tuning and M.tabs.tuning.onUpdate then
+    M.tabs.tuning.onUpdate(dt)
+  end
   M.chat.draw()
   M.download_window.draw()
   if M.incorrect_install then

@@ -66,6 +66,7 @@ impl Connection {
 pub struct Server {
     connections: HashMap<u32, Connection>,
     vehicles: HashMap<u32, Vehicle>,
+    session_tuning: Option<shared::SessionTuningUpdate>,
     // Client ID, game_id, server_id
     vehicle_ids: HashMap<u32, HashMap<u32, u32>>,
     chunk_buffers: HashMap<u32, HashMap<u32, Vec<String>>>,  // client_id -> (total_chunks -> chunks)
@@ -100,6 +101,7 @@ impl Server {
             connections: HashMap::with_capacity(8),
             reqwest_client: reqwest::Client::new(),
             vehicles: HashMap::with_capacity(64),
+            session_tuning: None,
             vehicle_ids: HashMap::with_capacity(64),
             chunk_buffers: HashMap::new(),
             name: config.server_name,

@@ -34,6 +34,12 @@ impl Server {
                         .send(ServerCommand::PlayerInfoUpdate(info))
                         .await;
                 }
+                if let Some(session_tuning) = &self.session_tuning {
+                    let _ = connection
+                        .ordered
+                        .send(ServerCommand::SessionTuningUpdate(session_tuning.clone()))
+                        .await;
+                }
                 for (_, client) in &mut self.connections {
                     client
                         .send_chat_message(format!("Player {} has joined the server", player_name))
@@ -228,11 +234,15 @@ impl Server {
                     }
                     Ping(ping) => {
                         let connection = self.connections.get_mut(&client_id).unwrap();
-                        connection.client_info_public.ping = ping as u32;
+                        connection.client_info_public.ping = ping.reported_ping_ms as u32;
                         let start = std::time::SystemTime::now();
                         let since_the_epoch = start.duration_since(std::time::UNIX_EPOCH).unwrap();
                         let data = bincode::serialize(&shared::ServerCommand::Pong(
-                            since_the_epoch.as_secs_f64(),
+                            shared::PongData {
+                                seq: ping.seq,
+                                client_send_time: ping.client_send_time,
+                                server_send_time: since_the_epoch.as_secs_f64(),
+                            },
                         ))
                         .unwrap();
                         let _ = connection.conn.send_datagram(data.into());
@@ -255,6 +265,22 @@ impl Server {
                             let _ = client
                                 .ordered
                                 .send(ServerCommand::CouplerDetached(event.clone()))
+                                .await;
+                        }
+                    }
+                    SessionTuningUpdate(data) => {
+                        let mut data = data.clone();
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+                            .as_millis() as u64;
+                        data.author_id = client_id;
+                        data.changed_at_ms = now_ms;
+                        self.session_tuning = Some(data.clone());
+                        for (_, client) in &mut self.connections {
+                            let _ = client
+                                .ordered
+                                .send(ServerCommand::SessionTuningUpdate(data.clone()))
                                 .await;
                         }
                     }
