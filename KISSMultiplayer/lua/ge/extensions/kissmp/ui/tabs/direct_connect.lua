@@ -3,38 +3,41 @@ local imgui = ui_imgui
 
 local history_index = nil
 
+M.direct_history = {}
+
 local function trim(s)
   return s:gsub("^%s*(.-)%s*$", "%1")
 end
 
-local function get_history()
-  if type(kissui.direct_connect_history) ~= "table" then
-    kissui.direct_connect_history = {}
-  end
-  return kissui.direct_connect_history
+local function save_history()
+  jsonWriteFile("/settings/kissmp_directcon_history.json", M.direct_history, true)
 end
 
-local function update_history_for_addr(addr)
-  local history = get_history()
-  local now = os.time()
+local function load_history()
+  local json_history = jsonReadFile("/settings/kissmp_directcon_history.json")
+  if json_history then
+    M.direct_history = json_history
+  end
+end
 
-  for i = #history, 1, -1 do
-    if history[i].addr == addr then
-      table.remove(history, i)
+
+local function update_history_for_addr(addr)
+  for i = #M.direct_history, 1, -1 do
+    if M.direct_history[i].addr == addr then
+      table.remove(M.direct_history, i)
     end
   end
 
-  table.insert(history, 1, {
-    addr = addr,
-    last_accessed = now,
-    last_accessed_text = os.date("%Y-%m-%d %H:%M:%S", now),
+  table.insert(M.direct_history, 1, {
+    addr = addr
   })
 
-  while #history > 5 do
-    table.remove(history)
+  while #M.direct_history > 5 do
+    table.remove(M.direct_history)
   end
 
   history_index = nil
+  save_history()
 end
 
 local function draw()
@@ -56,16 +59,16 @@ local function draw()
 
   imgui.Text("Recent connections:")
   imgui.BeginChild1("##history_list", imgui.ImVec2(0, -30), true)
-  local history = get_history()
-  if #history == 0 then
+
+  if #M.direct_history == 0 then
     imgui.TextColored(imgui.ImVec4(0.5, 0.5, 0.5, 1.0), "No recent connections")
   else
-    for i = 1, #history do
-      local entry = history[i]
+    for i = 1, #M.direct_history do
+      local entry = M.direct_history[i]
       if imgui.Button("X##" .. i, imgui.ImVec2(20, 0)) then
-        table.remove(history, i)
+        table.remove(M.direct_history, i)
         history_index = nil
-        kissconfig.save_config()
+        save_history()
         break
       end
       imgui.SameLine()
@@ -74,7 +77,6 @@ local function draw()
         kissui.addr = imgui.ArrayChar(128, entry.addr)
         history_index = i
       end
-      imgui.TextColored(imgui.ImVec4(0.5, 0.5, 0.5, 1.0), "Last Accessed: " .. (entry.last_accessed_text or ""))
 
     end
   end
@@ -83,4 +85,5 @@ end
 
 M.draw = draw
 
+load_history()
 return M

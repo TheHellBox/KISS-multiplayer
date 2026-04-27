@@ -35,7 +35,6 @@ local ui_showing = false
 
 -- TODO: Move all this somewhere else. Some of settings aren't even related to UI
 M.addr = imgui.ArrayChar(128)
-M.direct_connect_history = {}
 M.player_name = imgui.ArrayChar(32, "Unknown")
 M.show_nametags = imgui.BoolPtr(true)
 M.show_drivers = imgui.BoolPtr(true)
