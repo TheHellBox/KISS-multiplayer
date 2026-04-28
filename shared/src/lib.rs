@@ -64,20 +64,6 @@ impl ClientInfoPublic {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SessionTuningUpdate {
-    pub changed_at_ms: u64,
-    pub author_id: u32,
-    pub revision: u32,
-    pub path_strength: f32,
-    pub heading_strength: f32,
-    pub heading_hold: f32,
-    pub cross_track_hold: f32,
-    pub body_support: f32,
-    pub noise_rejection: f32,
-    pub yaw_prediction: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PingData {
     pub seq: u32,
     pub client_send_time: f64,
@@ -125,7 +111,6 @@ pub enum ClientCommand {
     StartTalking,
     // Only used by bridge
     EndTalking,
-    SessionTuningUpdate(SessionTuningUpdate),
     DataChunk {
         chunk_index: u32,
         total_chunks: u32,
@@ -154,7 +139,6 @@ pub enum ServerCommand {
     FilePart(String, Vec<u8>, u32, u32, u32),
     VoiceChatPacket(u32, [f32; 3], Vec<u8>),
     Pong(PongData),
-    SessionTuningUpdate(SessionTuningUpdate),
 
     // public server commands
     VehicleSetPosition(u32, [f32; 3]),

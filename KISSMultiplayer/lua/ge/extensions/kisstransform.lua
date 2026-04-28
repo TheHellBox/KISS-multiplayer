@@ -15,11 +15,62 @@ M.velocity_error_limit = 10
 
 M.hidden = {}
 
-local DEBUG_GLOBAL = false  -- Debug logging for global manager
+local DEBUG_GLOBAL = false
+
+-- BeamNG auto-loads lua/vehicle/extensions/*.lua but does not recurse into
+-- subfolders. The kiss_mp/* extensions need an explicit addModulePath +
+-- loadModulesInDirectory call to become available in vehicle Lua. Prepended
+-- to every queueLuaCommand into a kiss_mp/* module so the call is self-healing
+-- if the vehicle Lua context ever resets.
+local VEHICLE_SYNC_BOOTSTRAP = "extensions.addModulePath('lua/vehicle/extensions/kiss_mp'); extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp'); "
+
+local function queue_kiss_command(vehicle, command)
+  if not vehicle then return end
+  vehicle:queueLuaCommand(VEHICLE_SYNC_BOOTSTRAP .. command)
+end
+
+-- Cluster snap used only for large recovery corrections. The target position
+-- passed here must be a refnode/origin position, not COG.
+local function apply_cluster_target(vehicle_id,
+                                    tx, ty, tz,
+                                    qx, qy, qz, qw,
+                                    vx, vy, vz)
+  local veh = be:getObjectByID(vehicle_id)
+  if not veh then return end
+  local ref_node_id = veh:getRefNodeId()
+
+  local current_rot = quatFromDir(-veh:getDirectionVector(), veh:getDirectionVectorUp())
+  local target_rot = quat(qx, qy, qz, qw)
+  local rel_rot = current_rot:inversed() * target_rot
+
+  veh:setClusterPosRelRot(ref_node_id, tx, ty, tz,
+    rel_rot.x, rel_rot.y, rel_rot.z, rel_rot.w)
+
+  local local_vel = vec3(veh:getVelocity())
+  local rotated_local = local_vel:rotated(rel_rot)
+  veh:applyClusterVelocityScaleAdd(ref_node_id, 1,
+    vx - rotated_local.x,
+    vy - rotated_local.y,
+    vz - rotated_local.z)
+end
+
+local function queue_cog_snap(vehicle, transform)
+  local p, r = transform.position, transform.rotation
+  local v = transform.velocity or {0, 0, 0}
+  local w = transform.angular_velocity or {0, 0, 0}
+  if not (p and r and #p >= 3 and #r >= 4) then return end
+  queue_kiss_command(vehicle,
+    "kiss_transforms.snap_to_cog_target("
+    ..p[1]..","..p[2]..","..p[3]..","
+    ..r[1]..","..r[2]..","..r[3]..","..r[4]..","
+    ..(v[1] or 0)..","..(v[2] or 0)..","..(v[3] or 0)..","
+    ..(w[1] or 0)..","..(w[2] or 0)..","..(w[3] or 0)..")"
+  )
+end
 
 -- Finite-number guard. Rejects NaN and +/-Inf by checking against a sane
 -- world-coordinate range. Used to prevent garbage from flowing into
--- setPositionRotation (which silently accepts NaN and then breaks the
+-- cluster pose application (BeamNG silently accepts NaN and then breaks the
 -- vehicle) and as the common shape for future wire-side validation.
 local function is_finite_number(x)
   if type(x) ~= "number" then return false end
@@ -45,17 +96,15 @@ local function update(dt)
     return
   end
 
-  -- Get rotation/angular velocity from vehicle lua. Pass ownership so the
-  -- vehicle-side code can skip the expensive per-node capture for non-owned
-  -- vehicles — their captured data would be unused (only owned vehicles send
-  -- VehicleUpdate packets) and the ~1000 getNode reads per tick per non-owned
-  -- vehicle was pegging vehicle Lua threads.
+  -- Refresh each vehicle's local transform cache. Only owned vehicles send
+  -- this cache over the network, but remote vehicles still need their vehicle
+  -- Lua modules loaded before receiver-side correction runs.
   for i = 0, be:getObjectCount() do
     local vehicle = be:getObject(i)
     local vid = vehicle and vehicle:getID()
     if vehicle and (not M.inactive[vid]) then
       local owned = vehiclemanager.ownership[vid] ~= nil
-      vehicle:queueLuaCommand("kiss_vehicle.update_transform_info(" .. tostring(owned) .. ")")
+      queue_kiss_command(vehicle, "kiss_vehicle.update_transform_info(" .. tostring(owned) .. ")")
     end
   end
 
@@ -74,7 +123,6 @@ local function update(dt)
       print("[kisstransform.update] Processing vehicle id=" .. tostring(id))
     end
 
-    --apply_transform(dt, id, transform, apply_velocity)
     local vehicle = be:getObjectByID(id)
     local p = vec3(transform.position)
 
@@ -98,29 +146,19 @@ local function update(dt)
         if M.inactive[id] then
           vehicle:setActive(1)
           M.inactive[id] = false
-          -- Snap the replica to the authority's current pose on reactivation.
-          -- Without this, the vehicle's position is wherever it was frozen when
-          -- we setActive(0)-ed it, which can be hundreds of meters behind
-          -- authority's current position. Velocity-forward sync alone can't
-          -- close that gap until the next sparse position-correction tick, and
-          -- the intermediate motion looks like haywire jiggle as the replica
-          -- oscillates between its stale pose and authoritative state.
-          local r = transform.rotation
-          vehicle:setPositionRotation(
-            transform.position[1], transform.position[2], transform.position[3],
-            r[1], r[2], r[3], r[4]
-          )
+          -- Reactivated replicas can be far from the authority because
+          -- setActive(0) freezes local physics. Snap once, then resume the
+          -- normal per-frame correction path.
+          queue_cog_snap(vehicle, transform)
           if DEBUG_GLOBAL then print("[kisstransform.update] Reactivated vehicle " .. tostring(id)) end
         end
         if DEBUG_GLOBAL then
           print("[kisstransform.update] QUEUING update for vehicle " .. tostring(id))
         end
-        -- set_target_transform fires only on packet arrival (caches cluster
-        -- state). update(dt) is queued every frame; it reads the cache and
-        -- applies Layer 1 (ref-node rigid pull) + Layer 2 (deviation map
-        -- impulses) as sustained forces. No GE-side setPositionRotation —
-        -- try_rude in vehicle Lua still catches >6m drift.
-        vehicle:queueLuaCommand("kiss_transforms.update("..dt..")")
+        -- Per-frame: vehicle Lua reads kiss_sync's predicted COG pose and
+        -- applies cluster acceleration. try_rude handles large recovery with
+        -- a COG-aware cluster snap.
+        queue_kiss_command(vehicle, "kiss_transforms.update("..dt..")")
       end
     end
   end
@@ -134,6 +172,20 @@ local function update_vehicle_transform(data)
   local transform = data.transform
   transform.owner = data.vehicle_id
   transform.sent_at = data.sent_at
+  transform.send_timer = data.send_timer
+  transform.ping_ms = data.ping_ms
+  transform.send_dt = data.send_dt
+
+  -- Normalize quaternion in place so all downstream consumers (vehicle-Lua
+  -- try_rude predicted-pose comparison, kiss_sync snapshot buffer, and
+  -- COG-aware recovery snaps) see a unit quaternion.
+  local r = transform.rotation
+  if r and #r >= 4 then
+    local n = math.sqrt(r[1]*r[1] + r[2]*r[2] + r[3]*r[3] + r[4]*r[4])
+    if n > 1e-9 then
+      r[1], r[2], r[3], r[4] = r[1]/n, r[2]/n, r[3]/n, r[4]/n
+    end
+  end
 
   local id = vehiclemanager.id_map[transform.owner or -1] or -1
   if vehiclemanager.ownership[id] then return end
@@ -142,12 +194,19 @@ local function update_vehicle_transform(data)
 
   local vehicle = be:getObjectByID(id)
   if vehicle and (not M.inactive[id]) then
-    transform.time_past = clamp(vehiclemanager.get_current_time() - transform.sent_at, 0, 0.1) * 0.9 + 0.001
-    -- Packet arrival: deliver the full decoded transform to vehicle Lua once.
-    -- set_target_transform caches it; apply happens every frame from update(dt).
-    -- No setPositionRotation, no teleport semantics, no glass-cycling side
-    -- effect. try_rude in vehicle Lua remains the >6m escape hatch.
-    vehicle:queueLuaCommand("kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
+    local rtt_s = ((network.connection.rtt_smooth_ms or network.connection.ping or 0) * 0.001)
+    local tick_s = 1.0 / math.max(network.connection.tickrate or 33, 1)
+    local sender_rtt_s = ((data.ping_ms or 0) * 0.001)
+    local sender_dt_s = data.send_dt or 0
+    if sender_rtt_s > 0 then
+      transform.time_past = clamp((rtt_s * 0.5) + (sender_rtt_s * 0.5) + (sender_dt_s * 0.5) + tick_s, 0, 0.3) + 0.001
+    else
+      transform.time_past = clamp(rtt_s + tick_s, 0, 0.3) + 0.001
+    end
+    -- Packet arrival hands the new authoritative COG pose to kiss_sync.
+    -- Application happens per-frame from kiss_transforms.update(dt), not on
+    -- packet arrival.
+    queue_kiss_command(vehicle, "kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
   end
 end
 
@@ -159,6 +218,9 @@ M.send_transform_updates = send_transform_updates
 M.send_vehicle_transform = send_vehicle_transform
 M.update_vehicle_transform = update_vehicle_transform
 M.push_transform = push_transform
+M.queue_kiss_command = queue_kiss_command
+M.queue_cog_snap = queue_cog_snap
+M.apply_cluster_target = apply_cluster_target
 M.onUpdate = update
 
 return M

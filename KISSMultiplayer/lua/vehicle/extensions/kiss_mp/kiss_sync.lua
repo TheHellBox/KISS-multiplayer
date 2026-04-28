@@ -1,12 +1,17 @@
--- KissMP Sync Module - Dead-reckoning prediction and blending for state replay
--- Phase 1b: Core single-vehicle sync
+-- KissMP Sync Module: second-order dead-reckoning prediction.
 --
--- This module implements direct state replay with prediction and blending,
--- replacing the old force-based interpolation approach.
+-- Maintains per-vehicle sync state on the receiver. Each packet carries
+-- position/velocity/rotation/angular-velocity (no acceleration); we derive
+-- acceleration from velocity deltas across consecutive packets and use it
+-- in a constant-acceleration extrapolation model so the consumer (the PD
+-- loop in kiss_transforms.update) chases where the sender IS NOW, not where
+-- the sender WAS when the packet was sent.
+--
+-- The blend path is dormant in normal use because apply_snapshot is called
+-- with blend_duration = 0. It remains available for explicit experiments.
 
 local M = {}
 
---- Vector/quaternion helper functions
 local function vec3_add(a, b)
   return vec3(a.x + b.x, a.y + b.y, a.z + b.z)
 end
@@ -23,7 +28,11 @@ local function vec3_lerp(a, b, t)
   )
 end
 
---- Quaternion multiplication: q_result = q1 ⊗ q2
+local function vec3_copy(v)
+  return vec3(v.x, v.y, v.z)
+end
+
+-- Quaternion multiplication: q_result = q1 * q2.
 local function quat_multiply(q1, q2)
   return quat(
     q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,
@@ -33,22 +42,14 @@ local function quat_multiply(q1, q2)
   )
 end
 
---- Extrapolate quaternion using angular velocity
---- q(t+Δt) = exp(ω_world·Δt/2) ⊗ q(t)
---- Uses world-frame angular velocity (from BeamNG physics)
+-- Extrapolate quaternion using world-frame angular velocity.
+-- q(t + dt) = exp(omega_world * dt / 2) * q(t)
 local function extrapolate_quaternion(q, omega, delta_time)
   local omega_magnitude = omega:length()
+  if omega_magnitude < 1e-8 or delta_time < 1e-8 then return q end
 
-  -- Handle zero angular velocity or zero delta time
-  if omega_magnitude < 1e-8 or delta_time < 1e-8 then
-    return q
-  end
-
-  -- Compute rotation angle: θ = |ω|·Δt
   local theta = omega_magnitude * delta_time
   local half_theta = theta * 0.5
-
-  -- Compute delta quaternion from axis-angle
   local sin_half_theta = math.sin(half_theta)
   local cos_half_theta = math.cos(half_theta)
 
@@ -59,26 +60,18 @@ local function extrapolate_quaternion(q, omega, delta_time)
     omega.z * axis_scale,
     cos_half_theta
   )
-
-  return quat_multiply(delta_q, q)  -- World-frame: delta ⊗ q
+  return quat_multiply(delta_q, q)
 end
 
---- Spherical linear interpolation between quaternions
 local function slerp_quaternion(q1, q2, t)
-  -- Compute dot product
   local dot = q1.w * q2.w + q1.x * q2.x + q1.y * q2.y + q1.z * q2.z
-
-  -- If dot < 0, negate q2 to take shortest path
   local q2_interp = q2
   if dot < 0.0 then
     dot = -dot
     q2_interp = quat(-q2.x, -q2.y, -q2.z, -q2.w)
   end
-
-  -- Clamp dot to [-1, 1] to handle floating point errors
   dot = math.max(-1.0, math.min(1.0, dot))
 
-  -- If quaternions are nearly identical, use linear interpolation
   if dot > 0.9995 then
     local result = quat(
       q1.x + (q2_interp.x - q1.x) * t,
@@ -89,7 +82,6 @@ local function slerp_quaternion(q1, q2, t)
     return result:normalized()
   end
 
-  -- Compute angle and sine
   local theta = math.acos(dot)
   local sin_theta = math.sin(theta)
 
@@ -115,34 +107,69 @@ local function slerp_quaternion(q1, q2, t)
   return result:normalized()
 end
 
---- Sync state for a single vehicle/body
+local MAX_ACC     = 100   -- m/s^2 clamp on derived linear acceleration
+local MAX_RACC    = 50    -- rad/s^2 clamp on derived angular acceleration
+local MAX_PREDICT = 0.3   -- seconds; clamp on forward-extrapolation horizon
+local PACKET_TIMEOUT = 0.1 -- Stop correcting if packets stall
+local STALE_THRESHOLD = 2.0
+local USE_PREDICTION = true
+local REMOTE_VEL_SMOOTH_RATE = 2.0
+local REMOTE_ACC_SMOOTH_RATE = 1.0
+
+local function limit_vec(v, max_len)
+  local len = v:length()
+  if len > max_len then return v * (max_len / len) end
+  return v
+end
+
 local function create_sync_state(id)
   return {
     id = id,
-    -- Last authoritative snapshot from wire
+    -- Last authoritative snapshot from wire.
     base_transform = {
       position = vec3(0, 0, 0),
       rotation = quat(0, 0, 0, 1),
       velocity = vec3(0, 0, 0),
       angular_velocity = vec3(0, 0, 0),
     },
-    base_timestamp = 0,
+    -- Derived from velocity deltas in apply_snapshot, used by the
+    -- second-order extrapolator.
+    acc  = vec3(0, 0, 0),
+    racc = vec3(0, 0, 0),
+    smooth_velocity = nil,
+    smooth_angular_velocity = nil,
+    smooth_acc = nil,
+    smooth_racc = nil,
+    last_raw_velocity = nil,
+    last_raw_angular_velocity = nil,
+
+    base_timestamp = 0,        -- sender's monotonic timer in seconds
+    base_recv_time = 0,        -- local clock at packet arrival
+    base_network_age = 0,      -- estimated packet age at arrival
     generation = 0,
-    last_update_time = 0,  -- Track last update for stale detection
-    -- Prediction state
+    last_update_time = 0,
+
+    -- Smoothed (local_recv_time - sender_send_time). Useful as a drift
+    -- detector; the predict horizon itself is computed against
+    -- base_recv_time in our own clock domain so we don't depend on
+    -- cross-machine clock alignment for correctness.
+    time_offset_smoothed = nil,
+
+    -- Prediction state (populated by update_and_get_transform).
     predicted_transform = {
       position = vec3(0, 0, 0),
       rotation = quat(0, 0, 0, 1),
       velocity = vec3(0, 0, 0),
       angular_velocity = vec3(0, 0, 0),
     },
-    -- Blending state
+    -- Blend infrastructure; dormant by default.
     blend_start = nil,
     blend_target = nil,
     blend_start_time = 0,
     blend_duration = 0,
     is_blending = false,
-    -- Applied transform (what's actually rendered)
+
+    -- Applied transform (what update_and_get_transform returns).
     applied_transform = {
       position = vec3(0, 0, 0),
       rotation = quat(0, 0, 0, 1),
@@ -152,53 +179,73 @@ local function create_sync_state(id)
   }
 end
 
---- Extrapolate transform using dead-reckoning
-local function extrapolate_transform(base, base_timestamp, target_timestamp)
-  local delta_time = math.max(0, target_timestamp - base_timestamp)
-
-  -- Extrapolate position: x(t+Δt) = x(t) + v(t)·Δt
-  local new_position = vec3(
-    base.position.x + base.velocity.x * delta_time,
-    base.position.y + base.velocity.y * delta_time,
-    base.position.z + base.velocity.z * delta_time
+-- Forward-extrapolate the latest authoritative snapshot to the current local
+-- time. The acceleration term keeps transients from lagging by 0.5*a*t^2.
+local function extrapolate_transform(state, current_time)
+  local predict_time = math.max(
+    0,
+    math.min((current_time - state.base_recv_time) + (state.base_network_age or 0), MAX_PREDICT)
   )
 
-  -- Extrapolate rotation using angular velocity
-  local new_rotation = extrapolate_quaternion(
-    base.rotation,
-    base.angular_velocity,
-    delta_time
+  local base = state.base_transform
+  local acc  = state.acc  or vec3(0, 0, 0)
+  local racc = state.racc or vec3(0, 0, 0)
+
+  local t = predict_time
+  local half_t_sq = 0.5 * t * t
+
+  -- Position: x(t) = x0 + v0*t + 0.5*a*t^2
+  local pred_pos = vec3(
+    base.position.x + base.velocity.x * t + acc.x * half_t_sq,
+    base.position.y + base.velocity.y * t + acc.y * half_t_sq,
+    base.position.z + base.velocity.z * t + acc.z * half_t_sq
+  )
+
+  -- Velocity: v(t) = v0 + a*t
+  local pred_vel = vec3(
+    base.velocity.x + acc.x * t,
+    base.velocity.y + acc.y * t,
+    base.velocity.z + acc.z * t
+  )
+
+  -- Rotation delta as a small-angle vector then converted to a delta
+  -- quaternion. rot_add = omega0*t + 0.5*alpha*t^2 in world frame.
+  local rot_add = vec3(
+    base.angular_velocity.x * t + racc.x * half_t_sq,
+    base.angular_velocity.y * t + racc.y * half_t_sq,
+    base.angular_velocity.z * t + racc.z * half_t_sq
+  )
+  local pred_rot = base.rotation * quatFromEuler(rot_add.x, rot_add.y, rot_add.z)
+
+  -- Angular velocity: omega(t) = omega0 + alpha*t
+  local pred_omega = vec3(
+    base.angular_velocity.x + racc.x * t,
+    base.angular_velocity.y + racc.y * t,
+    base.angular_velocity.z + racc.z * t
   )
 
   return {
-    position = new_position,
-    rotation = new_rotation,
-    velocity = base.velocity,
-    angular_velocity = base.angular_velocity,
+    position         = pred_pos,
+    rotation         = pred_rot,
+    velocity         = pred_vel,
+    angular_velocity = pred_omega,
   }
 end
 
---- Blend between two transforms
+-- Blend between two transforms.
 local function blend_transforms(start, target, t)
-  -- Linear interpolation for position
   local position = vec3_lerp(start.position, target.position, t)
-
-  -- Spherical linear interpolation for rotation
   local rotation = slerp_quaternion(start.rotation, target.rotation, t)
-
-  -- Linear interpolation for velocities (for smooth transition)
   local velocity = vec3(
     start.velocity.x + (target.velocity.x - start.velocity.x) * t,
     start.velocity.y + (target.velocity.y - start.velocity.y) * t,
     start.velocity.z + (target.velocity.z - start.velocity.z) * t
   )
-
   local angular_velocity = vec3(
     start.angular_velocity.x + (target.angular_velocity.x - start.angular_velocity.x) * t,
     start.angular_velocity.y + (target.angular_velocity.y - start.angular_velocity.y) * t,
     start.angular_velocity.z + (target.angular_velocity.z - start.angular_velocity.z) * t
   )
-
   return {
     position = position,
     rotation = rotation,
@@ -207,13 +254,9 @@ local function blend_transforms(start, target, t)
   }
 end
 
---- Sync state manager for all vehicles
 M.sync_states = {}
-M.default_blend_duration = 0.15  -- 150ms default blend
-local STALE_THRESHOLD = 2.0  -- Seconds before sync state is considered stale (fallback for teleport)
-local USE_PREDICTION = false  -- Set to true to enable dead-reckoning prediction, false for direct state replay only (no drift)
+M.default_blend_duration = 0
 
---- Get or create sync state for a vehicle
 local function get_sync_state(id)
   if not M.sync_states[id] then
     M.sync_states[id] = create_sync_state(id)
@@ -221,137 +264,181 @@ local function get_sync_state(id)
   return M.sync_states[id]
 end
 
---- Apply authoritative snapshot from wire
---- This is the main entry point when a VehicleUpdate arrives
 local function apply_snapshot(id, transform_data, timestamp, generation, current_time, blend_duration)
   blend_duration = blend_duration or M.default_blend_duration
 
   local state = get_sync_state(id)
   local is_first_snapshot = (state.base_timestamp == 0)
+  local timestamp_delta = timestamp - state.base_timestamp
 
-  -- Fallback for missed teleports: if no updates arrived for >STALE_THRESHOLD seconds,
-  -- snap instead of blending. The primary teleport path is a separate ResetVehicle
-  -- packet sent by the owner after a debounce; this just covers gaps if that's lost.
+  -- Stale fallback: if no updates arrived for >STALE_THRESHOLD seconds,
+  -- treat the next packet as a fresh start. Don't derive acceleration
+  -- from a velocity gap that spans seconds; the divisor would be huge,
+  -- the result tiny, and we'd carry stale state forward. The primary
+  -- teleport recovery path is a separate ResetVehicle packet sent by the
+  -- owner; this just covers gaps if that's lost.
   local is_stale = false
   if state.last_update_time > 0 then
-    local time_since_last_update = current_time - state.last_update_time
-    if time_since_last_update > STALE_THRESHOLD then
+    if (current_time - state.last_update_time) > STALE_THRESHOLD then
       is_stale = true
     end
   end
 
-  -- Parse incoming transform data
+  -- Handle remote timer resets and ignore old packets.
+  -- Without this, a reset to a low sender timer or a slightly out-of-order
+  -- packet produces a near-zero remote_dt below and turns a normal velocity
+  -- delta into a bogus 100 m/s^2 acceleration spike.
+  if not is_first_snapshot and timestamp_delta < 0 then
+    if math.abs(timestamp_delta) < 0.5 then
+      return
+    end
+    is_stale = true
+  end
+
+  -- Parse incoming transform data into vec3/quat objects.
   local authoritative = {
-    position = vec3(transform_data.position[1], transform_data.position[2], transform_data.position[3]),
-    rotation = quat(transform_data.rotation[1], transform_data.rotation[2], transform_data.rotation[3], transform_data.rotation[4]),
-    velocity = vec3(transform_data.velocity[1], transform_data.velocity[2], transform_data.velocity[3]),
+    position         = vec3(transform_data.position[1], transform_data.position[2], transform_data.position[3]),
+    rotation         = quat(transform_data.rotation[1], transform_data.rotation[2], transform_data.rotation[3], transform_data.rotation[4]),
+    velocity         = vec3(transform_data.velocity[1], transform_data.velocity[2], transform_data.velocity[3]),
     angular_velocity = vec3(transform_data.angular_velocity[1], transform_data.angular_velocity[2], transform_data.angular_velocity[3]),
   }
 
-  -- Compute predicted state based on last snapshot (for blending from where we thought we were)
-  -- Skip extrapolation for stale state, first snapshot, or if prediction is disabled
-  local predicted
-  if is_stale or is_first_snapshot then
-    predicted = authoritative
-  elseif not USE_PREDICTION then
-    predicted = {
-      position = state.applied_transform.position,
-      rotation = state.applied_transform.rotation,
-      velocity = state.applied_transform.velocity,
-      angular_velocity = state.applied_transform.angular_velocity,
-    }
-  elseif state.base_timestamp > 0 then
-    predicted = extrapolate_transform(state.base_transform, state.base_timestamp, timestamp)
+  -- Derive acceleration from raw velocity deltas, then smooth received
+  -- velocity/rvel and acc/racc before prediction consumes
+  -- them. remote_dt is in the SENDER's clock between snapshots.
+  local remote_dt = math.max(timestamp_delta, 0.001)
+  local raw_acc = vec3(0, 0, 0)
+  local raw_racc = vec3(0, 0, 0)
+  if is_first_snapshot or is_stale then
+    state.smooth_velocity = vec3_copy(authoritative.velocity)
+    state.smooth_angular_velocity = vec3_copy(authoritative.angular_velocity)
+    state.smooth_acc = vec3(0, 0, 0)
+    state.smooth_racc = vec3(0, 0, 0)
   else
-    predicted = authoritative
+    local prev_raw_vel = state.last_raw_velocity or state.base_transform.velocity
+    local prev_raw_rvel = state.last_raw_angular_velocity or state.base_transform.angular_velocity
+    raw_acc = limit_vec(vec3(
+      (authoritative.velocity.x - prev_raw_vel.x) / remote_dt,
+      (authoritative.velocity.y - prev_raw_vel.y) / remote_dt,
+      (authoritative.velocity.z - prev_raw_vel.z) / remote_dt
+    ), MAX_ACC)
+    raw_racc = limit_vec(vec3(
+      (authoritative.angular_velocity.x - prev_raw_rvel.x) / remote_dt,
+      (authoritative.angular_velocity.y - prev_raw_rvel.y) / remote_dt,
+      (authoritative.angular_velocity.z - prev_raw_rvel.z) / remote_dt
+    ), MAX_RACC)
+
+    local alpha_vel = math.min(REMOTE_VEL_SMOOTH_RATE * remote_dt, 1.0)
+    local alpha_acc = math.min(REMOTE_ACC_SMOOTH_RATE * remote_dt, 1.0)
+    state.smooth_velocity = vec3_lerp(
+      state.smooth_velocity or authoritative.velocity,
+      authoritative.velocity,
+      alpha_vel
+    )
+    state.smooth_angular_velocity = vec3_lerp(
+      state.smooth_angular_velocity or authoritative.angular_velocity,
+      authoritative.angular_velocity,
+      alpha_vel
+    )
+    state.smooth_acc = vec3_lerp(state.smooth_acc or raw_acc, raw_acc, alpha_acc)
+    state.smooth_racc = vec3_lerp(state.smooth_racc or raw_racc, raw_racc, alpha_acc)
+  end
+  state.last_raw_velocity = vec3_copy(authoritative.velocity)
+  state.last_raw_angular_velocity = vec3_copy(authoritative.angular_velocity)
+  state.acc  = state.smooth_acc or raw_acc
+  state.racc = state.smooth_racc or raw_racc
+
+  -- Clock offset smoothing. raw_offset includes one-way latency and
+  -- whatever skew exists between the two clock bases. We don't actually
+  -- compare across clocks for the predict horizon (that math runs in our
+  -- own clock domain via base_recv_time), but the smoother is useful as
+  -- a drift detector and for any future jitter-buffer logic. alpha = 0.1
+  -- gives a roughly 10-packet time constant: slow enough that one bad packet
+  -- doesn't corrupt the estimate, fast enough to track real clock drift.
+  local raw_offset = current_time - timestamp
+  if is_first_snapshot or is_stale or state.time_offset_smoothed == nil then
+    state.time_offset_smoothed = raw_offset
+  else
+    state.time_offset_smoothed = state.time_offset_smoothed + (raw_offset - state.time_offset_smoothed) * 0.1
   end
 
-  -- Update base transform to new authoritative snapshot
+  -- Update base + receive timing.
   state.base_transform = {
-    position = authoritative.position,
-    rotation = authoritative.rotation,
-    velocity = authoritative.velocity,
-    angular_velocity = authoritative.angular_velocity,
+    position         = authoritative.position,
+    rotation         = authoritative.rotation,
+    velocity         = state.smooth_velocity or authoritative.velocity,
+    angular_velocity = state.smooth_angular_velocity or authoritative.angular_velocity,
   }
-  state.base_timestamp = timestamp
-  state.generation = generation
+  state.base_timestamp  = timestamp
+  state.base_recv_time  = current_time
+  state.base_network_age = math.max(0, math.min(transform_data.time_past or 0, MAX_PREDICT))
+  state.generation      = generation
+  state.last_update_time = current_time
 
-  -- Handle blend: skip blending for stale state / first snapshot to avoid interpolating from stale data
+  -- Optional blend path (dormant by default). When blend_duration > 0
+  -- and not first/stale, set up a blend from the previously-applied pose
+  -- to the new authoritative pose. Otherwise snap applied_transform;
+  -- update_and_get_transform will overwrite it next frame anyway via
+  -- the predictor, but snapping here keeps it consistent if no consumer
+  -- runs before the next snapshot.
   if is_first_snapshot or is_stale or blend_duration <= 0 then
-    -- Instant snap for first snapshot, stale state, or when blend is disabled
     state.applied_transform = {
-      position = authoritative.position,
-      rotation = authoritative.rotation,
-      velocity = authoritative.velocity,
-      angular_velocity = authoritative.angular_velocity,
+      position         = authoritative.position,
+      rotation         = authoritative.rotation,
+      velocity         = state.base_transform.velocity,
+      angular_velocity = state.base_transform.angular_velocity,
     }
     state.is_blending = false
   else
-    -- Normal blend from predicted to authoritative
-    state.blend_start = predicted
+    state.blend_start = {
+      position         = state.applied_transform.position,
+      rotation         = state.applied_transform.rotation,
+      velocity         = state.applied_transform.velocity,
+      angular_velocity = state.applied_transform.angular_velocity,
+    }
     state.blend_target = authoritative
+    state.blend_target.velocity = state.base_transform.velocity
+    state.blend_target.angular_velocity = state.base_transform.angular_velocity
     state.blend_start_time = current_time
     state.blend_duration = blend_duration
     state.is_blending = true
-
-    -- Get initial blended state
-    state.applied_transform = {
-      position = predicted.position,
-      rotation = predicted.rotation,
-      velocity = predicted.velocity,
-      angular_velocity = predicted.angular_velocity,
-    }
   end
-
-  -- Update last update time (after blend handling)
-  state.last_update_time = current_time
 end
 
---- Update sync state and get applied transform
---- Call this every frame to get the current transform
 local function update_and_get_transform(id, current_time)
   local state = get_sync_state(id)
-
-  -- Extrapolate prediction forward (only if prediction is enabled)
-  if USE_PREDICTION then
-    state.predicted_transform = extrapolate_transform(
-      state.base_transform,
-      state.base_timestamp,
-      current_time
-    )
-  else
-    -- No prediction: use base transform directly
-    state.predicted_transform = {
-      position = state.base_transform.position,
-      rotation = state.base_transform.rotation,
-      velocity = state.base_transform.velocity,
-      angular_velocity = state.base_transform.angular_velocity,
-    }
+  if state.base_timestamp == 0 then
+    return state.applied_transform
+  end
+  if (current_time - state.base_recv_time) > PACKET_TIMEOUT then
+    return nil
   end
 
-  -- Update blend if active
+  -- Always extrapolate forward to current_time.
+  state.predicted_transform = extrapolate_transform(state, current_time)
+
+  -- Blend path stays callable but dormant when blend_duration = 0
+  -- (the default flow). When active, blend interpolates between
+  -- blend_start and blend_target; we use it as the applied transform
+  -- in that branch so the consumer sees a smoothed transition.
   if state.is_blending then
     local elapsed = current_time - state.blend_start_time
     local t = math.max(0, math.min(1, elapsed / state.blend_duration))
-
     local blended = blend_transforms(state.blend_start, state.blend_target, t)
-
     state.applied_transform = {
-      position = blended.position,
-      rotation = blended.rotation,
-      velocity = blended.velocity,
+      position         = blended.position,
+      rotation         = blended.rotation,
+      velocity         = blended.velocity,
       angular_velocity = blended.angular_velocity,
     }
-
-    -- Blend is complete
     if t >= 1.0 then
       state.is_blending = false
     end
   else
     state.applied_transform = {
-      position = state.predicted_transform.position,
-      rotation = state.predicted_transform.rotation,
-      velocity = state.predicted_transform.velocity,
+      position         = state.predicted_transform.position,
+      rotation         = state.predicted_transform.rotation,
+      velocity         = state.predicted_transform.velocity,
       angular_velocity = state.predicted_transform.angular_velocity,
     }
   end
@@ -359,12 +446,10 @@ local function update_and_get_transform(id, current_time)
   return state.applied_transform
 end
 
---- Set default blend duration
 local function set_blend_duration(duration)
-  M.default_blend_duration = math.max(0.01, duration)  -- Minimum 10ms
+  M.default_blend_duration = math.max(0, duration)
 end
 
---- Get blend progress for debugging [0, 1]
 local function get_blend_progress(id, current_time)
   local state = get_sync_state(id)
   if not state.is_blending then
@@ -374,20 +459,33 @@ local function get_blend_progress(id, current_time)
   return math.max(0, math.min(1, elapsed / state.blend_duration))
 end
 
---- Check if sync state has been initialized
 local function is_initialized(id)
   local state = M.sync_states[id]
   return state ~= nil and state.base_timestamp > 0
 end
 
---- Reset sync state for a vehicle
 local function reset_sync_state(id)
   M.sync_states[id] = create_sync_state(id)
 end
 
---- Cleanup stale sync states (prevent memory growth from despawned vehicles)
+local function reset_motion_smoothers(id)
+  local state = M.sync_states[id]
+  if not state then return end
+  local base = state.base_transform
+  state.acc = vec3(0, 0, 0)
+  state.racc = vec3(0, 0, 0)
+  state.smooth_velocity = vec3_copy(base.velocity)
+  state.smooth_angular_velocity = vec3_copy(base.angular_velocity)
+  state.smooth_acc = vec3(0, 0, 0)
+  state.smooth_racc = vec3(0, 0, 0)
+  state.last_raw_velocity = vec3_copy(base.velocity)
+  state.last_raw_angular_velocity = vec3_copy(base.angular_velocity)
+  state.is_blending = false
+end
+
+-- Cleanup stale sync states from despawned vehicles.
 local function cleanup_stale_states(max_age)
-  max_age = max_age or 30.0  -- Default: remove states older than 30 seconds
+  max_age = max_age or 30.0
   local current_time = be:getTime() or 0
   local cleaned = 0
   for id, state in pairs(M.sync_states) do
@@ -402,7 +500,6 @@ local function cleanup_stale_states(max_age)
   return cleaned
 end
 
---- Manually refresh all sync states (debug/recovery command)
 local function refresh_all_states()
   local count = 0
   for _ in pairs(M.sync_states) do
@@ -412,7 +509,6 @@ local function refresh_all_states()
   return count
 end
 
---- Export for network module
 M.apply_snapshot = apply_snapshot
 M.update_and_get_transform = update_and_get_transform
 M.get_sync_state = get_sync_state
@@ -420,9 +516,9 @@ M.set_blend_duration = set_blend_duration
 M.get_blend_progress = get_blend_progress
 M.is_initialized = is_initialized
 M.reset_sync_state = reset_sync_state
-M.extrapolate_transform = extrapolate_transform
+M.reset_motion_smoothers = reset_motion_smoothers
 M.slerp_quaternion = slerp_quaternion
-M.cleanup_stale_states = cleanup_stale_states  -- Optional: periodic cleanup
-M.refresh_all_states = refresh_all_states  -- Optional: manual recovery command
+M.cleanup_stale_states = cleanup_stale_states
+M.refresh_all_states = refresh_all_states
 
 return M

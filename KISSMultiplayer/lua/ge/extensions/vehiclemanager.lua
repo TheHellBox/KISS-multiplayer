@@ -132,6 +132,11 @@ local function send_vehicle_update(obj)
     component_id = obj:getID(),
     generation = generation,
     sent_at = get_current_time(),
+    -- Sender-monotonic timer for receiver-side prediction. sent_at stays for
+    -- compatibility with older consumers.
+    send_timer = t.send_timer or 0,
+    ping_ms = network.connection.rtt_smooth_ms or network.connection.ping or 0,
+    send_dt = t.send_dt or 0,
   }
   generation = generation + 1
   network.send_data(
@@ -199,7 +204,7 @@ end
 local function send_vehicle_config(vehicle_id)
   local vehicle = be:getObjectByID(vehicle_id)
   if vehicle then
-    vehicle:queueLuaCommand("kiss_vehicle.send_vehicle_config()")
+    kisstransform.queue_kiss_command(vehicle, "kiss_vehicle.send_vehicle_config()")
   end
 end
 
@@ -296,14 +301,11 @@ local function spawn_vehicle(data)
 
   local spawned = spawn.spawnVehicle(name, options.config, options.pos, options.rot, options)
   if not spawned then return end
-  -- Prefer the authority's most recent pose (from raw_transforms) over the
-  -- possibly-stale data.position that came with the original VehicleData packet.
-  -- If the buffered spawn took a while to fire (e.g., the vehicle entered view
-  -- distance well after its VehicleData was received), raw_transforms tracks
-  -- where the authority *actually is now*.
+  -- Spawn from VehicleData origin. raw_transforms.position is COG-space and
+  -- would inject a COG offset if used as the initial refnode position.
   local fresh = kisstransform.raw_transforms[data.server_id]
-  local p = (fresh and fresh.position) or data.position
-  local r = (fresh and fresh.rotation) or data.rotation
+  local p = data.position
+  local r = data.rotation
   spawned:setPositionRotation(p[1], p[2], p[3], r[1], r[2], r[3], r[4])
   if plate ~= nil then
     extensions.core_vehicles.setPlateText(plate, spawned:getID())
@@ -311,7 +313,9 @@ local function spawn_vehicle(data)
   M.id_map[data.server_id] = spawned:getID()
   M.server_ids[spawned:getID()] = data.server_id
   kisstransform.inactive[spawned:getID()] = false
-  --if current_vehicle then be:enterVehicle(0, current_vehicle) end
+  if fresh and kisstransform.queue_cog_snap then
+    kisstransform.queue_cog_snap(spawned, fresh)
+  end
   spawned:queueLuaCommand("extensions.hook('kissUpdateOwnership', false)")
 end
 
@@ -320,7 +324,7 @@ local function send_reset_vehicle(id)
   if not M.ownership[id] then return end
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
-  local rotation = quat(vehicle:getRefNodeMatrix():toQuatF())
+  local rotation = quatFromDir(-vehicle:getDirectionVector(), vehicle:getDirectionVectorUp())
   local position = vec3(vehicle:getPosition())
   local data = { vehicle_id = id, position = {position.x, position.y, position.z}, rotation = {rotation.x, rotation.y, rotation.z, rotation.w}}
   network.send_data({ ResetVehicle = data }, true)
@@ -347,19 +351,11 @@ local function onUpdate(dt)
       local vehicle = be:getObjectByID(i)
       if vehicle and (not kisstransform.inactive[i]) then
         send_vehicle_update(vehicle)
-        vehicle:queueLuaCommand("kiss_electrics.send()")
+        kisstransform.queue_kiss_command(vehicle, "kiss_electrics.send()")
       end
     end
   end
 
-  for k, v in pairs(M.id_map) do
-    if not M.ownership[v] then
-      local vehicle = be:getObjectByID(v)
-      if vehicle and (not kisstransform.inactive[v]) then
-        vehicle:queueLuaCommand("kiss_vehicle.update_eligible_nodes()")
-      end
-    end
-  end
   if not (M.loading_map or M.delay_spawns) then
     local to_remove = {}
     for k, vehicle in pairs(M.vehicle_buffer) do
@@ -413,8 +409,8 @@ local function update_vehicle(data)
 
   kisstransform.update_vehicle_transform(data)
   if not kisstransform.inactive[id] then
-    vehicle:queueLuaCommand("kiss_input.apply(" .. string.format("%q", jsonEncode(data.electrics)) .. ")")
-    vehicle:queueLuaCommand("kiss_gearbox.apply(" .. string.format("%q", jsonEncode(data.gearbox)) .. ")")
+    kisstransform.queue_kiss_command(vehicle, "kiss_input.apply(" .. string.format("%q", jsonEncode(data.electrics)) .. ")")
+    kisstransform.queue_kiss_command(vehicle, "kiss_gearbox.apply(" .. string.format("%q", jsonEncode(data.gearbox)) .. ")")
   end
 end
 
@@ -502,7 +498,7 @@ local function electrics_diff_update(data)
     local vehicle = be:getObjectByID(id)
     if not vehicle then return end
     local data = jsonEncode(data[2].diff)
-    vehicle:queueLuaCommand("kiss_electrics.apply_diff(" .. string.format("%q", data) .. ")")
+    kisstransform.queue_kiss_command(vehicle, "kiss_electrics.apply_diff(" .. string.format("%q", data) .. ")")
   end
 end
 
@@ -544,7 +540,7 @@ local function attach_coupler(data)
     local node_b_pos = vec3(vehicle_b:getPosition()) + vec3(vehicle_b:getNodePosition(data.node_b_id))
     local pos = vec3(vehicle_b:getPosition()) + (node_a_pos - node_b_pos)
     vehicle_b:setPositionNoPhysicsReset(Point3F(pos.x, pos.y, pos.z))
-    vehicle_b:queueLuaCommand("kiss_couplers.attach_coupler("..data.node_b_id..")")
+    kisstransform.queue_kiss_command(vehicle_b, "kiss_couplers.attach_coupler("..data.node_b_id..")")
     onCouplerAttached(obj_a, obj_b, data.node_a_id, data.node_b_id)
   end
 end
@@ -559,7 +555,7 @@ local function detach_coupler(data)
     if not vehicle then return end
     if not vehicle_b then return end
     if vehicle_ ~= vehicle_b and vec3(vehicle:getPosition()):distance(vec3(vehicle_b:getPosition())) > 15 then return end
-    vehicle:queueLuaCommand("kiss_couplers.detach_coupler("..data.node_a_id..")")
+    kisstransform.queue_kiss_command(vehicle, "kiss_couplers.detach_coupler("..data.node_a_id..")")
     onCouplerDetached(obj_a, obj_b, data.node_a_id, data.node_b_id)
     onCouplerDetach(obj_a, data.node_a_id)
     onCouplerDetach(obj_b, data.node_b_id)
@@ -601,54 +597,6 @@ local function onVehicleSpawned(id)
   end
   vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
-  -- Push current Tuning-tab values to the freshly-loaded Layer 1 filter path.
-  if kissui and kissui.tuning then
-    local d = kissui.get_derived_sync_tuning()
-    vehicle:queueLuaCommand(string.format(
-      "kiss_transforms.set_layer1_tuning(%d, %f, %f, %f)",
-      d.position_pull_gain,
-      d.position_deadband,
-      d.velocity_deadband,
-      d.max_delta_v
-    ))
-    vehicle:queueLuaCommand(string.format(
-      "kiss_transforms.set_prediction_tuning(%s)",
-      d.layer1_enable_yaw_prediction and "true" or "false"
-    ))
-    vehicle:queueLuaCommand(string.format(
-      "kiss_transforms.set_heading_hold_tuning(%f)",
-      d.layer1_heading_hold_yaw_trim_gain
-    ))
-    vehicle:queueLuaCommand(string.format(
-      "kiss_transforms.set_cross_track_tuning(%f)",
-      d.layer1_cross_track_hold_gain
-    ))
-    vehicle:queueLuaCommand(string.format(
-      "kiss_transforms.set_filter_tuning(%f, %f, %f, %f, %f, %f, %f, %f)",
-      d.layer1_z_weight,
-      d.layer1_tilt_weight,
-      d.layer1_vz_weight,
-      d.layer1_tilt_rate_weight,
-      d.layer1_z_deadband,
-      math.rad(d.layer1_tilt_deadband_deg),
-      d.layer1_vz_deadband,
-      d.layer1_tilt_rate_deadband
-    ))
-    vehicle:queueLuaCommand(string.format(
-      "kiss_vehicle.set_controller_tuning(%f, %f, %f, %f, %f, %f)",
-      d.layer1_frame_planar_gain,
-      d.layer1_yaw_gain,
-      d.layer1_yaw_rate_gain,
-      d.layer1_support_gain,
-      d.layer1_frame_planar_max_dv,
-      d.layer1_yaw_max_dv
-    ))
-    vehicle:queueLuaCommand(string.format(
-      "kiss_vehicle.set_geometry_tuning(%f, %s)",
-      d.layer1_shell_inset_cm,
-      d.layer1_debug_viz and "true" or "false"
-    ))
-  end
   send_vehicle_config(id)
   -- Attempt to workaround a bug from latest beamng update. Also prevents unicycle cloning(Somewhat)
   if vehicle:getJBeamFilename() == "unicycle" then

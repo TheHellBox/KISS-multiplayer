@@ -5,6 +5,10 @@ pub struct Vehicle {
     pub transform: Option<Transform>,
     pub electrics: Option<Electrics>,
     pub gearbox: Option<Gearbox>,
+    pub sent_at: f64,
+    pub send_timer: Option<f64>,
+    pub ping_ms: Option<f64>,
+    pub send_dt: Option<f64>,
     pub cluster_nodes: Option<ClusterNodes>,
     pub data: VehicleData,
 }
@@ -117,6 +121,10 @@ impl crate::Server {
                 gearbox: None,
                 electrics: None,
                 transform: None,
+                sent_at: 0.0,
+                send_timer: None,
+                ping_ms: None,
+                send_dt: None,
                 cluster_nodes: None,
             },
         );

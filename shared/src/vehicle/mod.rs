@@ -11,23 +11,16 @@ pub use vehicle_meta::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Layer 2 of the layered sync model: per-node deviations layered on top of
-/// Layer 1 rigid motion.
-///
-/// Lua is the source of truth here. The current sender only transmits
-/// persistent deformation in `node_positions`; Layer 1 covers the rigid shell
-/// motion. `node_velocities` remains as a legacy/compatibility field so the
-/// Rust bridge/server path can continue to accept older payloads, but new Lua
-/// payloads may omit it entirely.
+/// Optional per-node deformation payload layered on top of the vehicle
+/// transform. Current Lua clients may omit this entirely; older clients may
+/// still include both position and velocity residuals.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClusterNodes {
-    /// Quantized body-frame deviation from jbeam rest pose. This is the active
-    /// Layer 2 payload in the current deformation-only model.
+    /// Quantized body-frame deviation from jbeam rest pose.
     #[serde(default)]
     pub node_positions: HashMap<u32, [i16; 3]>,
-    /// Legacy field from the older residual-velocity Layer 2 path. Missing on
-    /// current Lua payloads; deserialize as empty so bridge JSON decoding does
-    /// not fail when the sender omits it.
+    /// Legacy residual-velocity field. Deserialize as empty so bridge/server
+    /// paths accept newer payloads that omit it.
     #[serde(default)]
     pub node_velocities: HashMap<u32, [i16; 3]>,
 }
@@ -54,10 +47,7 @@ pub struct VehicleData {
     pub rotation: [f32; 4],
 }
 
-/// A single packet that contains all of the vehicle updates.
-///
-/// Phase 1b: Single vehicle sync - `component_id` equals `vehicle_id`.
-/// Phase 2: Cluster support - `component_id` identifies individual bodies within a cluster group.
+/// A single packet that contains all state for one vehicle/body update.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VehicleUpdate {
     /// Transform state (pose + twist) for this body/vehicle
@@ -68,16 +58,22 @@ pub struct VehicleUpdate {
     pub gearbox: Gearbox,
     /// Unique vehicle ID on the server
     pub vehicle_id: u32,
-    /// Component/body ID within cluster group (equals vehicle_id in Phase 1)
-    /// Reserved for Phase 2 multi-body cluster support
+    /// Component/body ID. Currently equals vehicle_id for single-body replay.
     pub component_id: u32,
     /// Generation/tick number for ordering and deduplication
     pub generation: u64,
     /// Timestamp when this update was sent (seconds since epoch)
     pub sent_at: f64,
-    /// Per-node state layered on top of Transform. Current Lua sender uses
-    /// deformation-only `node_positions`; velocity residuals are optional legacy
-    /// data.
+    /// Sender-side monotonic vehicle timer used for transform prediction.
+    /// Optional for backward compatibility with older Lua clients.
+    pub send_timer: Option<f64>,
+    /// Sender-side round-trip latency estimate in milliseconds.
+    /// Optional for backward compatibility with older Lua clients.
+    pub ping_ms: Option<f64>,
+    /// Sender-side frame interval included in the prediction-age estimate.
+    /// Optional for backward compatibility with older Lua clients.
+    pub send_dt: Option<f64>,
+    /// Optional per-node deformation layered on top of Transform.
     pub cluster_nodes: Option<ClusterNodes>,
 }
 

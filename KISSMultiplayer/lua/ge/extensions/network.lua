@@ -92,22 +92,6 @@ local function update_rtt_min_window(now_s, rtt_s)
   return min_rtt or rtt_s
 end
 
-local function push_latency_to_all_vehicles()
-  local cmd = string.format(
-    "kiss_transforms.set_latency_tuning(%f, %f, %f)",
-    (M.connection.rtt_smooth_ms or 0) * 0.001,
-    (M.connection.rtt_min_ms or 0) * 0.001,
-    (M.connection.jitter_ms or 0) * 0.001
-  )
-
-  for i = 0, be:getObjectCount() do
-    local vehicle = be:getObject(i)
-    if vehicle then
-      vehicle:queueLuaCommand(cmd)
-    end
-  end
-end
-
 local function bytesToU32(str)
   if not str or #str < 4 then return 0 end
   local b1, b2, b3, b4 = str:byte(1, 4)
@@ -248,7 +232,6 @@ local function handle_pong(data)
   M.connection.rtt_smooth_ms = smooth_s * 1000
   M.connection.rtt_min_ms = min_rtt_s * 1000
   M.connection.jitter_ms = jitter_s * 1000
-  push_latency_to_all_vehicles()
 end
 
 local function handle_player_disconnected(data)
@@ -275,7 +258,6 @@ local function onExtensionLoaded()
   message_handlers.CouplerAttached = vehiclemanager.attach_coupler
   message_handlers.CouplerDetached = vehiclemanager.detach_coupler
   message_handlers.ElectricsUndefinedUpdate = vehiclemanager.electrics_diff_update
-  message_handlers.SessionTuningUpdate = kissui.tabs.tuning.apply_session_tuning
 
   message_handlers.VehicleSetPosition = vehiclemanager.set_position
   message_handlers.VehicleSetPositionRotation = vehiclemanager.set_position_rotation

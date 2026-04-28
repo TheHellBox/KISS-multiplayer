@@ -34,12 +34,6 @@ impl Server {
                         .send(ServerCommand::PlayerInfoUpdate(info))
                         .await;
                 }
-                if let Some(session_tuning) = &self.session_tuning {
-                    let _ = connection
-                        .ordered
-                        .send(ServerCommand::SessionTuningUpdate(session_tuning.clone()))
-                        .await;
-                }
                 for (_, client) in &mut self.connections {
                     client
                         .send_chat_message(format!("Player {} has joined the server", player_name))
@@ -138,6 +132,10 @@ impl Server {
                                 vehicle.transform = Some(data.transform);
                                 vehicle.electrics = Some(data.electrics);
                                 vehicle.gearbox = Some(data.gearbox);
+                                vehicle.sent_at = data.sent_at;
+                                vehicle.send_timer = data.send_timer;
+                                vehicle.ping_ms = data.ping_ms;
+                                vehicle.send_dt = data.send_dt;
                                 vehicle.cluster_nodes = data.cluster_nodes;
                             }
                         }
@@ -268,22 +266,6 @@ impl Server {
                                 .await;
                         }
                     }
-                    SessionTuningUpdate(data) => {
-                        let mut data = data.clone();
-                        let now_ms = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
-                            .as_millis() as u64;
-                        data.author_id = client_id;
-                        data.changed_at_ms = now_ms;
-                        self.session_tuning = Some(data.clone());
-                        for (_, client) in &mut self.connections {
-                            let _ = client
-                                .ordered
-                                .send(ServerCommand::SessionTuningUpdate(data.clone()))
-                                .await;
-                        }
-                    }
                     VoiceChatPacket(data) => {
                         let connection = self.connections.get_mut(&client_id).unwrap();
                         let position = {
@@ -327,7 +309,7 @@ impl Server {
                                 Ok(original_command) => {
                                     // Box to avoid infinite type size
                                     Box::pin(self.on_client_event(
-                                        client_id, 
+                                        client_id,
                                         IncomingEvent::ClientCommand(original_command)
                                     )).await;
                                 }
