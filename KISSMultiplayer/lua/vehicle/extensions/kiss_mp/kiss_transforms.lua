@@ -368,6 +368,22 @@ local function update(dt)
     M.last_linear_step = linear_step
     M.last_angular_step = angular_step
 
+    -- Bob diagnostic: rate-limited dump of error/step magnitudes so we can
+    -- see whether static bobbing is driven by position error, velocity error,
+    -- or stale step output.
+    local now_log = current_time
+    if (M.last_bob_log_time or 0) + 0.25 < now_log then
+      M.last_bob_log_time = now_log
+      print(string.format(
+        "[bob vid=%d] pos_err=%.3f vel_err=%.3f rot_err=%.3f spin_err=%.3f lin_step=%.4f ang_step=%.4f local_v=%.3f",
+        obj:getID() or -1,
+        cog_position_error:length(), cog_velocity_error:length(),
+        orientation_error:length(), spin_error:length(),
+        linear_step:length(), angular_step:length(),
+        local_vel_cog:length()
+      ))
+    end
+
     ClusterServo:apply_cluster_step(refnode_cid, cog_world, linear_step, angular_step, local_vel_cog:length())
   end
 

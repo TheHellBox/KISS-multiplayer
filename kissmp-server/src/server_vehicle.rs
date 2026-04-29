@@ -60,7 +60,9 @@ impl crate::Server {
                 position: data.position,
                 rotation:  data.rotation,
                 angular_velocity: [0.0, 0.0, 0.0],
-                velocity: [0.0, 0.0, 0.0]
+                velocity: [0.0, 0.0, 0.0],
+                acceleration: None,
+                angular_acceleration: None,
             });
         }
 

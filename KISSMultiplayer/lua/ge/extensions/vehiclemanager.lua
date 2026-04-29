@@ -597,6 +597,9 @@ local function onVehicleSpawned(id)
   end
   vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
   vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
+  if kissui and kissui.tabs and kissui.tabs.tuning and kissui.tabs.tuning.push_to_vehicle then
+    kissui.tabs.tuning.push_to_vehicle(vehicle)
+  end
   send_vehicle_config(id)
   -- Attempt to workaround a bug from latest beamng update. Also prevents unicycle cloning(Somewhat)
   if vehicle:getJBeamFilename() == "unicycle" then

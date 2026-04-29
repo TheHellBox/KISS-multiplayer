@@ -8,9 +8,20 @@ local last_cog_compute_time = -math.huge
 local COG_RECOMPUTE_INTERVAL_S = 0.2
 
 local SEND_SMOOTH_RATE = 50.0
+-- Sender-derived acceleration smoothing. The differential (Δv / Δt) is
+-- inherently noise-amplifying at packet/send rate, so we lowpass at a
+-- relatively conservative rate before transmission. Receivers prefer this
+-- over their own (v_new - v_prev)/remote_dt path because the sender has
+-- access to high-rate clean physics samples between transmits, and shipping
+-- the derived acceleration removes the receiver-side 33x amplification.
+local SEND_ACCEL_SMOOTH_RATE = 30.0
 local smoothed_send_vel = nil
 local smoothed_send_omega_body = nil
 local last_smooth_call_time = nil
+local prev_smoothed_send_vel = nil
+local prev_smoothed_send_omega_world = nil
+local smoothed_send_linear_accel = nil
+local smoothed_send_angular_accel = nil
 local send_timer = 0
 
 local function get_body_gyro_local_omega()
@@ -37,6 +48,10 @@ local function reset_send_smoothers()
   smoothed_send_vel = nil
   smoothed_send_omega_body = nil
   last_smooth_call_time = nil
+  prev_smoothed_send_vel = nil
+  prev_smoothed_send_omega_world = nil
+  smoothed_send_linear_accel = nil
+  smoothed_send_angular_accel = nil
 end
 
 -- Mass-weighted COG offset in body frame. The receiver uses this same body
@@ -130,6 +145,31 @@ local function update_transform_info(_we_own_this_vehicle)
   local p_cog = p + cog_world
   local v_cog = v_world + cog_world:cross(omega_world)
 
+  -- Derive sender-side acceleration from the smoothed COG-frame velocity /
+  -- world-frame angular velocity and lowpass before transmit. Differentiating
+  -- v_cog (not v_world) is what matches the wire payload — the receiver sees
+  -- COG-frame velocity, so its second-order extrapolator wants COG-frame
+  -- acceleration. Receivers then skip their (v_new - v_prev)/remote_dt path
+  -- entirely, which avoids the ~1/remote_dt noise amplification.
+  if prev_smoothed_send_vel ~= nil and smooth_dt > 1e-6 then
+    local raw_send_linear_accel = vec3(
+      (v_cog.x - prev_smoothed_send_vel.x) / smooth_dt,
+      (v_cog.y - prev_smoothed_send_vel.y) / smooth_dt,
+      (v_cog.z - prev_smoothed_send_vel.z) / smooth_dt
+    )
+    smoothed_send_linear_accel = lowpass_dt(smoothed_send_linear_accel, raw_send_linear_accel, smooth_dt, SEND_ACCEL_SMOOTH_RATE)
+  end
+  if prev_smoothed_send_omega_world ~= nil and smooth_dt > 1e-6 then
+    local raw_send_angular_accel = vec3(
+      (omega_world.x - prev_smoothed_send_omega_world.x) / smooth_dt,
+      (omega_world.y - prev_smoothed_send_omega_world.y) / smooth_dt,
+      (omega_world.z - prev_smoothed_send_omega_world.z) / smooth_dt
+    )
+    smoothed_send_angular_accel = lowpass_dt(smoothed_send_angular_accel, raw_send_angular_accel, smooth_dt, SEND_ACCEL_SMOOTH_RATE)
+  end
+  prev_smoothed_send_vel = vec3(v_cog.x, v_cog.y, v_cog.z)
+  prev_smoothed_send_omega_world = vec3(omega_world.x, omega_world.y, omega_world.z)
+
   send_timer = now
 
   local throttle_input = electrics.values.throttle_input or 0
@@ -156,6 +196,12 @@ local function update_transform_info(_we_own_this_vehicle)
     send_timer = send_timer,
     send_dt = smooth_dt,
   }
+  if smoothed_send_linear_accel ~= nil then
+    transform.acceleration = {smoothed_send_linear_accel.x, smoothed_send_linear_accel.y, smoothed_send_linear_accel.z}
+  end
+  if smoothed_send_angular_accel ~= nil then
+    transform.angular_acceleration = {smoothed_send_angular_accel.x, smoothed_send_angular_accel.y, smoothed_send_angular_accel.z}
+  end
   obj:queueGameEngineLua("kisstransform.push_transform("..obj:getID()..", " .. string.format("%q", jsonEncode(transform)) .. ")")
 end
 
