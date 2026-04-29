@@ -114,14 +114,10 @@ local PACKET_TIMEOUT = 0.1 -- Stop correcting if packets stall
 local STALE_THRESHOLD = 2.0
 local USE_PREDICTION = true
 M.REMOTE_VEL_SMOOTH_RATE = 8.0
-M.REMOTE_ACCEL_SMOOTH_RATE = 6.0
 
-local function set_smoothing_tuning(vel_rate, accel_rate)
+local function set_smoothing_tuning(vel_rate)
   if type(vel_rate) == "number" then
     M.REMOTE_VEL_SMOOTH_RATE = math.max(0, vel_rate)
-  end
-  if type(accel_rate) == "number" then
-    M.REMOTE_ACCEL_SMOOTH_RATE = math.max(0, accel_rate)
   end
 end
 
@@ -141,14 +137,12 @@ local function create_sync_state(id)
       velocity = vec3(0, 0, 0),
       angular_velocity = vec3(0, 0, 0),
     },
-    -- Derived from velocity deltas in apply_snapshot, used by the
-    -- second-order extrapolator.
+    -- Sender-provided when present; otherwise derived from velocity deltas
+    -- in apply_snapshot. Used by the second-order extrapolator.
     linear_accel  = vec3(0, 0, 0),
     angular_accel = vec3(0, 0, 0),
     smooth_velocity = nil,
     smooth_angular_velocity = nil,
-    smooth_linear_accel = nil,
-    smooth_angular_accel = nil,
     last_raw_velocity = nil,
     last_raw_angular_velocity = nil,
 
@@ -331,18 +325,17 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
     )
   end
 
-  -- Derive acceleration from raw velocity deltas (legacy fallback path used
-  -- when the sender doesn't ship acceleration), then smooth received
-  -- velocity/rvel and linear/angular accel before prediction consumes them. remote_dt is
-  -- in the SENDER's clock between snapshots.
+  -- Use sender-provided acceleration directly when present; fall back to a
+  -- per-packet velocity differential when it's absent. Velocity itself is
+  -- still smoothed because authoritative.velocity carries the receiver's only
+  -- noise floor — but acceleration is trusted as-is so we don't compound
+  -- the sender's already-smoothed signal with another lag stage.
   local remote_dt = math.max(timestamp_delta, 0.001)
   local raw_linear_accel = vec3(0, 0, 0)
   local raw_angular_accel = vec3(0, 0, 0)
   if is_first_snapshot or is_stale then
     state.smooth_velocity = vec3_copy(authoritative.velocity)
     state.smooth_angular_velocity = vec3_copy(authoritative.angular_velocity)
-    state.smooth_linear_accel = sender_linear_accel and vec3_copy(sender_linear_accel) or vec3(0, 0, 0)
-    state.smooth_angular_accel = sender_angular_accel and vec3_copy(sender_angular_accel) or vec3(0, 0, 0)
   else
     if sender_linear_accel then
       raw_linear_accel = sender_linear_accel
@@ -366,7 +359,6 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
     end
 
     local alpha_vel = math.min(M.REMOTE_VEL_SMOOTH_RATE * remote_dt, 1.0)
-    local alpha_accel = math.min(M.REMOTE_ACCEL_SMOOTH_RATE * remote_dt, 1.0)
     state.smooth_velocity = vec3_lerp(
       state.smooth_velocity or authoritative.velocity,
       authoritative.velocity,
@@ -377,13 +369,11 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
       authoritative.angular_velocity,
       alpha_vel
     )
-    state.smooth_linear_accel = vec3_lerp(state.smooth_linear_accel or raw_linear_accel, raw_linear_accel, alpha_accel)
-    state.smooth_angular_accel = vec3_lerp(state.smooth_angular_accel or raw_angular_accel, raw_angular_accel, alpha_accel)
   end
   state.last_raw_velocity = vec3_copy(authoritative.velocity)
   state.last_raw_angular_velocity = vec3_copy(authoritative.angular_velocity)
-  state.linear_accel  = state.smooth_linear_accel or raw_linear_accel
-  state.angular_accel = state.smooth_angular_accel or raw_angular_accel
+  state.linear_accel  = raw_linear_accel
+  state.angular_accel = raw_angular_accel
 
   -- Clock offset smoothing. raw_offset includes one-way latency and
   -- whatever skew exists between the two clock bases. We don't actually
@@ -513,8 +503,6 @@ local function reset_motion_smoothers(id)
   state.angular_accel = vec3(0, 0, 0)
   state.smooth_velocity = vec3_copy(base.velocity)
   state.smooth_angular_velocity = vec3_copy(base.angular_velocity)
-  state.smooth_linear_accel = vec3(0, 0, 0)
-  state.smooth_angular_accel = vec3(0, 0, 0)
   state.last_raw_velocity = vec3_copy(base.velocity)
   state.last_raw_angular_velocity = vec3_copy(base.angular_velocity)
   state.is_blending = false

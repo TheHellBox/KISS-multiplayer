@@ -1,16 +1,15 @@
 local M = {}
 local imgui = ui_imgui
 
--- Receiver-side smoothing rates (Hz cutoff) consumed by kiss_sync.lua.
--- Defaults must match kiss_sync.M.REMOTE_VEL_SMOOTH_RATE / REMOTE_ACCEL_SMOOTH_RATE
--- so the slider state matches the vehicle-side state on first open.
+-- Receiver-side velocity smoothing rate (Hz cutoff) consumed by kiss_sync.lua.
+-- Default must match kiss_sync.M.REMOTE_VEL_SMOOTH_RATE so the slider state
+-- matches the vehicle-side state on first open.
 local vel_rate = imgui.FloatPtr(8.0)
-local accel_rate = imgui.FloatPtr(6.0)
 
 local function build_command()
   return string.format(
-    "kiss_sync.set_smoothing_tuning(%f, %f)",
-    vel_rate[0], accel_rate[0]
+    "kiss_sync.set_smoothing_tuning(%f)",
+    vel_rate[0]
   )
 end
 
@@ -31,16 +30,13 @@ end
 
 local function draw()
   imgui.PushTextWrapPos(0)
-  imgui.Text("Receiver-side prediction smoothing.")
+  imgui.Text("Receiver-side velocity smoothing.")
   imgui.Text("Higher = tracks new packets faster, less smoothing.")
   imgui.Text("Lower = heavier smoothing, more lag.")
   imgui.PopTextWrapPos()
   imgui.Separator()
 
   if imgui.SliderFloat("Velocity smooth rate", vel_rate, 0.0, 30.0, "%.1f Hz") then
-    push_to_all_vehicles()
-  end
-  if imgui.SliderFloat("Acceleration smooth rate", accel_rate, 0.0, 30.0, "%.1f Hz") then
     push_to_all_vehicles()
   end
 end
