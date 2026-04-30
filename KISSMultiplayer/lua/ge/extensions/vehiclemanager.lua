@@ -143,7 +143,7 @@ local function send_vehicle_update(obj)
     {
       VehicleUpdate = result
     },
-    true
+    false
   )
 end
 
