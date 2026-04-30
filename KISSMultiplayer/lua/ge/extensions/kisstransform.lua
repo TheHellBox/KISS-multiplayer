@@ -155,10 +155,8 @@ local function update(dt)
         if DEBUG_GLOBAL then
           print("[kisstransform.update] QUEUING update for vehicle " .. tostring(id))
         end
-        -- Per-frame: vehicle Lua reads kiss_sync's predicted COG pose and
-        -- applies cluster acceleration. try_rude handles large recovery with
-        -- a COG-aware cluster snap.
-        queue_kiss_command(vehicle, "kiss_transforms.update("..dt..")")
+        -- Per-frame correction runs from kiss_transforms.updateGFX inside
+        -- vehicle Lua. GE only handles activity/view-distance state here.
       end
     end
   end

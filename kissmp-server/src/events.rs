@@ -129,14 +129,35 @@ impl Server {
                             if let Some(vehicle) = self.vehicles.get_mut(&server_id) {
                                 vehicle.data.position = data.transform.position;
                                 vehicle.data.rotation = data.transform.rotation;
-                                vehicle.transform = Some(data.transform);
-                                vehicle.electrics = Some(data.electrics);
-                                vehicle.gearbox = Some(data.gearbox);
+                                vehicle.transform = Some(data.transform.clone());
+                                vehicle.electrics = Some(data.electrics.clone());
+                                vehicle.gearbox = Some(data.gearbox.clone());
                                 vehicle.sent_at = data.sent_at;
                                 vehicle.send_timer = data.send_timer;
                                 vehicle.ping_ms = data.ping_ms;
                                 vehicle.send_dt = data.send_dt;
-                                vehicle.cluster_nodes = data.cluster_nodes;
+                                vehicle.cluster_nodes = data.cluster_nodes.clone();
+                            }
+                            for (cid, client) in &mut self.connections {
+                                if *cid == client_id {
+                                    continue;
+                                }
+                                let _ = client
+                                    .unreliable
+                                    .send(ServerCommand::VehicleUpdate(shared::vehicle::VehicleUpdate {
+                                        transform: data.transform.clone(),
+                                        electrics: data.electrics.clone(),
+                                        gearbox: data.gearbox.clone(),
+                                        vehicle_id: server_id,
+                                        component_id: server_id,
+                                        generation: data.generation,
+                                        sent_at: data.sent_at,
+                                        send_timer: data.send_timer,
+                                        ping_ms: data.ping_ms,
+                                        send_dt: data.send_dt,
+                                        cluster_nodes: data.cluster_nodes.clone(),
+                                    }))
+                                    .await;
                             }
                         }
                     }

@@ -340,8 +340,8 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
   -- Without this, a reset to a low sender timer or a slightly out-of-order
   -- packet produces a near-zero remote_dt below and turns a normal velocity
   -- delta into a bogus 100 m/s^2 acceleration spike.
-  if not is_first_snapshot and timestamp_delta < 0 then
-    if math.abs(timestamp_delta) < 0.5 then
+  if not is_first_snapshot and timestamp_delta <= 0 then
+    if timestamp_delta == 0 or math.abs(timestamp_delta) < 0.5 then
       return
     end
     is_stale = true

@@ -5,6 +5,8 @@ local M = {}
 M.debug = false
 M.cooldown_timer = 2
 M.sync_id = nil
+M.ownership = true
+M.ownership_known = false
 
 -- Overshoot dampener state for the PD loop in update(). Tracks the previous
 -- frame's requested correction and the current observed velocity delta; if
@@ -246,6 +248,10 @@ local function draw_debug(synced_transform)
 end
 
 local function update(dt)
+  if not M.ownership_known or M.ownership then
+    return
+  end
+
   if M.debug and dt <= 0.1 then
     print("[kiss_transforms.update] obj=" .. tostring(obj) .. " id=" .. tostring(obj:getID()) .. " sync_id=" .. tostring(M.sync_id) .. " dt=" .. tostring(dt))
   end
@@ -519,6 +525,14 @@ local function onExtensionLoaded()
   M.cooldown_timer = 1.5
 end
 
+local function kissUpdateOwnership(owned)
+  M.ownership = owned and true or false
+  M.ownership_known = true
+  if M.ownership then
+    clear_drift_state()
+  end
+end
+
 local function onReset()
   if M.sync_id then
     kiss_sync.reset_sync_state(M.sync_id)
@@ -537,8 +551,10 @@ M.set_target_transform = set_target_transform
 M.snap_to_cog_target = snap_to_cog_target
 M.set_linear_pull_scale = set_linear_pull_scale
 M.update = update
+M.updateGFX = update
 M.onExtensionLoaded = onExtensionLoaded
 M.onReset = onReset
+M.kissUpdateOwnership = kissUpdateOwnership
 M.get_synced_transform = get_synced_transform
 
 return M

@@ -8,6 +8,9 @@ local meta_timer = 0
 local colors_buffer = {}
 local plates_buffer = {}
 local first_vehicle = true
+local pending_initial_vehicle_sync = false
+local initial_vehicle_sync_timer = 0
+local sent_vehicle_config_ids = {}
 local last_position_buffer = {}     -- Track last positions for teleport detection
 local teleport_reset_timers = {}    -- vehicle_id -> seconds remaining until reset is sent
 local last_bad_packet_log = {}      -- vehicle_id -> last timestamp we warned about NaN/Inf (throttle)
@@ -22,6 +25,7 @@ M.server_ids = {}
 M.ownership = {}
 M.vehicle_updates_buffer = {}
 M.packet_gen_buffer = {}
+M.packet_timer_buffer = {}
 M.is_network_session = false
 M.delay_spawns = false
 M.vehicle_buffer = {}
@@ -204,8 +208,41 @@ end
 local function send_vehicle_config(vehicle_id)
   local vehicle = be:getObjectByID(vehicle_id)
   if vehicle then
+    if sent_vehicle_config_ids[vehicle_id] then return end
+    sent_vehicle_config_ids[vehicle_id] = true
     kisstransform.queue_kiss_command(vehicle, "kiss_vehicle.send_vehicle_config()")
   end
+end
+
+local function prepare_vehicle_for_sync(vehicle)
+  if not vehicle then return end
+  vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
+  vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
+  if kissui and kissui.tabs and kissui.tabs.tuning and kissui.tabs.tuning.push_to_vehicle then
+    kissui.tabs.tuning.push_to_vehicle(vehicle)
+  end
+end
+
+local function sync_initial_player_vehicle()
+  if not pending_initial_vehicle_sync then return end
+  if M.loading_map or M.delay_spawns then return end
+
+  local vehicle = be:getPlayerVehicle(0)
+  if not vehicle then return end
+
+  local id = vehicle:getID()
+  if M.ownership[id] or M.server_ids[id] then
+    pending_initial_vehicle_sync = false
+    return
+  end
+  if sent_vehicle_config_ids[id] then
+    pending_initial_vehicle_sync = false
+    return
+  end
+
+  prepare_vehicle_for_sync(vehicle)
+  send_vehicle_config(id)
+  pending_initial_vehicle_sync = false
 end
 
 local function send_vehicle_config_inner(id, parts_config, data)
@@ -342,6 +379,14 @@ local function onUpdate(dt)
     meta_timer = meta_timer - 1
   end
 
+  if pending_initial_vehicle_sync then
+    initial_vehicle_sync_timer = initial_vehicle_sync_timer + dt
+    if initial_vehicle_sync_timer >= 0.25 then
+      initial_vehicle_sync_timer = 0
+      sync_initial_player_vehicle()
+    end
+  end
+
   local tick_time = (1/network.connection.tickrate)
   if timer <  tick_time then
     timer = timer + dt
@@ -402,8 +447,22 @@ local function update_vehicle(data)
   local id = M.id_map[data.vehicle_id]
   if not id then return end
   if M.ownership[id] then return end
-  if data.generation <= (M.packet_gen_buffer[id] or -1) then return end
-  M.packet_gen_buffer[id] = data.generation
+
+  local send_timer = data.send_timer
+  if send_timer and send_timer > 0 then
+    local previous_timer = M.packet_timer_buffer[id]
+    if previous_timer and send_timer <= previous_timer then
+      if (previous_timer - send_timer) < 0.5 then
+        return
+      end
+      M.packet_gen_buffer[id] = nil
+    end
+    M.packet_timer_buffer[id] = send_timer
+  else
+    if data.generation <= (M.packet_gen_buffer[id] or -1) then return end
+    M.packet_gen_buffer[id] = data.generation
+  end
+
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
 
@@ -430,6 +489,8 @@ local function remove_vehicle(data)
     M.id_map[id] = nil
     M.ownership[local_id] = nil
     M.vehicle_updates_buffer[local_id] = nil
+    M.packet_gen_buffer[local_id] = nil
+    M.packet_timer_buffer[local_id] = nil
     kisstransform.received_transforms[local_id] = nil
     update_ownership_limits()
   else
@@ -595,11 +656,7 @@ local function onVehicleSpawned(id)
     vehicle:queueLuaCommand("recovery.saveHome()")
     first_vehicle = false
   end
-  vehicle:queueLuaCommand("extensions.addModulePath('lua/vehicle/extensions/kiss_mp')")
-  vehicle:queueLuaCommand("extensions.loadModulesInDirectory('lua/vehicle/extensions/kiss_mp')")
-  if kissui and kissui.tabs and kissui.tabs.tuning and kissui.tabs.tuning.push_to_vehicle then
-    kissui.tabs.tuning.push_to_vehicle(vehicle)
-  end
+  prepare_vehicle_for_sync(vehicle)
   send_vehicle_config(id)
   -- Attempt to workaround a bug from latest beamng update. Also prevents unicycle cloning(Somewhat)
   if vehicle:getJBeamFilename() == "unicycle" then
@@ -616,9 +673,11 @@ local function onVehicleDestroyed(id)
   if not network.connection.connected then return end
   last_position_buffer[id] = nil
   teleport_reset_timers[id] = nil
+  sent_vehicle_config_ids[id] = nil
   if M.ownership[id] then
     M.id_map[M.ownership[id]] = nil
     M.ownership[id] = nil
+    M.server_ids[id] = nil
     network.send_data(
       {
         RemoveVehicle = id,
@@ -655,8 +714,14 @@ local function onMissionLoaded(mission)
   if not network.connection.connected then return end
   M.id_map = {}
   M.ownership = {}
+  M.server_ids = {}
+  M.packet_gen_buffer = {}
+  M.packet_timer_buffer = {}
+  sent_vehicle_config_ids = {}
   M.loading_map = false
   first_vehicle = true
+  pending_initial_vehicle_sync = true
+  initial_vehicle_sync_timer = 0.25
 end
 
 M.onUpdate = onUpdate
