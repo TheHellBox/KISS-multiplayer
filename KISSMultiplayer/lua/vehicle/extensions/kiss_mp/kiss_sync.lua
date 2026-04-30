@@ -243,7 +243,9 @@ local function extrapolate_transform(state, current_time)
   local base_velocity = state.smooth_velocity or base.velocity
   local base_angular_velocity = state.smooth_angular_velocity or base.angular_velocity
   local linear_accel = state.smooth_linear_accel or state.linear_accel or vec3(0, 0, 0)
-  local angular_accel = state.smooth_angular_accel or state.angular_accel or vec3(0, 0, 0)
+  -- Do not second-order predict angular motion. Angular acceleration is
+  -- derived from lossy packet-to-packet angular velocity deltas, and fake
+  -- yaw accel impulses are much more visible than small heading lag.
   local half_t_sq = 0.5 * t * t
 
   -- Position: x(t) = x0 + v0*t + 0.5*a*t^2
@@ -260,21 +262,16 @@ local function extrapolate_transform(state, current_time)
     base_velocity.z + linear_accel.z * t
   )
 
-  -- Rotation delta as a small-angle vector then converted to a delta
-  -- quaternion. rot_add = omega0*t + 0.5*alpha*t^2 in world frame.
+  -- Rotation: first-order angular prediction only. Linear motion still uses
+  -- acceleration prediction to preserve path tracking.
   local rot_add = vec3(
-    base_angular_velocity.x * t + angular_accel.x * half_t_sq,
-    base_angular_velocity.y * t + angular_accel.y * half_t_sq,
-    base_angular_velocity.z * t + angular_accel.z * half_t_sq
+    base_angular_velocity.x * t,
+    base_angular_velocity.y * t,
+    base_angular_velocity.z * t
   )
   local pred_rot = base.rotation * quatFromEuler(rot_add.x, rot_add.y, rot_add.z)
 
-  -- Angular velocity: omega(t) = omega0 + alpha*t
-  local pred_omega = vec3(
-    base_angular_velocity.x + angular_accel.x * t,
-    base_angular_velocity.y + angular_accel.y * t,
-    base_angular_velocity.z + angular_accel.z * t
-  )
+  local pred_omega = base_angular_velocity
 
   return {
     position         = pred_pos,
