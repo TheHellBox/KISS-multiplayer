@@ -4,12 +4,16 @@ local imgui = ui_imgui
 -- Receiver-side velocity smoothing rate (Hz cutoff) consumed by kiss_sync.lua.
 -- Default must match kiss_sync.M.REMOTE_VEL_SMOOTH_RATE so the slider state
 -- matches the vehicle-side state on first open.
-local vel_rate = imgui.FloatPtr(8.0)
+local vel_rate = imgui.FloatPtr(2.0)
+local prediction_offset_ms = imgui.FloatPtr(0.0)
+local linear_pull_scale = imgui.FloatPtr(1.0)
 
 local function build_command()
   return string.format(
-    "kiss_sync.set_smoothing_tuning(%f)",
-    vel_rate[0]
+    "kiss_sync.set_smoothing_tuning(%f, %f); kiss_transforms.set_linear_pull_scale(%f)",
+    vel_rate[0],
+    prediction_offset_ms[0] * 0.001,
+    linear_pull_scale[0]
   )
 end
 
@@ -37,6 +41,12 @@ local function draw()
   imgui.Separator()
 
   if imgui.SliderFloat("Velocity smooth rate", vel_rate, 0.0, 30.0, "%.1f Hz") then
+    push_to_all_vehicles()
+  end
+  if imgui.SliderFloat("Prediction offset", prediction_offset_ms, -80.0, 80.0, "%.0f ms") then
+    push_to_all_vehicles()
+  end
+  if imgui.SliderFloat("Linear pull scale", linear_pull_scale, 0.5, 1.5, "%.2fx") then
     push_to_all_vehicles()
   end
 end

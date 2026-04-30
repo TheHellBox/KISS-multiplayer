@@ -113,11 +113,17 @@ local MAX_PREDICT = 0.3   -- seconds; clamp on forward-extrapolation horizon
 local PACKET_TIMEOUT = 0.1 -- Stop correcting if packets stall
 local STALE_THRESHOLD = 2.0
 local USE_PREDICTION = true
-M.REMOTE_VEL_SMOOTH_RATE = 8.0
+M.REMOTE_VEL_SMOOTH_RATE = 2.0
+M.PREDICTION_OFFSET_S = 0.0
+local REMOTE_ACCEL_SMOOTH_RATE = 1.0
+local TIME_OFFSET_SMOOTH_RATE = 1.0
 
-local function set_smoothing_tuning(vel_rate)
+local function set_smoothing_tuning(vel_rate, prediction_offset_s)
   if type(vel_rate) == "number" then
     M.REMOTE_VEL_SMOOTH_RATE = math.max(0, vel_rate)
+  end
+  if type(prediction_offset_s) == "number" then
+    M.PREDICTION_OFFSET_S = math.max(-0.08, math.min(prediction_offset_s, 0.08))
   end
 end
 
@@ -125,6 +131,10 @@ local function limit_vec(v, max_len)
   local len = v:length()
   if len > max_len then return v * (max_len / len) end
   return v
+end
+
+local function smoothing_dt(frame_dt, predict_time)
+  return frame_dt / math.max(math.abs(predict_time), 0.001)
 end
 
 local function create_sync_state(id)
@@ -137,25 +147,24 @@ local function create_sync_state(id)
       velocity = vec3(0, 0, 0),
       angular_velocity = vec3(0, 0, 0),
     },
-    -- Sender-provided when present; otherwise derived from velocity deltas
-    -- in apply_snapshot. Used by the second-order extrapolator.
+    -- Derived from velocity deltas in apply_snapshot and used by the
+    -- second-order extrapolator.
     linear_accel  = vec3(0, 0, 0),
     angular_accel = vec3(0, 0, 0),
     smooth_velocity = nil,
     smooth_angular_velocity = nil,
+    smooth_linear_accel = nil,
+    smooth_angular_accel = nil,
     last_raw_velocity = nil,
     last_raw_angular_velocity = nil,
+    last_smooth_time = 0,
 
     base_timestamp = 0,        -- sender's monotonic timer in seconds
     base_recv_time = 0,        -- local clock at packet arrival
-    base_network_age = 0,      -- estimated packet age at arrival
     generation = 0,
     last_update_time = 0,
 
-    -- Smoothed (local_recv_time - sender_send_time). Useful as a drift
-    -- detector; the predict horizon itself is computed against
-    -- base_recv_time in our own clock domain so we don't depend on
-    -- cross-machine clock alignment for correctness.
+    time_offset_target = 0,
     time_offset_smoothed = nil,
 
     -- Prediction state (populated by update_and_get_transform).
@@ -185,46 +194,86 @@ end
 -- Forward-extrapolate the latest authoritative snapshot to the current local
 -- time. The acceleration term keeps transients from lagging by 0.5*a*t^2.
 local function extrapolate_transform(state, current_time)
+  local frame_dt = 0
+  if state.last_smooth_time and state.last_smooth_time > 0 then
+    frame_dt = math.max(0, current_time - state.last_smooth_time)
+  end
+  state.last_smooth_time = current_time
+
+  if state.time_offset_smoothed == nil then
+    state.time_offset_smoothed = state.time_offset_target or 0
+  elseif frame_dt > 0 then
+    state.time_offset_smoothed = state.time_offset_smoothed
+      + ((state.time_offset_target or state.time_offset_smoothed) - state.time_offset_smoothed)
+      * math.min(TIME_OFFSET_SMOOTH_RATE * frame_dt, 1.0)
+  end
+
+  local calc_local_time = state.base_timestamp + (state.time_offset_smoothed or 0)
   local predict_time = math.max(
-    0,
-    math.min((current_time - state.base_recv_time) + (state.base_network_age or 0), MAX_PREDICT)
+    -MAX_PREDICT,
+    math.min((current_time - calc_local_time) + M.PREDICTION_OFFSET_S, MAX_PREDICT)
   )
+  local t = predict_time
+
+  if frame_dt > 0 then
+    local smooth_dt = smoothing_dt(frame_dt, predict_time)
+    state.smooth_velocity = vec3_lerp(
+      state.smooth_velocity or state.base_transform.velocity,
+      state.base_transform.velocity,
+      math.min(M.REMOTE_VEL_SMOOTH_RATE * smooth_dt, 1.0)
+    )
+    state.smooth_angular_velocity = vec3_lerp(
+      state.smooth_angular_velocity or state.base_transform.angular_velocity,
+      state.base_transform.angular_velocity,
+      math.min(M.REMOTE_VEL_SMOOTH_RATE * smooth_dt, 1.0)
+    )
+    state.smooth_linear_accel = vec3_lerp(
+      state.smooth_linear_accel or state.linear_accel,
+      state.linear_accel,
+      math.min(REMOTE_ACCEL_SMOOTH_RATE * smooth_dt, 1.0)
+    )
+    state.smooth_angular_accel = vec3_lerp(
+      state.smooth_angular_accel or state.angular_accel,
+      state.angular_accel,
+      math.min(REMOTE_ACCEL_SMOOTH_RATE * smooth_dt, 1.0)
+    )
+  end
 
   local base = state.base_transform
-  local linear_accel  = state.linear_accel  or vec3(0, 0, 0)
-  local angular_accel = state.angular_accel or vec3(0, 0, 0)
-
-  local t = predict_time
+  local base_velocity = state.smooth_velocity or base.velocity
+  local base_angular_velocity = state.smooth_angular_velocity or base.angular_velocity
+  local linear_accel = state.smooth_linear_accel or state.linear_accel or vec3(0, 0, 0)
+  local angular_accel = state.smooth_angular_accel or state.angular_accel or vec3(0, 0, 0)
   local half_t_sq = 0.5 * t * t
 
   -- Position: x(t) = x0 + v0*t + 0.5*a*t^2
   local pred_pos = vec3(
-    base.position.x + base.velocity.x * t + linear_accel.x * half_t_sq,
-    base.position.y + base.velocity.y * t + linear_accel.y * half_t_sq,
-    base.position.z + base.velocity.z * t + linear_accel.z * half_t_sq
+    base.position.x + base_velocity.x * t + linear_accel.x * half_t_sq,
+    base.position.y + base_velocity.y * t + linear_accel.y * half_t_sq,
+    base.position.z + base_velocity.z * t + linear_accel.z * half_t_sq
   )
 
   -- Velocity: v(t) = v0 + a*t
   local pred_vel = vec3(
-    base.velocity.x + linear_accel.x * t,
-    base.velocity.y + linear_accel.y * t,
-    base.velocity.z + linear_accel.z * t
+    base_velocity.x + linear_accel.x * t,
+    base_velocity.y + linear_accel.y * t,
+    base_velocity.z + linear_accel.z * t
   )
 
   -- Rotation delta as a small-angle vector then converted to a delta
   -- quaternion. rot_add = omega0*t + 0.5*alpha*t^2 in world frame.
   local rot_add = vec3(
-    base.angular_velocity.x * t + angular_accel.x * half_t_sq,
-    base.angular_velocity.y * t + angular_accel.y * half_t_sq,
-    base.angular_velocity.z * t + angular_accel.z * half_t_sq
+    base_angular_velocity.x * t + angular_accel.x * half_t_sq,
+    base_angular_velocity.y * t + angular_accel.y * half_t_sq,
+    base_angular_velocity.z * t + angular_accel.z * half_t_sq
   )
   local pred_rot = base.rotation * quatFromEuler(rot_add.x, rot_add.y, rot_add.z)
 
   -- Angular velocity: omega(t) = omega0 + alpha*t
   local pred_omega = vec3(
-    base.angular_velocity.x + angular_accel.x * t,
-    base.angular_velocity.y + angular_accel.y * t,
-    base.angular_velocity.z + angular_accel.z * t
+    base_angular_velocity.x + angular_accel.x * t,
+    base_angular_velocity.y + angular_accel.y * t,
+    base_angular_velocity.z + angular_accel.z * t
   )
 
   return {
@@ -306,101 +355,56 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
     angular_velocity = vec3(transform_data.angular_velocity[1], transform_data.angular_velocity[2], transform_data.angular_velocity[3]),
   }
 
-  -- Sender-derived acceleration is preferred when present: it's lowpassed
-  -- on the sender side from high-rate physics samples and skips the
-  -- (v_new - v_prev)/remote_dt path that amplifies sample noise by
-  -- ~1/remote_dt at packet rate.
-  local sender_linear_accel = nil
-  local sender_angular_accel = nil
-  if transform_data.acceleration and #transform_data.acceleration >= 3 then
-    sender_linear_accel = limit_vec(
-      vec3(transform_data.acceleration[1], transform_data.acceleration[2], transform_data.acceleration[3]),
-      MAX_LINEAR_ACCEL
-    )
-  end
-  if transform_data.angular_acceleration and #transform_data.angular_acceleration >= 3 then
-    sender_angular_accel = limit_vec(
-      vec3(transform_data.angular_acceleration[1], transform_data.angular_acceleration[2], transform_data.angular_acceleration[3]),
-      MAX_ANGULAR_ACCEL
-    )
-  end
-
-  -- Use sender-provided acceleration directly when present; fall back to a
-  -- per-packet velocity differential when it's absent. Velocity itself is
-  -- still smoothed because authoritative.velocity carries the receiver's only
-  -- noise floor — but acceleration is trusted as-is so we don't compound
-  -- the sender's already-smoothed signal with another lag stage.
+  -- Derive acceleration from packet velocity deltas. Velocity itself is
+  -- smoothed because authoritative.velocity carries the receiver's only
+  -- noise floor.
   local remote_dt = math.max(timestamp_delta, 0.001)
   local raw_linear_accel = vec3(0, 0, 0)
   local raw_angular_accel = vec3(0, 0, 0)
   if is_first_snapshot or is_stale then
     state.smooth_velocity = vec3_copy(authoritative.velocity)
     state.smooth_angular_velocity = vec3_copy(authoritative.angular_velocity)
+    state.smooth_linear_accel = vec3(0, 0, 0)
+    state.smooth_angular_accel = vec3(0, 0, 0)
   else
-    if sender_linear_accel then
-      raw_linear_accel = sender_linear_accel
-    else
-      local prev_raw_vel = state.last_raw_velocity or state.base_transform.velocity
-      raw_linear_accel = limit_vec(vec3(
-        (authoritative.velocity.x - prev_raw_vel.x) / remote_dt,
-        (authoritative.velocity.y - prev_raw_vel.y) / remote_dt,
-        (authoritative.velocity.z - prev_raw_vel.z) / remote_dt
-      ), MAX_LINEAR_ACCEL)
-    end
-    if sender_angular_accel then
-      raw_angular_accel = sender_angular_accel
-    else
-      local prev_raw_rvel = state.last_raw_angular_velocity or state.base_transform.angular_velocity
-      raw_angular_accel = limit_vec(vec3(
-        (authoritative.angular_velocity.x - prev_raw_rvel.x) / remote_dt,
-        (authoritative.angular_velocity.y - prev_raw_rvel.y) / remote_dt,
-        (authoritative.angular_velocity.z - prev_raw_rvel.z) / remote_dt
-      ), MAX_ANGULAR_ACCEL)
-    end
+    local prev_raw_vel = state.last_raw_velocity or state.base_transform.velocity
+    raw_linear_accel = limit_vec(vec3(
+      (authoritative.velocity.x - prev_raw_vel.x) / remote_dt,
+      (authoritative.velocity.y - prev_raw_vel.y) / remote_dt,
+      (authoritative.velocity.z - prev_raw_vel.z) / remote_dt
+    ), MAX_LINEAR_ACCEL)
 
-    local alpha_vel = math.min(M.REMOTE_VEL_SMOOTH_RATE * remote_dt, 1.0)
-    state.smooth_velocity = vec3_lerp(
-      state.smooth_velocity or authoritative.velocity,
-      authoritative.velocity,
-      alpha_vel
-    )
-    state.smooth_angular_velocity = vec3_lerp(
-      state.smooth_angular_velocity or authoritative.angular_velocity,
-      authoritative.angular_velocity,
-      alpha_vel
-    )
+    local prev_raw_rvel = state.last_raw_angular_velocity or state.base_transform.angular_velocity
+    raw_angular_accel = limit_vec(vec3(
+      (authoritative.angular_velocity.x - prev_raw_rvel.x) / remote_dt,
+      (authoritative.angular_velocity.y - prev_raw_rvel.y) / remote_dt,
+      (authoritative.angular_velocity.z - prev_raw_rvel.z) / remote_dt
+    ), MAX_ANGULAR_ACCEL)
+
   end
   state.last_raw_velocity = vec3_copy(authoritative.velocity)
   state.last_raw_angular_velocity = vec3_copy(authoritative.angular_velocity)
   state.linear_accel  = raw_linear_accel
   state.angular_accel = raw_angular_accel
 
-  -- Clock offset smoothing. raw_offset includes one-way latency and
-  -- whatever skew exists between the two clock bases. We don't actually
-  -- compare across clocks for the predict horizon (that math runs in our
-  -- own clock domain via base_recv_time), but the smoother is useful as
-  -- a drift detector and for any future jitter-buffer logic. alpha = 0.1
-  -- gives a roughly 10-packet time constant: slow enough that one bad packet
-  -- doesn't corrupt the estimate, fast enough to track real clock drift.
-  local raw_offset = current_time - timestamp
-  if is_first_snapshot or is_stale or state.time_offset_smoothed == nil then
-    state.time_offset_smoothed = raw_offset
-  else
-    state.time_offset_smoothed = state.time_offset_smoothed + (raw_offset - state.time_offset_smoothed) * 0.1
-  end
-
   -- Update base + receive timing.
   state.base_transform = {
     position         = authoritative.position,
     rotation         = authoritative.rotation,
-    velocity         = state.smooth_velocity or authoritative.velocity,
-    angular_velocity = state.smooth_angular_velocity or authoritative.angular_velocity,
+    velocity         = authoritative.velocity,
+    angular_velocity = authoritative.angular_velocity,
   }
   state.base_timestamp  = timestamp
   state.base_recv_time  = current_time
-  state.base_network_age = math.max(0, math.min(transform_data.time_past or 0, MAX_PREDICT))
+  state.time_offset_target = transform_data.time_offset or (current_time - timestamp)
+  if is_first_snapshot or is_stale or state.time_offset_smoothed == nil then
+    state.time_offset_smoothed = state.time_offset_target
+  end
   state.generation      = generation
   state.last_update_time = current_time
+  if state.last_smooth_time <= 0 then
+    state.last_smooth_time = current_time
+  end
 
   -- Optional blend path (dormant by default). When blend_duration > 0
   -- and not first/stale, set up a blend from the previously-applied pose
@@ -503,8 +507,11 @@ local function reset_motion_smoothers(id)
   state.angular_accel = vec3(0, 0, 0)
   state.smooth_velocity = vec3_copy(base.velocity)
   state.smooth_angular_velocity = vec3_copy(base.angular_velocity)
+  state.smooth_linear_accel = vec3(0, 0, 0)
+  state.smooth_angular_accel = vec3(0, 0, 0)
   state.last_raw_velocity = vec3_copy(base.velocity)
   state.last_raw_angular_velocity = vec3_copy(base.angular_velocity)
+  state.last_smooth_time = 0
   state.is_blending = false
 end
 

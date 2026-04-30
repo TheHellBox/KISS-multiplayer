@@ -175,6 +175,7 @@ local function update_vehicle_transform(data)
   transform.send_timer = data.send_timer
   transform.ping_ms = data.ping_ms
   transform.send_dt = data.send_dt
+  transform.receiver_ping_ms = network.connection.rtt_smooth_ms or network.connection.ping or 0
 
   -- Normalize quaternion in place so all downstream consumers (vehicle-Lua
   -- try_rude predicted-pose comparison, kiss_sync snapshot buffer, and
@@ -194,15 +195,6 @@ local function update_vehicle_transform(data)
 
   local vehicle = be:getObjectByID(id)
   if vehicle and (not M.inactive[id]) then
-    local rtt_s = ((network.connection.rtt_smooth_ms or network.connection.ping or 0) * 0.001)
-    local tick_s = 1.0 / math.max(network.connection.tickrate or 33, 1)
-    local sender_rtt_s = ((data.ping_ms or 0) * 0.001)
-    local sender_dt_s = data.send_dt or 0
-    if sender_rtt_s > 0 then
-      transform.time_past = clamp((rtt_s * 0.5) + (sender_rtt_s * 0.5) + (sender_dt_s * 0.5) + tick_s, 0, 0.3) + 0.001
-    else
-      transform.time_past = clamp(rtt_s + tick_s, 0, 0.3) + 0.001
-    end
     -- Packet arrival hands the new authoritative COG pose to kiss_sync.
     -- Application happens per-frame from kiss_transforms.update(dt), not on
     -- packet arrival.

@@ -21,6 +21,8 @@ M.smooth_local_vel_refnode = nil
 M.smooth_local_omega_body = nil
 M.smooth_linear_step_error = nil
 M.smooth_angular_step_error = nil
+M.last_update_dt = 0
+M.linear_pull_scale = 1.0
 
 local MAX_LINEAR_STEP_ERROR = 3
 local MAX_ANGULAR_STEP_ERROR = 3
@@ -70,6 +72,7 @@ local function clear_drift_state()
   M.smooth_local_omega_body = nil
   M.smooth_linear_step_error = nil
   M.smooth_angular_step_error = nil
+  M.last_update_dt = 0
 end
 
 local function lowpass_vec(prev, target, dt, rate)
@@ -94,6 +97,34 @@ function ClusterServo:limit_step(step, max_len)
   return step
 end
 
+local function apply_disconnected_counterforce(cog_world, linear_step, angular_step)
+  if not (kiss_vehicle and kiss_vehicle.get_disconnected_node_states) then return end
+  local disconnected = kiss_vehicle.get_disconnected_node_states()
+  if #disconnected == 0 then return end
+
+  local pfps = obj:getPhysicsFPS() or 2000
+  local x, y, z = -linear_step.x, -linear_step.y, -linear_step.z
+  local pitch, roll, yaw = -angular_step.x, -angular_step.y, -angular_step.z
+  local force = float3(0, 0, 0)
+
+  for _, state in ipairs(disconnected) do
+    local cid = state.cid
+    local mass = state.mass or obj:getNodeMass(cid) or 0
+    if cid and mass > 0 then
+      local node_pos = obj:getNodePosition(cid)
+      local px = node_pos.x - cog_world.x
+      local py = node_pos.y - cog_world.y
+      local pz = node_pos.z - cog_world.z
+      force:set(
+        (x + py * yaw - pz * roll) * mass * pfps,
+        (y + pz * pitch - px * yaw) * mass * pfps,
+        (z + px * roll - py * pitch) * mass * pfps
+      )
+      obj:applyForceVector(cid, force)
+    end
+  end
+end
+
 function ClusterServo:solve_step(cog_position_error, cog_velocity_error, orientation_error, spin_error, dt)
   local POS_CORRECT_MUL, POS_FORCE_MUL = 5, 5
   local MAX_POS_FORCE = 100
@@ -103,11 +134,17 @@ function ClusterServo:solve_step(cog_position_error, cog_velocity_error, orienta
   local linear_scale = math.min(POS_FORCE_MUL * dt, 1.0)
   local angular_scale = math.min(ROT_FORCE_MUL * dt, 1.0)
 
-  local linear_step = (cog_velocity_error + cog_position_error * POS_CORRECT_MUL) * linear_scale
+  local linear_step = (cog_velocity_error + cog_position_error * POS_CORRECT_MUL) * linear_scale * (M.linear_pull_scale or 1.0)
   local angular_step = (spin_error + orientation_error * ROT_CORRECT_MUL) * angular_scale
 
   return self:limit_step(linear_step, MAX_POS_FORCE * dt),
          self:limit_step(angular_step, MAX_ROT_FORCE * dt)
+end
+
+local function set_linear_pull_scale(scale)
+  if type(scale) == "number" then
+    M.linear_pull_scale = math.max(0.5, math.min(scale, 1.5))
+  end
 end
 
 function ClusterServo:apply_cluster_step(refnode_cid, cog_world, linear_step, angular_step, local_cog_speed)
@@ -131,12 +168,14 @@ function ClusterServo:apply_cluster_step(refnode_cid, cog_world, linear_step, an
         -angular_step.z * pfps
       )
     )
+    apply_disconnected_counterforce(cog_world, linear_step, angular_step)
   elseif linear_step:length() > MIN_POS_FORCE then
     obj:applyClusterLinearAngularAccel(
       refnode_cid,
       vec3(linear_step.x * pfps, linear_step.y * pfps, linear_step.z * pfps),
       vec3(0, 0, 0)
     )
+    apply_disconnected_counterforce(cog_world, linear_step, vec3(0, 0, 0))
   end
 end
 
@@ -225,6 +264,7 @@ local function update(dt)
 
   local current_time = get_local_sync_time()
   M.last_update_time = current_time
+  M.last_update_dt = dt
 
   if M.debug then
     print("[kiss_transforms.update] current_time=" .. current_time .. " calling get_synced_transform")
@@ -372,7 +412,7 @@ local function update(dt)
     -- see whether static bobbing is driven by position error, velocity error,
     -- or stale step output.
     local now_log = current_time
-    if (M.last_bob_log_time or 0) + 0.25 < now_log then
+    if M.debug and (M.last_bob_log_time or 0) + 0.25 < now_log then
       M.last_bob_log_time = now_log
       print(string.format(
         "[bob vid=%d] pos_err=%.3f vel_err=%.3f rot_err=%.3f spin_err=%.3f lin_step=%.4f ang_step=%.4f local_v=%.3f",
@@ -414,6 +454,9 @@ local function set_target_transform(raw)
   if not snapshot_timestamp or snapshot_timestamp <= 0 then
     snapshot_timestamp = transform.sent_at or current_time
   end
+  local own_ping = ((transform.receiver_ping_ms or 0) * 0.001)
+  local remote_ping = ((transform.ping_ms or 0) * 0.001)
+  transform.time_offset = current_time - snapshot_timestamp - (own_ping * 0.5) - (remote_ping * 0.5) - (M.last_update_dt or 0)
   -- Prefer send_timer (sender-monotonic) over sent_at (sender wall-clock,
   -- subject to cross-machine skew) when both are present. The blend
   -- argument is left as 0; kiss_sync extrapolates forward and the PD
@@ -492,6 +535,7 @@ end
 
 M.set_target_transform = set_target_transform
 M.snap_to_cog_target = snap_to_cog_target
+M.set_linear_pull_scale = set_linear_pull_scale
 M.update = update
 M.onExtensionLoaded = onExtensionLoaded
 M.onReset = onReset
