@@ -199,6 +199,14 @@ local function get_disconnected_node_states()
   return out
 end
 
+local function get_smoothed_local_motion()
+  return {
+    refnode_velocity = smoothed_send_vel,
+    body_omega = smoothed_send_omega_body,
+    dt = last_motion_sample_dt,
+  }
+end
+
 local function update_motion_sample(dt)
   -- BeamMP smooths local velocity from the physics hook, then packet packing
   -- reads that smoothed state. Keep the same semantic split here: physics
@@ -326,6 +334,7 @@ M.update_transform_info = update_transform_info
 M.onPhysicsStep = update_motion_sample
 M.get_mass_cog_body = get_mass_cog_body
 M.get_disconnected_node_states = get_disconnected_node_states
+M.get_smoothed_local_motion = get_smoothed_local_motion
 M.maybe_recompute_mass_cog_body = maybe_recompute_mass_cog_body
 M.compute_mass_cog_body = compute_mass_cog_body
 M.onExtensionLoaded = onExtensionLoaded

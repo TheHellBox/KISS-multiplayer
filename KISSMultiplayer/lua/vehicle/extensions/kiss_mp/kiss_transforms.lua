@@ -25,6 +25,7 @@ M.smooth_linear_step_error = nil
 M.smooth_angular_step_error = nil
 M.last_update_dt = 0
 M.linear_pull_scale = 1.0
+M.angular_pull_scale = 0.65
 
 local MAX_LINEAR_STEP_ERROR = 3
 local MAX_ANGULAR_STEP_ERROR = 3
@@ -137,7 +138,7 @@ function ClusterServo:solve_step(cog_position_error, cog_velocity_error, orienta
   local angular_scale = math.min(ROT_FORCE_MUL * dt, 1.0)
 
   local linear_step = (cog_velocity_error + cog_position_error * POS_CORRECT_MUL) * linear_scale * (M.linear_pull_scale or 1.0)
-  local angular_step = (spin_error + orientation_error * ROT_CORRECT_MUL) * angular_scale
+  local angular_step = (spin_error + orientation_error * ROT_CORRECT_MUL) * angular_scale * (M.angular_pull_scale or 1.0)
 
   return self:limit_step(linear_step, MAX_POS_FORCE * dt),
          self:limit_step(angular_step, MAX_ROT_FORCE * dt)
@@ -146,6 +147,12 @@ end
 local function set_linear_pull_scale(scale)
   if type(scale) == "number" then
     M.linear_pull_scale = math.max(0.5, math.min(scale, 1.5))
+  end
+end
+
+local function set_angular_pull_scale(scale)
+  if type(scale) == "number" then
+    M.angular_pull_scale = math.max(0.2, math.min(scale, 1.2))
   end
 end
 
@@ -342,16 +349,21 @@ local function update(dt)
     local local_rot = quatFromDir(-vec3(obj:getDirectionVector()), vec3(obj:getDirectionVectorUp()))
     local cog_world = cog_body:rotated(local_rot)
     local local_pos_refnode = vec3(obj:getPosition())
-    local raw_local_vel_refnode = vec3(obj:getVelocity())
-    local raw_local_omega_body = vec3(
-      obj:getPitchAngularVelocity(),
-      obj:getRollAngularVelocity(),
-      obj:getYawAngularVelocity()
-    )
-    M.smooth_local_vel_refnode = lowpass_vec(M.smooth_local_vel_refnode, raw_local_vel_refnode, dt, LOCAL_SMOOTH_RATE)
-    M.smooth_local_omega_body = lowpass_vec(M.smooth_local_omega_body, raw_local_omega_body, dt, LOCAL_SMOOTH_RATE)
-    local local_vel_refnode = M.smooth_local_vel_refnode
-    local local_omega_body = M.smooth_local_omega_body
+    local local_motion = kiss_vehicle and kiss_vehicle.get_smoothed_local_motion and kiss_vehicle.get_smoothed_local_motion()
+    local local_vel_refnode = local_motion and local_motion.refnode_velocity
+    local local_omega_body = local_motion and local_motion.body_omega
+    if not local_vel_refnode or not local_omega_body then
+      local raw_local_vel_refnode = vec3(obj:getVelocity())
+      local raw_local_omega_body = vec3(
+        obj:getPitchAngularVelocity(),
+        obj:getRollAngularVelocity(),
+        obj:getYawAngularVelocity()
+      )
+      M.smooth_local_vel_refnode = lowpass_vec(M.smooth_local_vel_refnode, raw_local_vel_refnode, dt, LOCAL_SMOOTH_RATE)
+      M.smooth_local_omega_body = lowpass_vec(M.smooth_local_omega_body, raw_local_omega_body, dt, LOCAL_SMOOTH_RATE)
+      local_vel_refnode = M.smooth_local_vel_refnode
+      local_omega_body = M.smooth_local_omega_body
+    end
     local local_omega = local_omega_body:rotated(local_rot)
     -- Cluster convention: v_cog = v_refnode + cog_world x omega_world.
     local local_pos_cog = local_pos_refnode + cog_world
@@ -502,6 +514,15 @@ local function snap_to_cog_target(px, py, pz, qx, qy, qz, qw, vx, vy, vz, wx, wy
   )
 end
 
+local function post_teleport_cooldown(duration)
+  clear_drift_state()
+  if M.sync_id and kiss_sync and kiss_sync.reset_sync_state then
+    kiss_sync.reset_sync_state(M.sync_id)
+  end
+  M.rude_error_time = 0
+  M.cooldown_timer = math.max(M.cooldown_timer or 0, duration or 0.35)
+end
+
 local function onExtensionLoaded()
   M.sync_id = obj:getID()
   if kiss_vehicle and kiss_vehicle.maybe_recompute_mass_cog_body then
@@ -549,7 +570,9 @@ end
 
 M.set_target_transform = set_target_transform
 M.snap_to_cog_target = snap_to_cog_target
+M.post_teleport_cooldown = post_teleport_cooldown
 M.set_linear_pull_scale = set_linear_pull_scale
+M.set_angular_pull_scale = set_angular_pull_scale
 M.update = update
 M.updateGFX = update
 M.onExtensionLoaded = onExtensionLoaded

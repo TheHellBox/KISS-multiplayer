@@ -7,13 +7,15 @@ local imgui = ui_imgui
 local vel_rate = imgui.FloatPtr(2.0)
 local prediction_offset_ms = imgui.FloatPtr(0.0)
 local linear_pull_scale = imgui.FloatPtr(1.0)
+local angular_pull_scale = imgui.FloatPtr(0.65)
 
 local function build_command()
   return string.format(
-    "kiss_sync.set_smoothing_tuning(%f, %f); kiss_transforms.set_linear_pull_scale(%f)",
+    "kiss_sync.set_smoothing_tuning(%f, %f); kiss_transforms.set_linear_pull_scale(%f); kiss_transforms.set_angular_pull_scale(%f)",
     vel_rate[0],
     prediction_offset_ms[0] * 0.001,
-    linear_pull_scale[0]
+    linear_pull_scale[0],
+    angular_pull_scale[0]
   )
 end
 
@@ -47,6 +49,9 @@ local function draw()
     push_to_all_vehicles()
   end
   if imgui.SliderFloat("Linear pull scale", linear_pull_scale, 0.5, 1.5, "%.2fx") then
+    push_to_all_vehicles()
+  end
+  if imgui.SliderFloat("Angular pull scale", angular_pull_scale, 0.2, 1.2, "%.2fx") then
     push_to_all_vehicles()
   end
 end
