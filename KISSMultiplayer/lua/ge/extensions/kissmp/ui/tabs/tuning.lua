@@ -8,6 +8,9 @@ local vel_rate = imgui.FloatPtr(2.0)
 local prediction_offset_ms = imgui.FloatPtr(0.0)
 local linear_pull_scale = imgui.FloatPtr(1.0)
 local angular_pull_scale = imgui.FloatPtr(0.65)
+local owner_teleport_cooldown_ms = imgui.FloatPtr(500.0)
+local remote_teleport_cooldown_ms = imgui.FloatPtr(500.0)
+local teleport_reset_delay_ms = imgui.FloatPtr(500.0)
 
 local function build_command()
   return string.format(
@@ -22,10 +25,24 @@ end
 local function push_to_vehicle(vehicle)
   if not vehicle then return end
   vehicle:queueLuaCommand(build_command())
+  if vehiclemanager and vehiclemanager.set_teleport_tuning then
+    vehiclemanager.set_teleport_tuning(
+      owner_teleport_cooldown_ms[0] * 0.001,
+      remote_teleport_cooldown_ms[0] * 0.001,
+      teleport_reset_delay_ms[0] * 0.001
+    )
+  end
 end
 
 local function push_to_all_vehicles()
   local cmd = build_command()
+  if vehiclemanager and vehiclemanager.set_teleport_tuning then
+    vehiclemanager.set_teleport_tuning(
+      owner_teleport_cooldown_ms[0] * 0.001,
+      remote_teleport_cooldown_ms[0] * 0.001,
+      teleport_reset_delay_ms[0] * 0.001
+    )
+  end
   for i = 0, be:getObjectCount() do
     local vehicle = be:getObject(i)
     if vehicle then
@@ -52,6 +69,15 @@ local function draw()
     push_to_all_vehicles()
   end
   if imgui.SliderFloat("Angular pull scale", angular_pull_scale, 0.2, 1.2, "%.2fx") then
+    push_to_all_vehicles()
+  end
+  if imgui.SliderFloat("Owner teleport cooldown", owner_teleport_cooldown_ms, 0.0, 1500.0, "%.0f ms") then
+    push_to_all_vehicles()
+  end
+  if imgui.SliderFloat("Remote teleport cooldown", remote_teleport_cooldown_ms, 0.0, 1500.0, "%.0f ms") then
+    push_to_all_vehicles()
+  end
+  if imgui.SliderFloat("Teleport reset delay", teleport_reset_delay_ms, 0.0, 1500.0, "%.0f ms") then
     push_to_all_vehicles()
   end
 end

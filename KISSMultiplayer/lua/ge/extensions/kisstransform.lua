@@ -8,6 +8,7 @@ M.received_transforms = {}
 M.local_transforms = {}
 M.raw_positions = {}
 M.inactive = {}
+M.teleport_cooldowns = {}
 
 M.threshold = 3
 M.rot_threshold = 2.5
@@ -96,6 +97,15 @@ local function update(dt)
     return
   end
 
+  for id, remaining in pairs(M.teleport_cooldowns) do
+    remaining = remaining - dt
+    if remaining <= 0 then
+      M.teleport_cooldowns[id] = nil
+    else
+      M.teleport_cooldowns[id] = remaining
+    end
+  end
+
   -- Refresh each vehicle's local transform cache. Only owned vehicles send
   -- this cache over the network, but remote vehicles still need their vehicle
   -- Lua modules loaded before receiver-side correction runs.
@@ -125,9 +135,16 @@ local function update(dt)
 
     local vehicle = be:getObjectByID(id)
     local p = vec3(transform.position)
+    local teleport_cooldown = M.teleport_cooldowns[id]
 
     if not vehicle then
       if DEBUG_GLOBAL then print("[kisstransform.update] BLOCKED: vehicle " .. tostring(id) .. " not found") end
+    elseif teleport_cooldown and teleport_cooldown > 0 then
+      if not M.inactive[id] then
+        vehicle:setActive(0)
+        M.inactive[id] = true
+      end
+      if DEBUG_GLOBAL then print("[kisstransform.update] BLOCKED: teleport cooldown for vehicle " .. tostring(id)) end
     elseif not apply_velocity then
       if DEBUG_GLOBAL then print("[kisstransform.update] BLOCKED: apply_velocity=false for vehicle " .. tostring(id)) end
     elseif vehiclemanager.ownership[id] then
@@ -204,12 +221,17 @@ local function push_transform(id, t)
   M.local_transforms[id] = jsonDecode(t)
 end
 
+local function set_teleport_cooldown(vehicle_id, duration)
+  M.teleport_cooldowns[vehicle_id] = math.max(duration or 0.35, 0)
+end
+
 M.send_transform_updates = send_transform_updates
 M.send_vehicle_transform = send_vehicle_transform
 M.update_vehicle_transform = update_vehicle_transform
 M.push_transform = push_transform
 M.queue_kiss_command = queue_kiss_command
 M.queue_cog_snap = queue_cog_snap
+M.set_teleport_cooldown = set_teleport_cooldown
 M.apply_cluster_target = apply_cluster_target
 M.onUpdate = update
 

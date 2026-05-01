@@ -288,6 +288,12 @@ local function onReset()
   compute_mass_cog_body()
 end
 
+local function post_owner_teleport_settle()
+  reset_send_smoothers()
+  last_cog_compute_time = -math.huge
+  compute_mass_cog_body()
+end
+
 local function update_transform_info(_we_own_this_vehicle)
   update_motion_sample()
   local sample = cached_transform_sample
@@ -339,6 +345,7 @@ M.maybe_recompute_mass_cog_body = maybe_recompute_mass_cog_body
 M.compute_mass_cog_body = compute_mass_cog_body
 M.onExtensionLoaded = onExtensionLoaded
 M.onReset = onReset
+M.post_owner_teleport_settle = post_owner_teleport_settle
 M.send_vehicle_config = send_vehicle_config
 
 return M

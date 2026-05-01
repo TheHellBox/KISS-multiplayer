@@ -10,14 +10,15 @@ local plates_buffer = {}
 local first_vehicle = true
 local pending_initial_vehicle_sync = false
 local initial_vehicle_sync_timer = 0
-local sent_vehicle_config_ids = {}
 local last_position_buffer = {}     -- Track last positions for teleport detection
 local teleport_reset_timers = {}    -- vehicle_id -> seconds remaining until reset is sent
+local owner_teleport_cooldowns = {} -- vehicle_id -> seconds remaining before owner physics resumes
 local last_bad_packet_log = {}      -- vehicle_id -> last timestamp we warned about NaN/Inf (throttle)
 local TELEPORT_THRESHOLD = 200.0    -- Meters - position jump in one tick that indicates a teleport
 local TELEPORT_RESET_DELAY = 0.5    -- Seconds to wait after teleport before sending ResetVehicle
+local OWNER_TELEPORT_COOLDOWN = 0.5 -- Seconds to keep owner physics settled after local teleport
+local REMOTE_TELEPORT_COOLDOWN = 0.5 -- Seconds to keep remote physics settled after received teleport
 local CLUSTER_LINEAR_DEADBAND = 0.05
-local CLUSTER_ANGULAR_DEADBAND = 0.05
 
 M.loading_map = false
 M.id_map = {}
@@ -71,6 +72,31 @@ local function zero_small_vec_components(x, y, z, deadband)
   return x, y, z
 end
 
+local function clamp_seconds(value, fallback)
+  if type(value) ~= "number" then return fallback end
+  return math.max(0, math.min(value, 2.0))
+end
+
+local function set_teleport_tuning(owner_cooldown, remote_cooldown, reset_delay)
+  OWNER_TELEPORT_COOLDOWN = clamp_seconds(owner_cooldown, OWNER_TELEPORT_COOLDOWN)
+  REMOTE_TELEPORT_COOLDOWN = clamp_seconds(remote_cooldown, REMOTE_TELEPORT_COOLDOWN)
+  TELEPORT_RESET_DELAY = clamp_seconds(reset_delay, TELEPORT_RESET_DELAY)
+end
+
+local function settle_owner_teleport(vehicle_id, vehicle, duration)
+  if not M.ownership[vehicle_id] then return false end
+  if not vehicle then return false end
+
+  local cooldown = duration or OWNER_TELEPORT_COOLDOWN
+  owner_teleport_cooldowns[vehicle_id] = math.max(owner_teleport_cooldowns[vehicle_id] or 0, cooldown)
+  kisstransform.inactive[vehicle_id] = true
+  kisstransform.local_transforms[vehicle_id] = nil
+  last_position_buffer[vehicle_id] = nil
+
+  kisstransform.queue_kiss_command(vehicle, "kiss_vehicle.post_owner_teleport_settle()")
+  return true
+end
+
 local function send_vehicle_update(obj)
   if not kisstransform.local_transforms[obj:getID()] then return end
   local t = kisstransform.local_transforms[obj:getID()]
@@ -88,7 +114,7 @@ local function send_vehicle_update(obj)
   local velocity = t.velocity
   local vel_x, vel_y, vel_z = zero_small_vec_components(velocity[1], velocity[2], velocity[3], CLUSTER_LINEAR_DEADBAND)
   local angular_velocity = t.angular_velocity
-  local ang_x, ang_y, ang_z = zero_small_vec_components(angular_velocity[1], angular_velocity[2], angular_velocity[3], CLUSTER_ANGULAR_DEADBAND)
+  local ang_x, ang_y, ang_z = angular_velocity[1], angular_velocity[2], angular_velocity[3]
 
   -- A position jump greater than TELEPORT_THRESHOLD in one tick is treated as a teleport.
   -- Arm a debounced ResetVehicle so the remote replica resets at the new position once the
@@ -99,6 +125,8 @@ local function send_vehicle_update(obj)
     local distance = position_vec:distance(vec3(last_pos.x, last_pos.y, last_pos.z))
     if distance > TELEPORT_THRESHOLD then
       teleport_reset_timers[vehicle_id] = TELEPORT_RESET_DELAY
+      settle_owner_teleport(vehicle_id, obj)
+      return
     end
   end
   last_position_buffer[vehicle_id] = position_vec
@@ -208,8 +236,6 @@ end
 local function send_vehicle_config(vehicle_id)
   local vehicle = be:getObjectByID(vehicle_id)
   if vehicle then
-    if sent_vehicle_config_ids[vehicle_id] then return end
-    sent_vehicle_config_ids[vehicle_id] = true
     kisstransform.queue_kiss_command(vehicle, "kiss_vehicle.send_vehicle_config()")
   end
 end
@@ -232,10 +258,6 @@ local function sync_initial_player_vehicle()
 
   local id = vehicle:getID()
   if M.ownership[id] or M.server_ids[id] then
-    pending_initial_vehicle_sync = false
-    return
-  end
-  if sent_vehicle_config_ids[id] then
     pending_initial_vehicle_sync = false
     return
   end
@@ -387,6 +409,21 @@ local function onUpdate(dt)
     end
   end
 
+  for vid, remaining in pairs(owner_teleport_cooldowns) do
+    remaining = remaining - dt
+    if remaining <= 0 then
+      owner_teleport_cooldowns[vid] = nil
+      local vehicle = be:getObjectByID(vid)
+      if vehicle then
+        kisstransform.inactive[vid] = false
+        kisstransform.queue_kiss_command(vehicle, "kiss_vehicle.post_owner_teleport_settle()")
+        last_position_buffer[vid] = vec3(vehicle:getPosition())
+      end
+    else
+      owner_teleport_cooldowns[vid] = remaining
+    end
+  end
+
   local tick_time = (1/network.connection.tickrate)
   if timer <  tick_time then
     timer = timer + dt
@@ -508,7 +545,13 @@ local function reset_vehicle(data)
   local vehicle = be:getObjectByID(id)
   if not vehicle then return end
   if vehicle then
-    vehicle:reset()
+    M.packet_gen_buffer[id] = nil
+    M.packet_timer_buffer[id] = nil
+    kisstransform.received_transforms[id] = nil
+    kisstransform.set_teleport_cooldown(id, REMOTE_TELEPORT_COOLDOWN)
+    kisstransform.inactive[id] = true
+
+    vehicle:setActive(0)
     vehicle:setPositionRotation(
       position[1],
       position[2],
@@ -518,6 +561,7 @@ local function reset_vehicle(data)
       rotation[3],
       rotation[4]
     )
+    kisstransform.queue_kiss_command(vehicle, string.format("kiss_transforms.post_teleport_cooldown(%f)", REMOTE_TELEPORT_COOLDOWN))
   end
 end
 
@@ -658,6 +702,9 @@ local function onVehicleSpawned(id)
   end
   prepare_vehicle_for_sync(vehicle)
   send_vehicle_config(id)
+  if vehicle == be:getPlayerVehicle(0) then
+    pending_initial_vehicle_sync = false
+  end
   -- Attempt to workaround a bug from latest beamng update. Also prevents unicycle cloning(Somewhat)
   if vehicle:getJBeamFilename() == "unicycle" then
     for i = 0, be:getObjectCount() do
@@ -673,7 +720,7 @@ local function onVehicleDestroyed(id)
   if not network.connection.connected then return end
   last_position_buffer[id] = nil
   teleport_reset_timers[id] = nil
-  sent_vehicle_config_ids[id] = nil
+  owner_teleport_cooldowns[id] = nil
   if M.ownership[id] then
     M.id_map[M.ownership[id]] = nil
     M.ownership[id] = nil
@@ -689,6 +736,9 @@ local function onVehicleDestroyed(id)
 end
 
 local function onVehicleResetted(id)
+  if M.ownership[id] then
+    settle_owner_teleport(id, be:getObjectByID(id))
+  end
   send_reset_vehicle(id)
 end
 
@@ -717,7 +767,7 @@ local function onMissionLoaded(mission)
   M.server_ids = {}
   M.packet_gen_buffer = {}
   M.packet_timer_buffer = {}
-  sent_vehicle_config_ids = {}
+  owner_teleport_cooldowns = {}
   M.loading_map = false
   first_vehicle = true
   pending_initial_vehicle_sync = true
@@ -735,6 +785,7 @@ M.update_vehicle_gearbox = update_vehicle_gearbox
 M.rotate_nodes = rotate_nodes
 M.remove_vehicle = remove_vehicle
 M.reset_vehicle = reset_vehicle
+M.set_teleport_tuning = set_teleport_tuning
 M.update_vehicle_meta = update_vehicle_meta
 M.onVehicleDestroyed = onVehicleDestroyed
 M.onVehicleResetted = onVehicleResetted
