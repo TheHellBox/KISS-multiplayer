@@ -33,39 +33,39 @@ end
 -- Cluster snap used only for large recovery corrections. The target position
 -- passed here must be a refnode/origin position, not COG.
 local function apply_cluster_target(vehicle_id,
-                                    tx, ty, tz,
-                                    qx, qy, qz, qw,
-                                    vx, vy, vz)
+                                    target_origin_x, target_origin_y, target_origin_z,
+                                    target_rotation_x, target_rotation_y, target_rotation_z, target_rotation_w,
+                                    target_velocity_x, target_velocity_y, target_velocity_z)
   local veh = be:getObjectByID(vehicle_id)
   if not veh then return end
   local ref_node_id = veh:getRefNodeId()
 
-  local current_rot = quatFromDir(-veh:getDirectionVector(), veh:getDirectionVectorUp())
-  local target_rot = quat(qx, qy, qz, qw)
-  local rel_rot = current_rot:inversed() * target_rot
+  local current_rotation = quatFromDir(-veh:getDirectionVector(), veh:getDirectionVectorUp())
+  local target_rotation = quat(target_rotation_x, target_rotation_y, target_rotation_z, target_rotation_w)
+  local relative_rotation = current_rotation:inversed() * target_rotation
 
-  veh:setClusterPosRelRot(ref_node_id, tx, ty, tz,
-    rel_rot.x, rel_rot.y, rel_rot.z, rel_rot.w)
+  veh:setClusterPosRelRot(ref_node_id, target_origin_x, target_origin_y, target_origin_z,
+    relative_rotation.x, relative_rotation.y, relative_rotation.z, relative_rotation.w)
 
-  local local_vel = vec3(veh:getVelocity())
-  local rotated_local = local_vel:rotated(rel_rot)
+  local local_velocity = vec3(veh:getVelocity())
+  local rotated_local_velocity = local_velocity:rotated(relative_rotation)
   veh:applyClusterVelocityScaleAdd(ref_node_id, 1,
-    vx - rotated_local.x,
-    vy - rotated_local.y,
-    vz - rotated_local.z)
+    target_velocity_x - rotated_local_velocity.x,
+    target_velocity_y - rotated_local_velocity.y,
+    target_velocity_z - rotated_local_velocity.z)
 end
 
 local function queue_cog_snap(vehicle, transform)
-  local p, r = transform.position, transform.rotation
-  local v = transform.velocity or {0, 0, 0}
-  local w = transform.angular_velocity or {0, 0, 0}
-  if not (p and r and #p >= 3 and #r >= 4) then return end
+  local position, rotation = transform.position, transform.rotation
+  local velocity = transform.velocity or {0, 0, 0}
+  local angular_velocity = transform.angular_velocity or {0, 0, 0}
+  if not (position and rotation and #position >= 3 and #rotation >= 4) then return end
   queue_kiss_command(vehicle,
     "kiss_transforms.snap_to_cog_target("
-    ..p[1]..","..p[2]..","..p[3]..","
-    ..r[1]..","..r[2]..","..r[3]..","..r[4]..","
-    ..(v[1] or 0)..","..(v[2] or 0)..","..(v[3] or 0)..","
-    ..(w[1] or 0)..","..(w[2] or 0)..","..(w[3] or 0)..")"
+    ..position[1]..","..position[2]..","..position[3]..","
+    ..rotation[1]..","..rotation[2]..","..rotation[3]..","..rotation[4]..","
+    ..(velocity[1] or 0)..","..(velocity[2] or 0)..","..(velocity[3] or 0)..","
+    ..(angular_velocity[1] or 0)..","..(angular_velocity[2] or 0)..","..(angular_velocity[3] or 0)..")"
   )
 end
 
@@ -81,11 +81,11 @@ local function is_finite_number(x)
   return true
 end
 
-local function is_finite_transform(p, r)
-  if #p < 3 or #r < 4 then return false end
-  return is_finite_number(p[1]) and is_finite_number(p[2]) and is_finite_number(p[3])
-    and is_finite_number(r[1]) and is_finite_number(r[2])
-    and is_finite_number(r[3]) and is_finite_number(r[4])
+local function is_finite_transform(position, rotation)
+  if #position < 3 or #rotation < 4 then return false end
+  return is_finite_number(position[1]) and is_finite_number(position[2]) and is_finite_number(position[3])
+    and is_finite_number(rotation[1]) and is_finite_number(rotation[2])
+    and is_finite_number(rotation[3]) and is_finite_number(rotation[4])
 end
 local function update(dt)
   if DEBUG_GLOBAL then
@@ -197,9 +197,9 @@ local function update_vehicle_transform(data)
   -- COG-aware recovery snaps) see a unit quaternion.
   local r = transform.rotation
   if r and #r >= 4 then
-    local n = math.sqrt(r[1]*r[1] + r[2]*r[2] + r[3]*r[3] + r[4]*r[4])
+    local n = math.sqrt(rotation[1]*rotation[1] + rotation[2]*rotation[2] + rotation[3]*rotation[3] + rotation[4]*rotation[4])
     if n > 1e-9 then
-      r[1], r[2], r[3], r[4] = r[1]/n, r[2]/n, r[3]/n, r[4]/n
+      rotation[1], rotation[2], rotation[3], rotation[4] = rotation[1]/n, rotation[2]/n, rotation[3]/n, rotation[4]/n
     end
   end
 

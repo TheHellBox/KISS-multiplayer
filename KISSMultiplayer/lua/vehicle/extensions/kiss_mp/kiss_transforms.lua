@@ -18,9 +18,9 @@ M.ownership_known = false
 M.last_linear_step = nil
 M.last_angular_step = nil
 M.last_cog_velocity = nil
-M.last_body_spin = nil
-M.smooth_local_vel_refnode = nil
-M.smooth_local_omega_body = nil
+M.last_body_angular_velocity = nil
+M.smooth_local_refnode_velocity = nil
+M.smooth_local_body_angular_velocity = nil
 M.smooth_linear_step_error = nil
 M.smooth_angular_step_error = nil
 M.last_update_dt = 0
@@ -38,8 +38,8 @@ local ERROR_SMOOTH_RATE = 50.0
 -- weighted variant tracks mass distribution rather than the geometric
 -- support-pair midpoint.
 local function get_cog_body()
-  if kiss_vehicle and kiss_vehicle.get_mass_cog_body then
-    return kiss_vehicle.get_mass_cog_body()
+  if kiss_vehicle and kiss_vehicle.get_sync_cog_body then
+    return kiss_vehicle.get_sync_cog_body()
   end
   return vec3(0, 0, 0)
 end
@@ -70,9 +70,9 @@ local function clear_drift_state()
   M.last_linear_step = nil
   M.last_angular_step = nil
   M.last_cog_velocity = nil
-  M.last_body_spin = nil
-  M.smooth_local_vel_refnode = nil
-  M.smooth_local_omega_body = nil
+  M.last_body_angular_velocity = nil
+  M.smooth_local_refnode_velocity = nil
+  M.smooth_local_body_angular_velocity = nil
   M.smooth_linear_step_error = nil
   M.smooth_angular_step_error = nil
   M.last_update_dt = 0
@@ -100,7 +100,7 @@ function ClusterServo:limit_step(step, max_len)
   return step
 end
 
-local function apply_disconnected_counterforce(cog_world, linear_step, angular_step)
+local function apply_disconnected_counterforce(cog_offset_world, linear_step, angular_step)
   if not (kiss_vehicle and kiss_vehicle.get_disconnected_node_states) then return end
   local disconnected = kiss_vehicle.get_disconnected_node_states()
   if #disconnected == 0 then return end
@@ -115,13 +115,13 @@ local function apply_disconnected_counterforce(cog_world, linear_step, angular_s
     local mass = state.mass or obj:getNodeMass(cid) or 0
     if cid and mass > 0 then
       local node_pos = obj:getNodePosition(cid)
-      local px = node_pos.x - cog_world.x
-      local py = node_pos.y - cog_world.y
-      local pz = node_pos.z - cog_world.z
+      local node_offset_x = node_pos.x - cog_offset_world.x
+      local node_offset_y = node_pos.y - cog_offset_world.y
+      local node_offset_z = node_pos.z - cog_offset_world.z
       force:set(
-        (x + py * yaw - pz * roll) * mass * pfps,
-        (y + pz * pitch - px * yaw) * mass * pfps,
-        (z + px * roll - py * pitch) * mass * pfps
+        (x + node_offset_y * yaw - node_offset_z * roll) * mass * pfps,
+        (y + node_offset_z * pitch - node_offset_x * yaw) * mass * pfps,
+        (z + node_offset_x * roll - node_offset_y * pitch) * mass * pfps
       )
       obj:applyForceVector(cid, force)
     end
@@ -156,14 +156,14 @@ local function set_angular_pull_scale(scale)
   end
 end
 
-function ClusterServo:apply_cluster_step(refnode_cid, cog_world, linear_step, angular_step, local_cog_speed)
+function ClusterServo:apply_cluster_step(refnode_cid, cog_offset_world, linear_step, angular_step, local_cog_speed)
   local MIN_POS_FORCE, MIN_ROT_FORCE = 0.04, 0.02
   local pfps = obj:getPhysicsFPS() or 2000
 
   if angular_step:length() > MIN_ROT_FORCE or local_cog_speed > 1 then
-    local cog_cross_spin_x = cog_world.y * angular_step.z - cog_world.z * angular_step.y
-    local cog_cross_spin_y = cog_world.z * angular_step.x - cog_world.x * angular_step.z
-    local cog_cross_spin_z = cog_world.x * angular_step.y - cog_world.y * angular_step.x
+    local cog_cross_spin_x = cog_offset_world.y * angular_step.z - cog_offset_world.z * angular_step.y
+    local cog_cross_spin_y = cog_offset_world.z * angular_step.x - cog_offset_world.x * angular_step.z
+    local cog_cross_spin_z = cog_offset_world.x * angular_step.y - cog_offset_world.y * angular_step.x
     obj:applyClusterLinearAngularAccel(
       refnode_cid,
       vec3(
@@ -177,14 +177,14 @@ function ClusterServo:apply_cluster_step(refnode_cid, cog_world, linear_step, an
         -angular_step.z * pfps
       )
     )
-    apply_disconnected_counterforce(cog_world, linear_step, angular_step)
+    apply_disconnected_counterforce(cog_offset_world, linear_step, angular_step)
   elseif linear_step:length() > MIN_POS_FORCE then
     obj:applyClusterLinearAngularAccel(
       refnode_cid,
       vec3(linear_step.x * pfps, linear_step.y * pfps, linear_step.z * pfps),
       vec3(0, 0, 0)
     )
-    apply_disconnected_counterforce(cog_world, linear_step, vec3(0, 0, 0))
+    apply_disconnected_counterforce(cog_offset_world, linear_step, vec3(0, 0, 0))
   end
 end
 
@@ -196,19 +196,19 @@ end
 -- Handle large corrections (teleport prevention) in the same COG space used
 -- by the active correction loop. The wire position is COG-anchored; the GE
 -- cluster snap receives the equivalent refnode origin.
-local function try_rude(target_cog_pos, target_rot, target_cog_vel, target_angvel, dt)
+local function try_rude(target_cog_position, target_rotation, target_cog_velocity, target_angular_velocity, dt)
   -- Use the same rotation convention the wire / PD loop use (quatFromDir
   -- on negated direction vector). Mixing obj:getRotation() here would
   -- produce a frame-mismatched yaw error and fire the rude-snap at the
   -- wrong heading thresholds.
-  local current_rot = quatFromDir(-vec3(obj:getDirectionVector()), vec3(obj:getDirectionVectorUp()))
-  local current_centroid_pos = vec3(obj:getPosition()) + current_rot * get_cog_body()
-  local current_euler = current_rot:toEulerYXZ()
-  local target_euler = target_rot:toEulerYXZ()
-  local planar_error_x = target_cog_pos.x - current_centroid_pos.x
-  local planar_error_y = target_cog_pos.y - current_centroid_pos.y
+  local current_rotation = quatFromDir(-vec3(obj:getDirectionVector()), vec3(obj:getDirectionVectorUp()))
+  local current_centroid_pos = vec3(obj:getPosition()) + current_rotation * get_cog_body()
+  local current_euler = current_rotation:toEulerYXZ()
+  local target_euler = target_rotation:toEulerYXZ()
+  local planar_error_x = target_cog_position.x - current_centroid_pos.x
+  local planar_error_y = target_cog_position.y - current_centroid_pos.y
   local planar_error = math.sqrt(planar_error_x * planar_error_x + planar_error_y * planar_error_y)
-  local vertical_error = math.abs(target_cog_pos.z - current_centroid_pos.z)
+  local vertical_error = math.abs(target_cog_position.z - current_centroid_pos.z)
   local yaw_error = math.abs(wrap_angle_pi(target_euler.x - current_euler.x))
 
   local severe = planar_error > 8.0
@@ -231,15 +231,15 @@ local function try_rude(target_cog_pos, target_rot, target_cog_vel, target_angve
   end
   M.rude_error_time = 0
 
-  local target_cog_world = target_rot * get_cog_body()
-  local target_origin = target_cog_pos - target_cog_world
-  local omega = target_angvel or vec3(0, 0, 0)
-  local origin_vel = (target_cog_vel or vec3(0, 0, 0)) - target_cog_world:cross(omega)
+  local target_cog_offset_world = target_rotation * get_cog_body()
+  local target_origin = target_cog_position - target_cog_offset_world
+  local target_angular_velocity_world = target_angular_velocity or vec3(0, 0, 0)
+  local origin_velocity = (target_cog_velocity or vec3(0, 0, 0)) - target_cog_offset_world:cross(target_angular_velocity_world)
   obj:queueGameEngineLua(
     "kisstransform.apply_cluster_target("..obj:getID()..","
     ..target_origin.x..","..target_origin.y..","..target_origin.z..","
-    ..target_rot.x..","..target_rot.y..","..target_rot.z..","..target_rot.w..","
-    ..origin_vel.x..","..origin_vel.y..","..origin_vel.z..")"
+    ..target_rotation.x..","..target_rotation.y..","..target_rotation.z..","..target_rotation.w..","
+    ..origin_velocity.x..","..origin_velocity.y..","..origin_velocity.z..")"
   )
   return true
 end
@@ -298,12 +298,12 @@ local function update(dt)
 
   -- Owner-replay path: heading comes directly from the predicted owner body
   -- rotation; follower-side path error must never bias authoritative yaw.
-  local cluster_rot = synced_transform.rotation
-  local cluster_angvel = synced_transform.angular_velocity or vec3(0, 0, 0)
-  local target_cog_pos = synced_transform.position
-  local target_cog_vel = synced_transform.velocity or vec3(0, 0, 0)
+  local target_cluster_rotation = synced_transform.rotation
+  local target_cluster_angular_velocity = synced_transform.angular_velocity or vec3(0, 0, 0)
+  local target_cog_position = synced_transform.position
+  local target_cog_velocity = synced_transform.velocity or vec3(0, 0, 0)
 
-  if try_rude(target_cog_pos, cluster_rot, target_cog_vel, cluster_angvel, dt) then
+  if try_rude(target_cog_position, target_cluster_rotation, target_cog_velocity, target_cluster_angular_velocity, dt) then
     if M.debug then
       print("[kiss_transforms.update] try_rude triggered - rude-snap reset applied")
       draw_debug(synced_transform)
@@ -337,63 +337,61 @@ local function update(dt)
 
     -- Wrong COG creates phantom position/velocity error proportional to
     -- rotation and angular-velocity mismatch.
-    if kiss_vehicle and kiss_vehicle.maybe_recompute_mass_cog_body then
-      kiss_vehicle.maybe_recompute_mass_cog_body()
+    if kiss_vehicle and kiss_vehicle.maybe_recompute_sync_cog_body then
+      kiss_vehicle.maybe_recompute_sync_cog_body()
     end
     local cog_body = vec3(0, 0, 0)
-    if kiss_vehicle and kiss_vehicle.get_mass_cog_body then
-      cog_body = kiss_vehicle.get_mass_cog_body()
+    if kiss_vehicle and kiss_vehicle.get_sync_cog_body then
+      cog_body = kiss_vehicle.get_sync_cog_body()
     end
 
     -- Local state in world frame.
     local local_rot = quatFromDir(-vec3(obj:getDirectionVector()), vec3(obj:getDirectionVectorUp()))
-    local cog_world = cog_body:rotated(local_rot)
-    local local_pos_refnode = vec3(obj:getPosition())
+    local cog_offset_world = cog_body:rotated(local_rot)
+    local local_refnode_position = vec3(obj:getPosition())
     local local_motion = kiss_vehicle and kiss_vehicle.get_smoothed_local_motion and kiss_vehicle.get_smoothed_local_motion()
-    local local_vel_refnode = local_motion and local_motion.refnode_velocity
-    local local_omega_body = local_motion and local_motion.body_omega
-    if not local_vel_refnode or not local_omega_body then
-      local raw_local_vel_refnode = vec3(obj:getVelocity())
-      local raw_local_omega_body = vec3(
+    local local_refnode_velocity = local_motion and local_motion.refnode_velocity
+    local local_body_angular_velocity = local_motion and local_motion.body_omega
+    if not local_refnode_velocity or not local_body_angular_velocity then
+      local raw_local_refnode_velocity = vec3(obj:getVelocity())
+      local raw_local_body_angular_velocity = vec3(
         obj:getPitchAngularVelocity(),
         obj:getRollAngularVelocity(),
         obj:getYawAngularVelocity()
       )
-      M.smooth_local_vel_refnode = lowpass_vec(M.smooth_local_vel_refnode, raw_local_vel_refnode, dt, LOCAL_SMOOTH_RATE)
-      M.smooth_local_omega_body = lowpass_vec(M.smooth_local_omega_body, raw_local_omega_body, dt, LOCAL_SMOOTH_RATE)
-      local_vel_refnode = M.smooth_local_vel_refnode
-      local_omega_body = M.smooth_local_omega_body
+      M.smooth_local_refnode_velocity = lowpass_vec(M.smooth_local_refnode_velocity, raw_local_refnode_velocity, dt, LOCAL_SMOOTH_RATE)
+      M.smooth_local_body_angular_velocity = lowpass_vec(M.smooth_local_body_angular_velocity, raw_local_body_angular_velocity, dt, LOCAL_SMOOTH_RATE)
+      local_refnode_velocity = M.smooth_local_refnode_velocity
+      local_body_angular_velocity = M.smooth_local_body_angular_velocity
     end
-    local local_omega = local_omega_body:rotated(local_rot)
-    -- Cluster convention: v_cog = v_refnode + cog_world x omega_world.
-    local local_pos_cog = local_pos_refnode + cog_world
-    local local_vel_cog = local_vel_refnode + cog_world:cross(local_omega)
+    local local_angular_velocity = local_body_angular_velocity:rotated(local_rot)
+    -- Cluster convention: v_cog = v_refnode + cog_offset_world x omega_world.
+    local local_cog_position = local_refnode_position + cog_offset_world
+    local local_cog_velocity = local_refnode_velocity + cog_offset_world:cross(local_angular_velocity)
 
     -- Observed velocity-delta this frame, world frame at COG. Used by the
     -- overshoot dampener to detect when the body didn't deliver what we
     -- asked for last frame.
-    local delivered_linear_step = (M.last_cog_velocity == nil) and vec3(0,0,0) or (local_vel_cog - M.last_cog_velocity)
-    local delivered_angular_step = (M.last_body_spin == nil) and vec3(0,0,0) or (local_omega - M.last_body_spin)
-    M.last_cog_velocity = local_vel_cog
-    M.last_body_spin = local_omega
+    local delivered_linear_step = (M.last_cog_velocity == nil) and vec3(0,0,0) or (local_cog_velocity - M.last_cog_velocity)
+    local delivered_angular_step = (M.last_body_angular_velocity == nil) and vec3(0,0,0) or (local_angular_velocity - M.last_body_angular_velocity)
+    M.last_cog_velocity = local_cog_velocity
+    M.last_body_angular_velocity = local_angular_velocity
 
     -- Target state in world frame. Wire is COG-anchored.
-    local target_rot = cluster_rot
-    local target_omega = cluster_angvel
-    local target_pos_cog = target_cog_pos
-    local target_vel_cog = target_cog_vel
+    local target_rotation = target_cluster_rotation
+    local target_angular_velocity = target_cluster_angular_velocity
 
     -- Errors.
-    local cog_position_error = target_pos_cog - local_pos_cog
-    local cog_velocity_error = target_vel_cog - local_vel_cog
+    local cog_position_error = target_cog_position - local_cog_position
+    local cog_velocity_error = target_cog_velocity - local_cog_velocity
 
     -- Rotation error: small-angle approximation via local-frame Euler of
     -- (current.inverse * target), swizzled to (eul.y, eul.z, eul.x) to
     -- match the gyro / ω packing convention used elsewhere on the wire.
-    local rot_err_quat = local_rot:inversed() * target_rot
-    local rot_err_eul = rot_err_quat:toEulerYXZ()
-    local orientation_error = vec3(rot_err_eul.y, rot_err_eul.z, rot_err_eul.x)
-    local spin_error = target_omega - local_omega
+    local rotation_error_quaternion = local_rot:inversed() * target_rotation
+    local rotation_error_euler = rotation_error_quaternion:toEulerYXZ()
+    local orientation_error = vec3(rotation_error_euler.y, rotation_error_euler.z, rotation_error_euler.x)
+    local spin_error = target_angular_velocity - local_angular_velocity
 
     local linear_step, angular_step = ClusterServo:solve_step(
       cog_position_error, cog_velocity_error,
@@ -438,11 +436,11 @@ local function update(dt)
         cog_position_error:length(), cog_velocity_error:length(),
         orientation_error:length(), spin_error:length(),
         linear_step:length(), angular_step:length(),
-        local_vel_cog:length()
+        local_cog_velocity:length()
       ))
     end
 
-    ClusterServo:apply_cluster_step(refnode_cid, cog_world, linear_step, angular_step, local_vel_cog:length())
+    ClusterServo:apply_cluster_step(refnode_cid, cog_offset_world, linear_step, angular_step, local_cog_velocity:length())
   end
 
   if M.debug then
@@ -488,18 +486,18 @@ local function set_target_transform(raw)
   )
 end
 
-local function snap_to_cog_target(px, py, pz, qx, qy, qz, qw, vx, vy, vz, wx, wy, wz)
-  if kiss_vehicle and kiss_vehicle.maybe_recompute_mass_cog_body then
-    kiss_vehicle.maybe_recompute_mass_cog_body()
+local function snap_to_cog_target(target_cog_position_x, target_cog_position_y, target_cog_position_z, target_rotation_x, target_rotation_y, target_rotation_z, target_rotation_w, target_velocity_x, target_velocity_y, target_velocity_z, target_angular_velocity_x, target_angular_velocity_y, target_angular_velocity_z)
+  if kiss_vehicle and kiss_vehicle.maybe_recompute_sync_cog_body then
+    kiss_vehicle.maybe_recompute_sync_cog_body()
   end
 
-  local target_rot = quat(qx, qy, qz, qw)
-  local target_cog_pos = vec3(px, py, pz)
-  local target_cog_vel = vec3(vx or 0, vy or 0, vz or 0)
-  local target_angvel = vec3(wx or 0, wy or 0, wz or 0)
-  local target_cog_world = target_rot * get_cog_body()
-  local target_origin = target_cog_pos - target_cog_world
-  local target_origin_vel = target_cog_vel - target_cog_world:cross(target_angvel)
+  local target_rotation = quat(target_rotation_x, target_rotation_y, target_rotation_z, target_rotation_w)
+  local target_cog_position = vec3(target_cog_position_x, target_cog_position_y, target_cog_position_z)
+  local target_cog_velocity = vec3(target_velocity_x or 0, target_velocity_y or 0, target_velocity_z or 0)
+  local target_angular_velocity = vec3(target_angular_velocity_x or 0, target_angular_velocity_y or 0, target_angular_velocity_z or 0)
+  local target_cog_offset_world = target_rotation * get_cog_body()
+  local target_origin = target_cog_position - target_cog_offset_world
+  local target_origin_velocity = target_cog_velocity - target_cog_offset_world:cross(target_angular_velocity)
 
   clear_drift_state()
   if M.sync_id and kiss_sync and kiss_sync.reset_motion_smoothers then
@@ -509,8 +507,8 @@ local function snap_to_cog_target(px, py, pz, qx, qy, qz, qw, vx, vy, vz, wx, wy
   obj:queueGameEngineLua(
     "kisstransform.apply_cluster_target("..obj:getID()..","
     ..target_origin.x..","..target_origin.y..","..target_origin.z..","
-    ..target_rot.x..","..target_rot.y..","..target_rot.z..","..target_rot.w..","
-    ..target_origin_vel.x..","..target_origin_vel.y..","..target_origin_vel.z..")"
+    ..target_rotation.x..","..target_rotation.y..","..target_rotation.z..","..target_rotation.w..","
+    ..target_origin_velocity.x..","..target_origin_velocity.y..","..target_origin_velocity.z..")"
   )
 end
 
@@ -525,17 +523,17 @@ end
 
 local function onExtensionLoaded()
   M.sync_id = obj:getID()
-  if kiss_vehicle and kiss_vehicle.maybe_recompute_mass_cog_body then
-    kiss_vehicle.maybe_recompute_mass_cog_body()
+  if kiss_vehicle and kiss_vehicle.maybe_recompute_sync_cog_body then
+    kiss_vehicle.maybe_recompute_sync_cog_body()
   end
-  local current_rot = quatFromDir(-vec3(obj:getDirectionVector()), vec3(obj:getDirectionVectorUp()))
-  local current_pos = vec3(obj:getPosition()) + current_rot * get_cog_body()
+  local current_rotation = quatFromDir(-vec3(obj:getDirectionVector()), vec3(obj:getDirectionVectorUp()))
+  local current_pos = vec3(obj:getPosition()) + current_rotation * get_cog_body()
 
   -- Seed kiss_sync at the current COG so first update has no startup snap.
   local current_time = get_local_sync_time()
   local initial_transform = {
     position = {current_pos.x, current_pos.y, current_pos.z},
-    rotation = {current_rot.x, current_rot.y, current_rot.z, current_rot.w},
+    rotation = {current_rotation.x, current_rotation.y, current_rotation.z, current_rotation.w},
     velocity = {0, 0, 0},
     angular_velocity = {0, 0, 0},
   }
@@ -565,7 +563,7 @@ local function onReset()
   M.last_linear_step = nil
   M.last_angular_step = nil
   M.last_cog_velocity = nil
-  M.last_body_spin = nil
+  M.last_body_angular_velocity = nil
 end
 
 M.set_target_transform = set_target_transform

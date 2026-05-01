@@ -112,9 +112,9 @@ local function send_vehicle_update(obj)
   local position = t.position
   local position_vec = vec3(position[1], position[2], position[3])
   local velocity = t.velocity
-  local vel_x, vel_y, vel_z = zero_small_vec_components(velocity[1], velocity[2], velocity[3], CLUSTER_LINEAR_DEADBAND)
+  local velocity_x, velocity_y, velocity_z = zero_small_vec_components(velocity[1], velocity[2], velocity[3], CLUSTER_LINEAR_DEADBAND)
   local angular_velocity = t.angular_velocity
-  local ang_x, ang_y, ang_z = angular_velocity[1], angular_velocity[2], angular_velocity[3]
+  local angular_velocity_x, angular_velocity_y, ang_z = angular_velocity[1], angular_velocity[2], angular_velocity[3]
 
   -- A position jump greater than TELEPORT_THRESHOLD in one tick is treated as a teleport.
   -- Arm a debounced ResetVehicle so the remote replica resets at the new position once the
@@ -140,9 +140,9 @@ local function send_vehicle_update(obj)
     return type(n) == "number" and n == n and n < 1e8 and n > -1e8
   end
   if not (ok(position[1]) and ok(position[2]) and ok(position[3])
-      and ok(vel_x) and ok(vel_y) and ok(vel_z)
+      and ok(velocity_x) and ok(velocity_y) and ok(velocity_z)
       and ok(rotation[1]) and ok(rotation[2]) and ok(rotation[3]) and ok(rotation[4])
-      and ok(ang_x) and ok(ang_y) and ok(ang_z)) then
+      and ok(angular_velocity_x) and ok(angular_velocity_y) and ok(ang_z)) then
     local vid = obj:getID()
     if not last_bad_packet_log[vid] or (get_current_time() - last_bad_packet_log[vid]) > 5 then
       print(string.format("[vehiclemanager] non-finite values in vehicle %d transform; dropping packet", vid))
@@ -155,8 +155,8 @@ local function send_vehicle_update(obj)
     transform = {
       position = {position[1], position[2], position[3]},
       rotation = rotation,
-      velocity = {vel_x, vel_y, vel_z},
-      angular_velocity = {ang_x, ang_y, ang_z}
+      velocity = {velocity_x, velocity_y, velocity_z},
+      angular_velocity = {angular_velocity_x, angular_velocity_y, ang_z}
     },
     electrics = t.input,
     gearbox = t.gearbox,

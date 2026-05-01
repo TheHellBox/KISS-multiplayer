@@ -8,14 +8,14 @@ local connected_graph = {}
 local parent_node = nil
 local last_damage = 0
 
-M.mass_cog_body = vec3(0, 0, 0)
+M.sync_cog_body = vec3(0, 0, 0)
 
 local last_cog_compute_time = -math.huge
 local COG_RECOMPUTE_INTERVAL_S = 0.2
 
 local SEND_SMOOTH_RATE = 50.0
-local smoothed_send_vel = nil
-local smoothed_send_omega_body = nil
+local smoothed_send_refnode_velocity = nil
+local smoothed_send_body_angular_velocity = nil
 local last_motion_sample_time = nil
 local last_motion_sample_dt = 1/60
 local cached_transform_sample = nil
@@ -42,8 +42,8 @@ local function lowpass_dt(prev, target, dt, rate)
 end
 
 local function reset_send_smoothers()
-  smoothed_send_vel = nil
-  smoothed_send_omega_body = nil
+  smoothed_send_refnode_velocity = nil
+  smoothed_send_body_angular_velocity = nil
   last_motion_sample_time = nil
   last_motion_sample_dt = 1/60
   cached_transform_sample = nil
@@ -142,7 +142,7 @@ end
 
 -- Mass-weighted COG offset in body frame. The receiver uses this same body
 -- offset to run the correction loop in COG-space instead of refnode-space.
-local function compute_mass_cog_body()
+local function compute_sync_cog_body()
   local total_mass = 0
   local cog_sum_x, cog_sum_y, cog_sum_z = 0, 0, 0
 
@@ -161,17 +161,17 @@ local function compute_mass_cog_body()
   end
 
   if total_mass < 1e-9 then
-    M.mass_cog_body = vec3(0, 0, 0)
+    M.sync_cog_body = vec3(0, 0, 0)
     return
   end
 
   local inv = 1 / total_mass
-  local cog_world = vec3(cog_sum_x * inv, cog_sum_y * inv, cog_sum_z * inv)
+  local cog_offset_world = vec3(cog_sum_x * inv, cog_sum_y * inv, cog_sum_z * inv)
   local rot = quatFromDir(-vec3(obj:getDirectionVector()), vec3(obj:getDirectionVectorUp()))
-  M.mass_cog_body = cog_world:rotated(rot:inversed())
+  M.sync_cog_body = cog_offset_world:rotated(rot:inversed())
 end
 
-local function maybe_recompute_mass_cog_body()
+local function maybe_recompute_sync_cog_body()
   local now = os.clock()
   local damage = (beamstate and beamstate.damage) or 0
   if damage ~= last_damage then
@@ -180,13 +180,13 @@ local function maybe_recompute_mass_cog_body()
     last_cog_compute_time = -math.huge
   end
   if now - last_cog_compute_time >= COG_RECOMPUTE_INTERVAL_S then
-    compute_mass_cog_body()
+    compute_sync_cog_body()
     last_cog_compute_time = now
   end
 end
 
-local function get_mass_cog_body()
-  return M.mass_cog_body or vec3(0, 0, 0)
+local function get_sync_cog_body()
+  return M.sync_cog_body or vec3(0, 0, 0)
 end
 
 local function get_disconnected_node_states()
@@ -201,8 +201,8 @@ end
 
 local function get_smoothed_local_motion()
   return {
-    refnode_velocity = smoothed_send_vel,
-    body_omega = smoothed_send_omega_body,
+    refnode_velocity = smoothed_send_refnode_velocity,
+    body_omega = smoothed_send_body_angular_velocity,
     dt = last_motion_sample_dt,
   }
 end
@@ -225,28 +225,28 @@ local function update_motion_sample(dt)
 
   local r = quatFromDir(-vec3(obj:getDirectionVector()), vec3(obj:getDirectionVectorUp()))
   local p = vec3(obj:getPosition())
-  local raw_vel = vec3(obj:getVelocity())
-  local raw_omega_body = get_body_gyro_local_omega()
+  local raw_refnode_velocity = vec3(obj:getVelocity())
+  local raw_body_angular_velocity = get_body_gyro_local_omega()
 
-  smoothed_send_vel = lowpass_dt(smoothed_send_vel, raw_vel, sample_dt, SEND_SMOOTH_RATE)
-  smoothed_send_omega_body = lowpass_dt(smoothed_send_omega_body, raw_omega_body, sample_dt, SEND_SMOOTH_RATE)
+  smoothed_send_refnode_velocity = lowpass_dt(smoothed_send_refnode_velocity, raw_refnode_velocity, sample_dt, SEND_SMOOTH_RATE)
+  smoothed_send_body_angular_velocity = lowpass_dt(smoothed_send_body_angular_velocity, raw_body_angular_velocity, sample_dt, SEND_SMOOTH_RATE)
 
-  local v_world = smoothed_send_vel
-  local omega_world = smoothed_send_omega_body:rotated(r)
+  local refnode_velocity_world = smoothed_send_refnode_velocity
+  local angular_velocity_world = smoothed_send_body_angular_velocity:rotated(r)
 
-  maybe_recompute_mass_cog_body()
-  local cog_world = get_mass_cog_body():rotated(r)
-  local p_cog = p + cog_world
-  local v_cog = v_world + cog_world:cross(omega_world)
+  maybe_recompute_sync_cog_body()
+  local cog_offset_world = get_sync_cog_body():rotated(r)
+  local cog_position_world = p + cog_offset_world
+  local cog_velocity_world = refnode_velocity_world + cog_offset_world:cross(angular_velocity_world)
 
   last_motion_sample_time = now
   last_motion_sample_dt = sample_dt
   send_timer = now
   cached_transform_sample = {
-    position = p_cog,
+    position = cog_position_world,
     rotation = r,
-    velocity = v_cog,
-    angular_velocity = omega_world,
+    velocity = cog_velocity_world,
+    angular_velocity = angular_velocity_world,
   }
 end
 
@@ -277,7 +277,7 @@ local function onExtensionLoaded()
   build_connected_graph()
   choose_parent_node()
   rebuild_connected_nodes()
-  compute_mass_cog_body()
+  compute_sync_cog_body()
 end
 
 local function onReset()
@@ -285,13 +285,13 @@ local function onReset()
   last_damage = (beamstate and beamstate.damage) or 0
   rebuild_connected_nodes()
   reset_send_smoothers()
-  compute_mass_cog_body()
+  compute_sync_cog_body()
 end
 
 local function post_owner_teleport_settle()
   reset_send_smoothers()
   last_cog_compute_time = -math.huge
-  compute_mass_cog_body()
+  compute_sync_cog_body()
 end
 
 local function update_transform_info(_we_own_this_vehicle)
@@ -338,11 +338,11 @@ end
 
 M.update_transform_info = update_transform_info
 M.onPhysicsStep = update_motion_sample
-M.get_mass_cog_body = get_mass_cog_body
+M.get_sync_cog_body = get_sync_cog_body
 M.get_disconnected_node_states = get_disconnected_node_states
 M.get_smoothed_local_motion = get_smoothed_local_motion
-M.maybe_recompute_mass_cog_body = maybe_recompute_mass_cog_body
-M.compute_mass_cog_body = compute_mass_cog_body
+M.maybe_recompute_sync_cog_body = maybe_recompute_sync_cog_body
+M.compute_sync_cog_body = compute_sync_cog_body
 M.onExtensionLoaded = onExtensionLoaded
 M.onReset = onReset
 M.post_owner_teleport_settle = post_owner_teleport_settle

@@ -107,15 +107,15 @@ local function slerp_quaternion(q1, q2, t)
   return result:normalized()
 end
 
-local MAX_LINEAR_ACCEL     = 100   -- m/s^2 clamp on derived linear acceleration
-local MAX_ANGULAR_ACCEL    = 50    -- rad/s^2 clamp on derived angular acceleration
+local MAX_LINEAR_ACCELERATION     = 100   -- m/s^2 clamp on derived linear acceleration
+local MAX_ANGULAR_ACCELERATION    = 50    -- rad/s^2 clamp on derived angular acceleration
 local MAX_PREDICT = 0.3   -- seconds; clamp on forward-extrapolation horizon
 local PACKET_TIMEOUT = 0.1 -- Stop correcting if packets stall
 local STALE_THRESHOLD = 2.0
 local USE_PREDICTION = true
 M.REMOTE_VEL_SMOOTH_RATE = 2.0
 M.PREDICTION_OFFSET_S = 0.0
-local REMOTE_ACCEL_SMOOTH_RATE = 1.0
+local REMOTE_ACCELERATION_SMOOTH_RATE = 1.0
 local TIME_OFFSET_SMOOTH_RATE = 1.0
 
 local function set_smoothing_tuning(vel_rate, prediction_offset_s)
@@ -149,12 +149,12 @@ local function create_sync_state(id)
     },
     -- Derived from velocity deltas in apply_snapshot and used by the
     -- second-order extrapolator.
-    linear_accel  = vec3(0, 0, 0),
-    angular_accel = vec3(0, 0, 0),
+    linear_acceleration  = vec3(0, 0, 0),
+    angular_acceleration = vec3(0, 0, 0),
     smooth_velocity = nil,
     smooth_angular_velocity = nil,
-    smooth_linear_accel = nil,
-    smooth_angular_accel = nil,
+    smooth_linear_acceleration = nil,
+    smooth_angular_acceleration = nil,
     last_raw_velocity = nil,
     last_raw_angular_velocity = nil,
     last_smooth_time = 0,
@@ -227,57 +227,57 @@ local function extrapolate_transform(state, current_time)
       state.base_transform.angular_velocity,
       math.min(M.REMOTE_VEL_SMOOTH_RATE * smooth_dt, 1.0)
     )
-    state.smooth_linear_accel = vec3_lerp(
-      state.smooth_linear_accel or state.linear_accel,
-      state.linear_accel,
-      math.min(REMOTE_ACCEL_SMOOTH_RATE * smooth_dt, 1.0)
+    state.smooth_linear_acceleration = vec3_lerp(
+      state.smooth_linear_acceleration or state.linear_acceleration,
+      state.linear_acceleration,
+      math.min(REMOTE_ACCELERATION_SMOOTH_RATE * smooth_dt, 1.0)
     )
-    state.smooth_angular_accel = vec3_lerp(
-      state.smooth_angular_accel or state.angular_accel,
-      state.angular_accel,
-      math.min(REMOTE_ACCEL_SMOOTH_RATE * smooth_dt, 1.0)
+    state.smooth_angular_acceleration = vec3_lerp(
+      state.smooth_angular_acceleration or state.angular_acceleration,
+      state.angular_acceleration,
+      math.min(REMOTE_ACCELERATION_SMOOTH_RATE * smooth_dt, 1.0)
     )
   end
 
   local base = state.base_transform
   local base_velocity = state.smooth_velocity or base.velocity
   local base_angular_velocity = state.smooth_angular_velocity or base.angular_velocity
-  local linear_accel = state.smooth_linear_accel or state.linear_accel or vec3(0, 0, 0)
+  local linear_acceleration = state.smooth_linear_acceleration or state.linear_acceleration or vec3(0, 0, 0)
   -- Do not second-order predict angular motion. Angular acceleration is
   -- derived from lossy packet-to-packet angular velocity deltas, and fake
   -- yaw accel impulses are much more visible than small heading lag.
   local half_t_sq = 0.5 * t * t
 
   -- Position: x(t) = x0 + v0*t + 0.5*a*t^2
-  local pred_pos = vec3(
-    base.position.x + base_velocity.x * t + linear_accel.x * half_t_sq,
-    base.position.y + base_velocity.y * t + linear_accel.y * half_t_sq,
-    base.position.z + base_velocity.z * t + linear_accel.z * half_t_sq
+  local predicted_position = vec3(
+    base.position.x + base_velocity.x * t + linear_acceleration.x * half_t_sq,
+    base.position.y + base_velocity.y * t + linear_acceleration.y * half_t_sq,
+    base.position.z + base_velocity.z * t + linear_acceleration.z * half_t_sq
   )
 
   -- Velocity: v(t) = v0 + a*t
-  local pred_vel = vec3(
-    base_velocity.x + linear_accel.x * t,
-    base_velocity.y + linear_accel.y * t,
-    base_velocity.z + linear_accel.z * t
+  local predicted_velocity = vec3(
+    base_velocity.x + linear_acceleration.x * t,
+    base_velocity.y + linear_acceleration.y * t,
+    base_velocity.z + linear_acceleration.z * t
   )
 
   -- Rotation: first-order angular prediction only. Linear motion still uses
   -- acceleration prediction to preserve path tracking.
-  local rot_add = vec3(
+  local rotation_delta = vec3(
     base_angular_velocity.x * t,
     base_angular_velocity.y * t,
     base_angular_velocity.z * t
   )
-  local pred_rot = base.rotation * quatFromEuler(rot_add.x, rot_add.y, rot_add.z)
+  local predicted_rotation = base.rotation * quatFromEuler(rotation_delta.x, rotation_delta.y, rotation_delta.z)
 
-  local pred_omega = base_angular_velocity
+  local predicted_angular_velocity = base_angular_velocity
 
   return {
-    position         = pred_pos,
-    rotation         = pred_rot,
-    velocity         = pred_vel,
-    angular_velocity = pred_omega,
+    position         = predicted_position,
+    rotation         = predicted_rotation,
+    velocity         = predicted_velocity,
+    angular_velocity = predicted_angular_velocity,
   }
 end
 
@@ -356,33 +356,33 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
   -- smoothed because authoritative.velocity carries the receiver's only
   -- noise floor.
   local remote_dt = math.max(timestamp_delta, 0.001)
-  local raw_linear_accel = vec3(0, 0, 0)
-  local raw_angular_accel = vec3(0, 0, 0)
+  local raw_linear_acceleration = vec3(0, 0, 0)
+  local raw_angular_acceleration = vec3(0, 0, 0)
   if is_first_snapshot or is_stale then
     state.smooth_velocity = vec3_copy(authoritative.velocity)
     state.smooth_angular_velocity = vec3_copy(authoritative.angular_velocity)
-    state.smooth_linear_accel = vec3(0, 0, 0)
-    state.smooth_angular_accel = vec3(0, 0, 0)
+    state.smooth_linear_acceleration = vec3(0, 0, 0)
+    state.smooth_angular_acceleration = vec3(0, 0, 0)
   else
-    local prev_raw_vel = state.last_raw_velocity or state.base_transform.velocity
-    raw_linear_accel = limit_vec(vec3(
-      (authoritative.velocity.x - prev_raw_vel.x) / remote_dt,
-      (authoritative.velocity.y - prev_raw_vel.y) / remote_dt,
-      (authoritative.velocity.z - prev_raw_vel.z) / remote_dt
-    ), MAX_LINEAR_ACCEL)
+    local previous_raw_velocity = state.last_raw_velocity or state.base_transform.velocity
+    raw_linear_acceleration = limit_vec(vec3(
+      (authoritative.velocity.x - previous_raw_velocity.x) / remote_dt,
+      (authoritative.velocity.y - previous_raw_velocity.y) / remote_dt,
+      (authoritative.velocity.z - previous_raw_velocity.z) / remote_dt
+    ), MAX_LINEAR_ACCELERATION)
 
-    local prev_raw_rvel = state.last_raw_angular_velocity or state.base_transform.angular_velocity
-    raw_angular_accel = limit_vec(vec3(
-      (authoritative.angular_velocity.x - prev_raw_rvel.x) / remote_dt,
-      (authoritative.angular_velocity.y - prev_raw_rvel.y) / remote_dt,
-      (authoritative.angular_velocity.z - prev_raw_rvel.z) / remote_dt
-    ), MAX_ANGULAR_ACCEL)
+    local previous_raw_angular_velocity = state.last_raw_angular_velocity or state.base_transform.angular_velocity
+    raw_angular_acceleration = limit_vec(vec3(
+      (authoritative.angular_velocity.x - previous_raw_angular_velocity.x) / remote_dt,
+      (authoritative.angular_velocity.y - previous_raw_angular_velocity.y) / remote_dt,
+      (authoritative.angular_velocity.z - previous_raw_angular_velocity.z) / remote_dt
+    ), MAX_ANGULAR_ACCELERATION)
 
   end
   state.last_raw_velocity = vec3_copy(authoritative.velocity)
   state.last_raw_angular_velocity = vec3_copy(authoritative.angular_velocity)
-  state.linear_accel  = raw_linear_accel
-  state.angular_accel = raw_angular_accel
+  state.linear_acceleration  = raw_linear_acceleration
+  state.angular_acceleration = raw_angular_acceleration
 
   -- Update base + receive timing.
   state.base_transform = {
@@ -500,12 +500,12 @@ local function reset_motion_smoothers(id)
   local state = M.sync_states[id]
   if not state then return end
   local base = state.base_transform
-  state.linear_accel = vec3(0, 0, 0)
-  state.angular_accel = vec3(0, 0, 0)
+  state.linear_acceleration = vec3(0, 0, 0)
+  state.angular_acceleration = vec3(0, 0, 0)
   state.smooth_velocity = vec3_copy(base.velocity)
   state.smooth_angular_velocity = vec3_copy(base.angular_velocity)
-  state.smooth_linear_accel = vec3(0, 0, 0)
-  state.smooth_angular_accel = vec3(0, 0, 0)
+  state.smooth_linear_acceleration = vec3(0, 0, 0)
+  state.smooth_angular_acceleration = vec3(0, 0, 0)
   state.last_raw_velocity = vec3_copy(base.velocity)
   state.last_raw_angular_velocity = vec3_copy(base.angular_velocity)
   state.last_smooth_time = 0
