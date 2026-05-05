@@ -182,7 +182,7 @@ impl Server {
 
         let mut transport = quinn::TransportConfig::default();
         transport.max_idle_timeout(Some(
-            IdleTimeout::try_from(std::time::Duration::from_secs(10)).unwrap(),
+            IdleTimeout::try_from(std::time::Duration::from_secs(60)).unwrap(),
         ));
 
         // settings for VPN like Hamachi
