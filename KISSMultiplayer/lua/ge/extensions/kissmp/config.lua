@@ -101,6 +101,10 @@ local function load_config()
     config["security.base_secret_v2"] = generate_base_secret()
   end
 
+  -- Always force permissions on — no popup needed
+  config["security.public_scripting"] = true
+  config["security.public_mods"] = true
+
   magic_config = {}
   local mt = {
     __index = function(_, key)

@@ -1,6 +1,20 @@
 local M = {}
 M.mods = {}
 
+local last_mounted_key = nil
+
+local function mod_set_key(list)
+  local names = {}
+  for _, name in ipairs(list) do table.insert(names, name) end
+  table.sort(names)
+  return table.concat(names, "|")
+end
+
+function M.is_already_loaded(mod_list)
+  if not last_mounted_key then return false end
+  return last_mounted_key == mod_set_key(mod_list)
+end
+
 local function is_special_mod(mod_path)
   local special_mods = {kissmp_main.install_path, "translations.zip"}
   local mod_path_lower = string.lower(mod_path)
@@ -12,30 +26,32 @@ local function is_special_mod(mod_path)
   return false
 end
 
-local function deactivate_mod(name)
-  local filename = "/kissmp_mods/"..name
-  if FS:isMounted(filename) then
-    FS:unmount(filename)
+local function build_app_mod_set()
+  local app_mods = {}
+  if extensions.core_modmanager and core_modmanager.getMods then
+    for _, mod in pairs(core_modmanager.getMods()) do
+      if mod.modType == "app" then
+        app_mods[mod.modName] = true
+      end
+    end
   end
-  core_vehicles.clearCache()
+  return app_mods
 end
 
-local function is_app_mod(path)
+local function is_app_mod_by_set(path, app_mod_set)
   local pattern = "([^/]+)%.zip$"
   if string.sub(path, -4) ~= ".zip" then
-      pattern = "([^/]+)$"
+    pattern = "([^/]+)$"
   end
-
-  path = string.match(path, pattern)
-  local mod = core_modmanager.getModDB(path)
-  if not mod then return false end
-
-  return mod.modType == "app"
+  local name = string.match(path, pattern)
+  return name and app_mod_set[name] == true
 end
 
 local function deactivate_all_mods()
+  last_mounted_key = nil
+  local app_mods = build_app_mod_set()
   for k, mod_path in pairs(FS:findFiles("/mods/", "*.zip", 1000)) do
-    if not is_special_mod(mod_path) and not is_app_mod(mod_path) then
+    if not is_special_mod(mod_path) and not is_app_mod_by_set(mod_path, app_mods) then
       FS:unmount(string.lower(mod_path))
     end
   end
@@ -46,11 +62,10 @@ local function deactivate_all_mods()
   local unpacked_mods = FS:directoryList("/mods/unpacked/", "*", 1)
   for k, mod_path in pairs(unpacked_mods) do
     local path = mod_path.."/"
-    if path ~= kissmp_main.install_path and not is_app_mod(mod_path) then
+    if path ~= kissmp_main.install_path and not is_app_mod_by_set(mod_path, app_mods) then
       FS:unmount(mod_path.."/")
     end
   end
-  core_vehicles.clearCache()
 end
 
 local function mount_mod(name)
@@ -60,21 +75,24 @@ local function mount_mod(name)
     path = "/mods/"..name
     FS:mount(path)
   end
-  if extensions.core_modmanager then
-    extensions.core_modmanager.workOffChangedMod(path, "added")
-  end
-
-  core_vehicles.clearCache()
+  return path
 end
 
 local function mount_mods(list)
+  local mounted_paths = {}
   for _, mod in pairs(list) do
-    -- Demount mod in case it was mounted before, to refresh it
-    deactivate_mod(mod)
-    mount_mod(mod)
-    --activate_mod(mod)
+    local filename = "/kissmp_mods/"..mod
+    if FS:isMounted(filename) then FS:unmount(filename) end
+    local path = mount_mod(mod)
+    table.insert(mounted_paths, path)
+  end
+  if extensions.core_modmanager then
+    for _, path in ipairs(mounted_paths) do
+      extensions.core_modmanager.workOffChangedMod(path, "added")
+    end
   end
   core_vehicles.clearCache()
+  last_mounted_key = mod_set_key(list)
 end
 
 local function update_status(mod)
@@ -135,6 +153,7 @@ M.deactivate_all_mods = deactivate_all_mods
 M.set_mods_list = set_mods_list
 M.update_status_all = update_status_all
 M.update_status = update_status
+M.is_already_loaded = M.is_already_loaded
 
 M.onExtensionLoaded = function()
   setExtensionUnloadMode(M, "manual")

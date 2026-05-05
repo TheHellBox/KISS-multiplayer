@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>KissMP Server Manager</title>
+<style>
+:root {
+  --bg: #0e0e1a;
+  --panel: #161625;
+  --panel2: #1c1c2e;
+  --border: #2a2a45;
+  --accent: #e94560;
+  --accent2: #16213e;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --orange: #f39c12;
+  --text: #e8e8f0;
+  --muted: #7a7a9a;
+  --map-bg: #0f2a40;
+  --map-fg: #6ecaff;
+  --car-bg: #2d1b00;
+  --car-fg: #ffaa33;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+.header { background: var(--panel); border-bottom: 2px solid var(--accent); padding: 10px 20px; display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.header h1 { font-size: 18px; color: var(--accent); font-weight: 700; letter-spacing: 1px; }
+.badge { padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; transition: all 0.3s; }
+.badge.running { background: var(--green); color: #000; }
+.badge.stopped { background: #333; color: var(--muted); }
+.badge.starting { background: var(--orange); color: #000; }
+.player-info { color: var(--muted); font-size: 13px; margin-left: auto; }
+
+.main { display: flex; flex: 1; overflow: hidden; }
+
+.settings-panel { width: 320px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+.settings-panel::-webkit-scrollbar { width: 5px; }
+.settings-panel::-webkit-scrollbar-track { background: var(--bg); }
+.settings-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.section-title { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px; }
+
+label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; margin-top: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+label:first-of-type { margin-top: 0; }
+input[type=text], input[type=number], textarea, select {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 6px 9px; border-radius: 4px; font-size: 13px; font-family: inherit; transition: border-color 0.2s;
+}
+textarea { resize: vertical; min-height: 52px; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+input[type=number] { -moz-appearance: textfield; }
+
+.two-col { display: flex; gap: 8px; }
+.two-col > * { flex: 1; }
+
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; }
+.toggle-label { font-size: 13px; color: var(--text); }
+.toggle-sublabel { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.toggle { position: relative; width: 38px; height: 20px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; inset: 0; background: #333; border-radius: 20px; cursor: pointer; transition: .2s; }
+.toggle-slider:before { content: ""; position: absolute; height: 14px; width: 14px; left: 3px; bottom: 3px; background: #888; border-radius: 50%; transition: .2s; }
+.toggle input:checked + .toggle-slider { background: var(--accent); }
+.toggle input:checked + .toggle-slider:before { transform: translateX(18px); background: #fff; }
+
+button { background: var(--accent2); color: var(--text); border: 1px solid var(--border); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.15s; white-space: nowrap; }
+button:hover { background: var(--accent); border-color: var(--accent); }
+button:active { transform: scale(0.97); }
+button.primary { background: var(--accent); border-color: var(--accent); font-size: 14px; padding: 10px; font-weight: 700; width: 100%; }
+button.primary:hover { background: #c73652; }
+button.primary:disabled { background: #555; border-color: #555; cursor: not-allowed; }
+button.stop-btn { background: #4a0000; border-color: var(--red); color: var(--red); font-size: 14px; padding: 10px; font-weight: 700; width: 100%; }
+button.stop-btn:hover { background: var(--red); color: #fff; }
+button.sm { padding: 4px 10px; font-size: 12px; }
+
+.ip-box { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 9px 12px; margin-top: 4px; }
+.ip-label { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+.ip-row { display: flex; align-items: center; gap: 8px; }
+.ip-value { font-family: 'Consolas', monospace; font-size: 17px; font-weight: bold; color: var(--green); flex: 1; }
+
+.mods-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--panel2); }
+.mods-toolbar { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+.mods-toolbar-top { display: flex; align-items: center; gap: 8px; }
+.mods-title { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1.5px; }
+.mods-count { color: var(--muted); font-size: 12px; margin-left: auto; }
+.path-row { display: flex; gap: 6px; }
+.path-row input { flex: 1; }
+.filter-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.mod-list { flex: 1; overflow-y: auto; }
+.mod-list::-webkit-scrollbar { width: 6px; }
+.mod-list::-webkit-scrollbar-track { background: var(--bg); }
+.mod-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.mod-item { display: flex; align-items: center; padding: 6px 16px; border-bottom: 1px solid rgba(42,42,69,0.5); cursor: pointer; transition: background 0.1s; }
+.mod-item:hover { background: rgba(233,69,96,0.05); }
+.mod-item.selected { background: rgba(233,69,96,0.08); }
+.mod-item input[type=checkbox] { margin-right: 10px; width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); flex-shrink: 0; }
+.mod-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mod-size { color: var(--muted); font-size: 11px; margin-left: 8px; flex-shrink: 0; }
+.tag { font-size: 10px; padding: 2px 7px; border-radius: 10px; margin-left: 6px; flex-shrink: 0; font-weight: 600; }
+.tag.map { background: var(--map-bg); color: var(--map-fg); }
+.tag.vehicle { background: var(--car-bg); color: var(--car-fg); }
+.empty-state { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 13px; flex-direction: column; gap: 8px; }
+#custom-map-row { display: none; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>&#9889; KissMP Server Manager</h1>
+  <span class="badge stopped" id="badge">Stopped</span>
+  <span class="player-info" id="player-info"></span>
+</div>
+
+<div class="main">
+  <div class="settings-panel">
+
+    <div class="section">
+      <div class="section-title">Server Info</div>
+      <label>Server Name</label>
+      <input type="text" id="srv-name" maxlength="64">
+      <label>Description</label>
+      <textarea id="srv-desc" rows="2"></textarea>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Network</div>
+      <div class="two-col">
+        <div>
+          <label>Port</label>
+          <input type="number" id="srv-port" value="3698" min="1024" max="65535">
+        </div>
+        <div>
+          <label>Max Players</label>
+          <input type="number" id="srv-players" value="8" min="1" max="32">
+        </div>
+      </div>
+      <div class="two-col">
+        <div>
+          <label>Max Vehicles / Player</label>
+          <input type="number" id="srv-vehicles" value="3" min="1" max="20">
+        </div>
+        <div>
+          <label>Tickrate</label>
+          <input type="number" id="srv-tickrate" value="60" min="1" max="120">
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Map</div>
+      <select id="srv-map" onchange="onMapChange()">
+        <option value="/levels/smallgrid/info.json">Small Grid</option>
+        <option value="/levels/gridmap_v2/info.json">Grid Map V2</option>
+        <option value="/levels/east_coast_usa/info.json">East Coast USA</option>
+        <option value="/levels/west_coast_usa/info.json">West Coast USA</option>
+        <option value="/levels/italy/info.json">Italy</option>
+        <option value="/levels/utah/info.json">Utah</option>
+        <option value="/levels/industrial/info.json">Industrial Site</option>
+        <option value="/levels/hirochi_raceway/info.json">Hirochi Raceway</option>
+        <option value="/levels/derby/info.json">Derby Arenas</option>
+        <option value="/levels/jungle_rock_island/info.json">Jungle Rock Island</option>
+        <option value="/levels/driver_training/info.json">Driver Training</option>
+        <option value="/levels/automation_test_track/info.json">Automation Test Track</option>
+        <option value="custom">Custom...</option>
+      </select>
+      <div id="custom-map-row">
+        <input type="text" id="custom-map" placeholder="/levels/my_map/info.json">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Options</div>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Show in Public List</div>
+          <div class="toggle-sublabel">Appears on master server</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="opt-public"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">UPnP Port Forwarding</div>
+          <div class="toggle-sublabel">Auto-forward port on router</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="opt-upnp"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Require Scripts</div>
+          <div class="toggle-sublabel">Clients must allow scripting</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="opt-scripts"><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Status</div>
+      <div id="ip-box-wrap" style="display:none">
+        <div class="ip-box">
+          <div class="ip-label">Share this IP with your friends:</div>
+          <div class="ip-row">
+            <span class="ip-value" id="ip-value">--</span>
+            <button class="sm" onclick="copyIP()">Copy</button>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+        <button class="primary" id="start-btn" onclick="startServer()">&#9654; Start Server</button>
+        <button class="stop-btn" id="stop-btn" onclick="stopServer()" style="display:none">&#9632; Stop Server</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mods-panel">
+    <div class="mods-toolbar">
+      <div class="mods-toolbar-top">
+        <span class="mods-title">Mods</span>
+        <span class="mods-count" id="mods-count"></span>
+      </div>
+      <div class="path-row">
+        <input type="text" id="mods-path" placeholder="Path to BeamNG mods folder..." oninput="onPathEdit()">
+        <button onclick="detectBeamNG()">Auto-detect</button>
+        <button onclick="loadMods()">Load</button>
+        <button id="save-path-btn" onclick="savePath()" style="display:none;background:#1a3a1a;border-color:#2ecc71;color:#2ecc71">Save</button>
+      </div>
+      <div class="filter-row">
+        <button class="sm" onclick="selAll()">All</button>
+        <button class="sm" onclick="selNone()">None</button>
+        <button class="sm" onclick="selVehicles()">Vehicles only</button>
+        <button class="sm" onclick="selMaps()">Maps only</button>
+      </div>
+    </div>
+    <div class="mod-list" id="mod-list">
+      <div class="empty-state">
+        <div>&#128193; No mods loaded</div>
+        <div>Click "Auto-detect" or enter your BeamNG mods path</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const MAP_KW = ['map','maps','level','levels','road','course','track','circuit','route',
+  'rally','terrain','desert','forest','island','harbor','harbour','canyon','grid',
+  'stadium','airport','dock','mountain','cliff','drift','highway','freeway','raceway',
+  'speedway','hillclimb','touge','offroad','trail'];
+
+let allMods = [];
+let initialLoad = true;
+
+function fmtBytes(b) {
+  if (b >= 1048576) return (b/1048576).toFixed(1) + ' MB';
+  return Math.round(b/1024) + ' KB';
+}
+
+function updateCount() {
+  const sel = allMods.filter(m => m.selected).length;
+  const el = document.getElementById('mods-count');
+  el.textContent = allMods.length ? sel + ' / ' + allMods.length + ' selected' : '';
+}
+
+function renderMods() {
+  const list = document.getElementById('mod-list');
+  if (!allMods.length) {
+    list.innerHTML = '<div class="empty-state"><div>&#128193; Empty folder or not found</div></div>';
+    updateCount(); return;
+  }
+  const frag = document.createDocumentFragment();
+  allMods.forEach((mod, i) => {
+    const div = document.createElement('div');
+    div.className = 'mod-item' + (mod.selected ? ' selected' : '');
+    div.onclick = () => { allMods[i].selected = !allMods[i].selected; renderMods(); };
+    const tag = mod.is_map ? '<span class="tag map">Map</span>' : '<span class="tag vehicle">Vehicle</span>';
+    div.innerHTML =
+      '<input type="checkbox"' + (mod.selected ? ' checked' : '') +
+      ' onclick="event.stopPropagation();allMods[' + i + '].selected=this.checked;' +
+      'this.parentElement.classList.toggle(\'selected\',this.checked);updateCount()">' +
+      '<span class="mod-name" title="' + mod.name + '">' + mod.name + '</span>' +
+      tag + '<span class="mod-size">' + fmtBytes(mod.size) + '</span>';
+    frag.appendChild(div);
+  });
+  list.innerHTML = '';
+  list.appendChild(frag);
+  updateCount();
+}
+
+function populateMapMods(mapMods) {
+  const sel = document.getElementById('srv-map');
+  const prev = sel.querySelector('optgroup[data-mod-group]');
+  if (prev) prev.remove();
+  if (!mapMods.length) return;
+  const group = document.createElement('optgroup');
+  group.label = '— Installed Mods —';
+  group.setAttribute('data-mod-group', '1');
+  mapMods.forEach(mod => {
+    const base = mod.name.replace(/\.zip$/i, '').toLowerCase();
+    const opt = document.createElement('option');
+    opt.value = '/levels/' + base + '/info.json';
+    opt.textContent = mod.name.replace(/\.zip$/i, '');
+    opt.setAttribute('data-mod-path', mod.path);
+    group.appendChild(opt);
+  });
+  const customOpt = sel.querySelector('option[value="custom"]');
+  sel.insertBefore(group, customOpt);
+}
+
+function onPathEdit() { document.getElementById('save-path-btn').style.display = 'inline-block'; }
+
+async function savePath() {
+  const path = document.getElementById('mods-path').value.trim();
+  await fetch('/api/mods_folder', { method: 'POST', body: path });
+  const btn = document.getElementById('save-path-btn');
+  btn.textContent = 'Saved!';
+  setTimeout(() => { btn.textContent = 'Save'; btn.style.display = 'none'; }, 1500);
+}
+
+async function detectBeamNG() {
+  try {
+    const r = await fetch('/api/detect_beamng');
+    const data = await r.json();
+    if (data.path) {
+      document.getElementById('mods-path').value = data.path;
+      await loadMods();
+    } else {
+      alert('BeamNG mods folder not found.\nEnter the path manually.\nExample: C:/Users/You/AppData/Local/BeamNG.drive/0.33/mods');
+    }
+  } catch(e) { alert('Error: ' + e); }
+}
+
+async function loadMods() {
+  const path = document.getElementById('mods-path').value.trim();
+  if (!path) { alert('Enter the mods folder path.'); return; }
+  try {
+    const r = await fetch('/api/mods?path=' + encodeURIComponent(path));
+    const mods = await r.json();
+    allMods = mods.map(m => ({ ...m, selected: !m.is_map }));
+    renderMods();
+    populateMapMods(allMods.filter(m => m.is_map));
+  } catch(e) { alert('Error loading mods: ' + e); }
+}
+
+function selAll()      { allMods.forEach(m => m.selected = true);  renderMods(); }
+function selNone()     { allMods.forEach(m => m.selected = false); renderMods(); }
+function selVehicles() { allMods.forEach(m => m.selected = !m.is_map); renderMods(); }
+function selMaps()     { allMods.forEach(m => m.selected = m.is_map);  renderMods(); }
+
+function getMap() {
+  const v = document.getElementById('srv-map').value;
+  return v === 'custom' ? document.getElementById('custom-map').value.trim() : v;
+}
+function onMapChange() {
+  document.getElementById('custom-map-row').style.display =
+    document.getElementById('srv-map').value === 'custom' ? 'block' : 'none';
+}
+
+async function startServer() {
+  const map = getMap();
+  if (!map) { alert('Select a map.'); return; }
+  setBadge('starting');
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true; btn.textContent = 'Starting...';
+
+  const mods = allMods.filter(m => m.selected).map(m => m.path);
+  const body = {
+    server_name:            document.getElementById('srv-name').value || 'KissMP Server',
+    description:            document.getElementById('srv-desc').value || '',
+    port:                   parseInt(document.getElementById('srv-port').value) || 3698,
+    max_players:            parseInt(document.getElementById('srv-players').value) || 8,
+    max_vehicles_per_client:parseInt(document.getElementById('srv-vehicles').value) || 3,
+    tickrate:               parseInt(document.getElementById('srv-tickrate').value) || 60,
+    map,
+    show_in_server_list:    document.getElementById('opt-public').checked,
+    upnp_enabled:           document.getElementById('opt-upnp').checked,
+    require_scripts:        document.getElementById('opt-scripts').checked,
+    mods:                   mods.length ? mods : null,
+    mods_folder:            document.getElementById('mods-path').value.trim() || null,
+  };
+
+  try {
+    const r = await fetch('/api/start', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+    });
+    const txt = await r.text();
+    if (txt === 'ok') { applyRunning(true); }
+    else { alert('Error starting server:\n' + txt); setBadge('stopped'); }
+  } catch(e) { alert('Connection error: ' + e); setBadge('stopped'); }
+  btn.disabled = false; btn.textContent = '▶ Start Server';
+}
+
+async function stopServer() {
+  await fetch('/api/stop', { method: 'POST' });
+  applyRunning(false);
+}
+
+function applyRunning(running) {
+  setBadge(running ? 'running' : 'stopped');
+  document.getElementById('start-btn').style.display = running ? 'none' : 'block';
+  document.getElementById('stop-btn').style.display  = running ? 'block' : 'none';
+  document.getElementById('ip-box-wrap').style.display = running ? 'block' : 'none';
+  document.getElementById('player-info').textContent = running
+    ? '0/' + (document.getElementById('srv-players').value) + ' players' : '';
+}
+
+function setBadge(state) {
+  const b = document.getElementById('badge');
+  b.className = 'badge ' + state;
+  b.textContent = state === 'running' ? 'Active' : state === 'starting' ? 'Starting...' : 'Stopped';
+}
+
+function copyIP() {
+  const txt = document.getElementById('ip-value').textContent;
+  if (!txt || txt === '--') return;
+  navigator.clipboard.writeText(txt).catch(() => {
+    const ta = Object.assign(document.createElement('textarea'), {value:txt, style:'position:fixed;opacity:0'});
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  });
+}
+
+function setMap(val) {
+  const sel = document.getElementById('srv-map');
+  let found = false;
+  for (const opt of sel.options) { if (opt.value === val) { sel.value = val; found = true; break; } }
+  if (!found && val) {
+    sel.value = 'custom';
+    document.getElementById('custom-map').value = val;
+    document.getElementById('custom-map-row').style.display = 'block';
+  }
+}
+
+let prevRunning = null;
+
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    if (d.running !== prevRunning) { prevRunning = d.running; applyRunning(d.running); }
+    if (d.running) document.getElementById('ip-value').textContent = d.ip + ':' + d.port;
+
+    if (initialLoad && d.config) {
+      initialLoad = false;
+      const c = d.config;
+      document.getElementById('srv-name').value     = c.server_name || '';
+      document.getElementById('srv-desc').value     = c.description || '';
+      document.getElementById('srv-port').value     = c.port || 3698;
+      document.getElementById('srv-players').value  = c.max_players || 8;
+      document.getElementById('srv-vehicles').value = c.max_vehicles_per_client || 3;
+      document.getElementById('srv-tickrate').value = c.tickrate || 60;
+      document.getElementById('opt-public').checked  = !!c.show_in_server_list;
+      document.getElementById('opt-upnp').checked    = !!c.upnp_enabled;
+      document.getElementById('opt-scripts').checked = !!c.require_scripts;
+      setMap(c.map || '');
+      if (c.mods_folder) {
+        document.getElementById('mods-path').value = c.mods_folder;
+        if (!allMods.length) await loadMods();
+        if (c.mods && c.mods.length) {
+          let saved;
+          try { saved = new Set(JSON.parse(c.mods)); } catch { saved = new Set(c.mods); }
+          allMods.forEach(m => m.selected = saved.has(m.path));
+          renderMods();
+        }
+      }
+    }
+  } catch(e) {}
+}
+
+pollStatus().then(() => {
+  if (!document.getElementById('mods-path').value) detectBeamNG();
+});
+setInterval(pollStatus, 3000);
+</script>
+</body>
+</html>

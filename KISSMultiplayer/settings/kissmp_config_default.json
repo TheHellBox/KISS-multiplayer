@@ -11,8 +11,8 @@
     "players.nametags.use_z": false,
     "players.show_drivers": true,
     "players.show_nametags": true,
-    "security.public_mods": false,
-    "security.public_scripting": false,
+    "security.public_mods": true,
+    "security.public_scripting": true,
     "ui.addr": "",
     "ui.scale": 1,
     "ui.window_opacity": 0.8

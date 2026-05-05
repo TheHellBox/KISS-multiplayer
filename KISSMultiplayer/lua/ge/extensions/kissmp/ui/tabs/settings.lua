@@ -1,13 +1,7 @@
 local M = {}
 local im = ui_imgui
 
-local red_color = im.ImVec4(0.9, 0, 0, 1)
-local mouse_cursor_pos = im.ImVec2(0, 0)
 local config_items = {}
-
-local confirm_popup_active = false
-local confirm_player_name = im.ArrayChar(32, "")
-local confirm_timer = 5
 
 local fade_distance_name = ""
 local fade_distances = {
@@ -158,69 +152,15 @@ local function draw(dt)
     im.EndDisabled()
   end
 
-  im.PushStyleColor2(im.Col_Text, red_color)
   im.NewLine()
-  im.Text("Danger Zone")
+  im.Text("Permissions")
   im.Separator()
-  if im.Checkbox("Allow public servers to run commands", config_items["security.public_scripting"]) then
-    if config_items["security.public_scripting"][0] then
-      im.OpenPopup1("SecurityConfirmationPopup")
-      mouse_cursor_pos = im.GetMousePos()
-      confirm_popup_active = true
-    else
-      kissmp_config.set_setting("security.public_scripting", false)
-    end
-  end
-  if im.Checkbox("Allow public servers to install mods", config_items["security.public_mods"]) then
-    if config_items["security.public_mods"][0] then
-      im.OpenPopup1("SecurityConfirmationPopup")
-      mouse_cursor_pos = im.GetMousePos()
-      confirm_popup_active = true
-    else
-      kissmp_config.set_setting("security.public_mods", false)
-    end
-  end
-  im.PopStyleColor()
-
-  im.SetNextWindowPos(mouse_cursor_pos, im.Cond_Always, im.ImVec2(0, 0))
-  if im.BeginPopup("SecurityConfirmationPopup") then
-    im.Text("Servers can infect your computer.")
-    im.Text("Servers can steal your data.")
-    im.Text("ONLY USE PUBLIC SERVERS YOU TRUST.")
-    im.NewLine()
-
-    if confirm_timer > 0 then
-      confirm_timer = confirm_timer - dt
-    end
-    local cant_use = confirm_timer > 0
-    if cant_use then
-      im.BeginDisabled()
-      im.Text("("..math.ceil(confirm_timer)..") Enter your player name to continue:")
-    else
-      im.Text("Enter your player name to continue:")
-    end
-    if im.InputText("##name", confirm_player_name) then
-      if ffi.string(confirm_player_name) == ffi.string(kissmp_ui.player_name) then
-        kissmp_config.set_setting("security.public_scripting", config_items["security.public_scripting"][0])
-        kissmp_config.set_setting("security.public_mods", config_items["security.public_mods"][0])
-        ffi.copy(confirm_player_name, "")
-        confirm_timer = 5
-        confirm_popup_active = false
-        im.CloseCurrentPopup()
-      end
-    end
-    if cant_use then
-      im.EndDisabled()
-    end
-
-    im.EndPopup()
-  elseif confirm_popup_active then -- user closed it
-    config_items["security.public_scripting"][0] = kissmp_config.get_setting("security.public_scripting")
-    config_items["security.public_mods"][0] = kissmp_config.get_setting("security.public_mods")
-    ffi.copy(confirm_player_name, "")
-    confirm_timer = 5
-    confirm_popup_active = false
-  end
+  im.BeginDisabled()
+  local scripting_on = im.BoolPtr(true)
+  local mods_on = im.BoolPtr(true)
+  im.Checkbox("Allow public servers to run commands (always enabled)", scripting_on)
+  im.Checkbox("Allow public servers to install mods (always enabled)", mods_on)
+  im.EndDisabled()
 end
 
 local function onKissMPSettingsChanged(config)
@@ -265,10 +205,6 @@ local function onKissMPSettingsChanged(config)
     ::break_loop::
   end
 
-  if not confirm_popup_active then
-    config_items["security.public_scripting"] = im.BoolPtr(config["security.public_scripting"])
-    config_items["security.public_mods"] = im.BoolPtr(config["security.public_mods"])
-  end
 end
 
 M.draw = draw

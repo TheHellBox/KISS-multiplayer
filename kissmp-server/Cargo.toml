@@ -28,6 +28,7 @@ tokio-stream = "0.1.18"
 dirs = "3.0"
 igd = { package = "igd-next", version = "0.14" }
 ifcfg = "0.1.2"
+tiny_http = "0.12"
 async-ctrlc = "1.2"
 ipnetwork = "0.18"
 log = "0.4"

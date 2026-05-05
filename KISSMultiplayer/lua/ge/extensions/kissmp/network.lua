@@ -376,15 +376,19 @@ local function connect(addr, player_name, is_public)
   M.download_total_bytes = total_missing_bytes
   M.downloaded_bytes = 0
 
-  kissmp_mods.deactivate_all_mods()
-  if #available_mods > 0 then
-    kissmp_mods.mount_mods(available_mods)
-  end
   for k, v in pairs(missing_mods) do
     log("I", "kissmp_network.connect", "Missing Mod "..k..": "..v)
   end
   local delay_level_load = false
-  if #missing_mods > 0 then
+
+  if #missing_mods == 0 and kissmp_mods.is_already_loaded(mod_names) then
+    -- Same mods already loaded from a previous connection — skip deactivate/remount/clearCache
+    log("I", "kissmp_network.connect", "Mods already loaded, skipping remount.")
+  elseif #missing_mods > 0 then
+    kissmp_mods.deactivate_all_mods()
+    if #available_mods > 0 then
+      kissmp_mods.mount_mods(available_mods)
+    end
     delay_level_load = true
     -- Do not allow public servers to force mod downloads
     if M.is_server_public and not public_mods then
@@ -398,8 +402,8 @@ local function connect(addr, player_name, is_public)
         send_data({ RequestMods = { next_mod } }, true)
       end
     end
-  end
-  if #missing_mods == 0 then
+  else
+    kissmp_mods.deactivate_all_mods()
     kissmp_mods.mount_mods(mod_names)
   end
 

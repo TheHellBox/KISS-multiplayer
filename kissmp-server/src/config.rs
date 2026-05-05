@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct Config {
     pub server_name: String,
@@ -16,13 +16,14 @@ pub struct Config {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mods: Option<Vec<String>>,
     pub require_scripts: bool,
+    pub mods_folder: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            server_name: "Vanilla KissMP Server".to_string(),
-            description: "Vanilla KissMP Server".to_string(),
+            server_name: "KissMP LAN Server".to_string(),
+            description: "KissMP LAN Server".to_string(),
             map: "/levels/smallgrid/info.json".to_string(),
             tickrate: 60,
             max_players: 8,
@@ -33,6 +34,7 @@ impl Default for Config {
             server_identifier: rand_string(),
             mods: None,
             require_scripts: false,
+            mods_folder: String::new(),
         }
     }
 }
@@ -44,7 +46,13 @@ impl Config {
         }
         let config_file = std::fs::File::open(path).unwrap();
         let reader = std::io::BufReader::new(config_file);
-        serde_json::from_reader(reader).unwrap()
+        serde_json::from_reader(reader).unwrap_or_default()
+    }
+
+    pub fn save_to_file(&self, path: &str) {
+        if let Ok(json) = serde_json::to_vec_pretty(self) {
+            let _ = std::fs::write(path, json);
+        }
     }
 }
 

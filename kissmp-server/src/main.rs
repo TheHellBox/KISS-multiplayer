@@ -1,17 +1,27 @@
 use kissmp_server::*;
-use log::{info};
+use std::sync::{Arc, Mutex};
 
 #[tokio::main]
 async fn main() {
     shared::init_logging();
 
-    info!("Gas, Gas, Gas!");
     let path = std::path::Path::new("./mods/");
     if !path.exists() {
-        std::fs::create_dir(path).unwrap();
+        let _ = std::fs::create_dir(path);
     }
+
     let config = config::Config::load(std::path::Path::new("./config.json"));
-    let server = Server::from_config(config);
-    server.run(true, tokio::sync::oneshot::channel().1, None).await;
-    std::process::exit(0);
+    let local_ip = web_ui::get_local_ip();
+    let state = Arc::new(Mutex::new(web_ui::AppState {
+        config,
+        running: false,
+        local_ip,
+        destroyer: None,
+    }));
+
+    web_ui::spawn_web_ui(state, 3694);
+
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+    }
 }

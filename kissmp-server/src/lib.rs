@@ -9,6 +9,7 @@ pub mod incoming;
 pub mod lua;
 pub mod outgoing;
 pub mod server_vehicle;
+pub mod web_ui;
 
 use incoming::IncomingEvent;
 use server_vehicle::*;
