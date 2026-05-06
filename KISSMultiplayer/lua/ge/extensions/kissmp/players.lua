@@ -70,24 +70,7 @@ local function get_player_color(id)
 end
 
 local function spawn_player(data)
-  local player = createObject('TSStatic')
-  player:setField("shapeName", 0, "/art/kissmp/playermodels/base_nb.dae")
-  player:setField("dynamic", 0, "true")
-  player.scale = vec3(1, 1, 1)
-  player:registerObject("player"..data.owner)
-
-  local r, g, b, a = get_player_color(data.owner)
-  player:setField('instanceColor', 0, string.format("%g %g %g %g", r, g, b, a))
-  player:setPosRot(
-    data.position[1], data.position[2], data.position[3],
-    data.rotation[1], data.rotation[2], data.rotation[3], data.rotation[4]
-  )
-
-  local player_mesh_id = player:getID()
-  kissmp_vehiclemanager.id_map[data.server_id] = player_mesh_id
-  kissmp_vehiclemanager.server_ids[player_mesh_id] = data.server_id
-
-  M.player_bodies[data.server_id] = player
+  -- Character models are hidden; only track transform data
   M.player_transforms[data.server_id] = {
     position = vec3(data.position),
     target_position = vec3(data.position),
@@ -242,7 +225,7 @@ local function onKissMPDisconnected()
 end
 
 local function onKissMPSettingsChanged(config)
-  show_drivers = config["players.show_drivers"]
+  show_drivers = false
 end
 
 M.spawn_player = spawn_player

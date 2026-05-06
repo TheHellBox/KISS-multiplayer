@@ -21,17 +21,15 @@ local function draw()
       local vehicle = getObjectByID(vehicle_id)
       local distance = 0
 
-      local raw_transform = kissmp_transform.raw_transforms[player.current_vehicle]
+      local raw_pos = kissmp_transform.raw_positions[player.current_vehicle]
       if vehicle and vehicle:getActive() then
         vehicle_center:set(be:getObjectOOBBCenterXYZ(vehicle_id))
         vehicle_offset:set(be:getObjectOOBBHalfAxisXYZ(vehicle_id, 2))
 
         nametag_position:setAdd2(vehicle_center, vehicle_offset)
         distance = vehicle_center:distance(camera_pos)
-      elseif raw_transform then
-        local position = raw_transform.position
-        nametag_position:set(position[1], position[2], position[3])
-
+      elseif raw_pos then
+        nametag_position:set(raw_pos[1], raw_pos[2], raw_pos[3])
         distance = nametag_position:distance(camera_pos)
         nametag_position.z = nametag_position.z + 1.6
       end

@@ -15,6 +15,10 @@ function M.is_already_loaded(mod_list)
   return last_mounted_key == mod_set_key(mod_list)
 end
 
+function M.mark_as_loaded(mod_list)
+  last_mounted_key = mod_set_key(mod_list)
+end
+
 local function is_special_mod(mod_path)
   local special_mods = {kissmp_main.install_path, "translations.zip"}
   local mod_path_lower = string.lower(mod_path)
@@ -27,15 +31,18 @@ local function is_special_mod(mod_path)
 end
 
 local function build_app_mod_set()
-  local app_mods = {}
-  if extensions.core_modmanager and core_modmanager.getMods then
-    for _, mod in pairs(core_modmanager.getMods()) do
-      if mod.modType == "app" then
-        app_mods[mod.modName] = true
+  local set = {}
+  local pattern = "([^/]+)%.zip$"
+  for k, path in pairs(FS:findFiles("/mods/", "*.zip", 1000)) do
+    local name = string.match(path, pattern)
+    if name then
+      local mod = core_modmanager.getModDB(name)
+      if mod and mod.modType == "app" then
+        set[name] = true
       end
     end
   end
-  return app_mods
+  return set
 end
 
 local function is_app_mod_by_set(path, app_mod_set)
@@ -75,15 +82,21 @@ local function mount_mod(name)
     path = "/mods/"..name
     FS:mount(path)
   end
-  return path
+  if extensions.core_modmanager then
+    extensions.core_modmanager.workOffChangedMod(path, "added")
+  end
+  core_vehicles.clearCache()
 end
 
 local function mount_mods(list)
   local mounted_paths = {}
-  for _, mod in pairs(list) do
-    local filename = "/kissmp_mods/"..mod
-    if FS:isMounted(filename) then FS:unmount(filename) end
-    local path = mount_mod(mod)
+  for _, name in ipairs(list) do
+    local path = "/kissmp_mods/"..name
+    FS:mount(path)
+    if not FS:isMounted(path) then
+      path = "/mods/"..name
+      FS:mount(path)
+    end
     table.insert(mounted_paths, path)
   end
   if extensions.core_modmanager then
@@ -106,12 +119,7 @@ local function update_status(mod)
   if not search_results[1] then
     mod.status = "missing"
   else
-    local len = FS:stat(search_results[1]).filesize
-    if len ~= mod.size then
-      mod.status = "different"
-    else
-      mod.status = "ok"
-    end
+    mod.status = "ok"
   end
 end
 
@@ -145,7 +153,6 @@ local function open_file(name)
 end
 
 M.open_file = open_file
-M.check_mods = check_mods
 M.is_special_mod = is_special_mod
 M.mount_mod = mount_mod
 M.mount_mods = mount_mods

@@ -14,6 +14,7 @@
     "security.public_mods": true,
     "security.public_scripting": true,
     "ui.addr": "",
+    "ui.name": "Player",
     "ui.scale": 1,
     "ui.window_opacity": 0.8
   }
