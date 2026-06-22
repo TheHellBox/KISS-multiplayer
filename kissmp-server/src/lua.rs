@@ -250,6 +250,7 @@ impl Server {
             let globals = lua_ctx.globals();
             globals.set("SERVER_TICKRATE", self.tickrate)?;
             globals.set("SERVER_NAME", self.name.clone())?;
+            globals.set("SERVER_MAP", self.map.clone())?;
             globals.set("MAX_PLAYERS", self.max_players)?;
             globals.set("MAX_VEHICLES_PER_CLIENT", self.max_vehicles_per_client)?;
             Ok(())
