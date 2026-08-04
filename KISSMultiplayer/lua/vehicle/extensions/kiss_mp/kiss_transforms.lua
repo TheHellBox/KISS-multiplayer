@@ -248,10 +248,6 @@ local function draw_debug(synced_transform)
   obj.debugDrawProxy:drawSphere(0.3, synced_transform.position:toFloat3(), color(0,255,0,100))
   local current_pos = vec3(obj:getPosition())
   obj.debugDrawProxy:drawSphere(0.3, current_pos:toFloat3(), color(255,0,0,100))
-  local blend_progress = kiss_sync.get_blend_progress(M.sync_id, M.last_update_time or 0)
-  if blend_progress < 1.0 then
-    obj.debugDrawProxy:drawText("Blend: " .. math.floor(blend_progress * 100) .. "%", current_pos:toFloat3(), color(255,255,0,255))
-  end
 end
 
 local function update(dt)
@@ -474,15 +470,12 @@ local function set_target_transform(raw)
   local remote_ping = ((transform.ping_ms or 0) * 0.001)
   transform.time_offset = current_time - snapshot_timestamp - (own_ping * 0.5) - (remote_ping * 0.5) - (M.last_update_dt or 0)
   -- Prefer send_timer (sender-monotonic) over sent_at (sender wall-clock,
-  -- subject to cross-machine skew) when both are present. The blend
-  -- argument is left as 0; kiss_sync extrapolates forward and the PD
-  -- loop on this side handles motion smoothness; an additional snapshot
-  -- blend would only inject lag.
+  -- subject to cross-machine skew) when both are present.
   kiss_sync.apply_snapshot(
     M.sync_id, transform,
     snapshot_timestamp,
     transform.generation or 0,
-    current_time, 0
+    current_time
   )
 end
 
@@ -537,7 +530,7 @@ local function onExtensionLoaded()
     velocity = {0, 0, 0},
     angular_velocity = {0, 0, 0},
   }
-  kiss_sync.apply_snapshot(M.sync_id, initial_transform, current_time, 0, current_time, 0)
+  kiss_sync.apply_snapshot(M.sync_id, initial_transform, current_time, 0, current_time)
 
   clear_drift_state()
   M.rude_error_time = 0
