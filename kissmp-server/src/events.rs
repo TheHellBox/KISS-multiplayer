@@ -135,7 +135,6 @@ impl Server {
                                 vehicle.sent_at = data.sent_at;
                                 vehicle.send_timer = data.send_timer;
                                 vehicle.ping_ms = data.ping_ms;
-                                vehicle.send_dt = data.send_dt;
                             }
                             for (cid, client) in &mut self.connections {
                                 if *cid == client_id {
@@ -152,7 +151,6 @@ impl Server {
                                         sent_at: data.sent_at,
                                         send_timer: data.send_timer,
                                         ping_ms: data.ping_ms,
-                                        send_dt: data.send_dt,
                                     }))
                                     .await;
                             }

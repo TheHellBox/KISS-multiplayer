@@ -53,9 +53,6 @@ pub struct VehicleUpdate {
     /// Sender-side round-trip latency estimate in milliseconds.
     /// Optional for backward compatibility with older Lua clients.
     pub ping_ms: Option<f64>,
-    /// Sender-side frame interval included in the prediction-age estimate.
-    /// Optional for backward compatibility with older Lua clients.
-    pub send_dt: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

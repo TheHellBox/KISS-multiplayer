@@ -171,7 +171,6 @@ local function update_vehicle_transform(data)
   transform.sent_at = data.sent_at
   transform.send_timer = data.send_timer
   transform.ping_ms = data.ping_ms
-  transform.send_dt = data.send_dt
   transform.receiver_ping_ms = network.connection.rtt_smooth_ms or network.connection.ping or 0
 
   -- Normalize quaternion in place so all downstream consumers (vehicle-Lua

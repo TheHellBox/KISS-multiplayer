@@ -8,7 +8,6 @@ pub struct Vehicle {
     pub sent_at: f64,
     pub send_timer: Option<f64>,
     pub ping_ms: Option<f64>,
-    pub send_dt: Option<f64>,
     pub data: VehicleData,
 }
 
@@ -123,7 +122,6 @@ impl crate::Server {
                 sent_at: 0.0,
                 send_timer: None,
                 ping_ms: None,
-                send_dt: None,
             },
         );
 

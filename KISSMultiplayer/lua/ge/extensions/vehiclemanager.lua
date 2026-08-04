@@ -167,7 +167,6 @@ local function send_vehicle_update(obj)
     -- compatibility with older consumers.
     send_timer = t.send_timer or 0,
     ping_ms = (network.connection.rtt_smooth_ms or network.connection.ping or 0) + ((t.send_dt or 0) * 1000),
-    send_dt = t.send_dt or 0,
   }
   generation = generation + 1
   network.send_data(
