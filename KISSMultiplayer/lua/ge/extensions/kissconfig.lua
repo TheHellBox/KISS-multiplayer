@@ -1,16 +1,6 @@
 local M = {}
 local imgui = ui_imgui
 
-local function clamp_min(value, minimum)
-  if value == nil then return nil end
-  return math.max(minimum, value)
-end
-
-local function clamp_int_min(value, minimum)
-  if value == nil then return nil end
-  return math.max(minimum, math.floor(value))
-end
-
 local function generate_base_secret()
   math.randomseed(os.time() + os.clock())
   local result = ""
@@ -34,7 +24,7 @@ local function save_config()
     window_opacity = kissui.window_opacity[0],
     enable_view_distance = kissui.enable_view_distance[0],
     view_distance = kissui.view_distance[0],
-    base_secret_v2 = secret,
+    base_secret_v2 = secret
   }
   local file = io.open("./settings/kissmp_config.json", "w")
   file:write(jsonEncode(result))

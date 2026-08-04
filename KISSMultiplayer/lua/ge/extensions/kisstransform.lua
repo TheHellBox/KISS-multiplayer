@@ -69,24 +69,6 @@ local function queue_cog_snap(vehicle, transform)
   )
 end
 
--- Finite-number guard. Rejects NaN and +/-Inf by checking against a sane
--- world-coordinate range. Used to prevent garbage from flowing into
--- cluster pose application (BeamNG silently accepts NaN and then breaks the
--- vehicle) and as the common shape for future wire-side validation.
-local function is_finite_number(x)
-  if type(x) ~= "number" then return false end
-  -- NaN != NaN; also reject absurd magnitudes that indicate physics blow-up.
-  if x ~= x then return false end
-  if x > 1e8 or x < -1e8 then return false end
-  return true
-end
-
-local function is_finite_transform(position, rotation)
-  if #position < 3 or #rotation < 4 then return false end
-  return is_finite_number(position[1]) and is_finite_number(position[2]) and is_finite_number(position[3])
-    and is_finite_number(rotation[1]) and is_finite_number(rotation[2])
-    and is_finite_number(rotation[3]) and is_finite_number(rotation[4])
-end
 local function update(dt)
   if DEBUG_GLOBAL then
     print("[kisstransform.update] START dt=" .. tostring(dt) .. " received_transforms=" .. tostring(#M.received_transforms))
