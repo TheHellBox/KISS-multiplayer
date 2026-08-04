@@ -21,6 +21,16 @@ local function vec3_copy(v)
   return vec3(v.x, v.y, v.z)
 end
 
+local function quat_copy(q)
+  return quat(q.x, q.y, q.z, q.w)
+end
+
+local function quat_angle_between(a, b)
+  local dot = a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z
+  dot = math.abs(math.max(-1.0, math.min(1.0, dot)))
+  return 2.0 * math.acos(dot)
+end
+
 local function slerp_quaternion(q1, q2, t)
   local dot = q1.w * q2.w + q1.x * q2.x + q1.y * q2.y + q1.z * q2.z
   local q2_interp = q2
@@ -70,16 +80,21 @@ local MAX_PREDICT = 0.3   -- seconds; clamp on forward-extrapolation horizon
 local PACKET_TIMEOUT = 0.1 -- Stop correcting if packets stall
 local STALE_THRESHOLD = 2.0
 M.REMOTE_VEL_SMOOTH_RATE = 2.0
+M.REMOTE_ROTATION_SMOOTH_RATE = 8.0
 M.PREDICTION_OFFSET_S = 0.0
 local REMOTE_ACCELERATION_SMOOTH_RATE = 1.0
 local TIME_OFFSET_SMOOTH_RATE = 1.0
+local ROTATION_SMOOTH_SNAP_RAD = math.rad(35)
 
-local function set_smoothing_tuning(vel_rate, prediction_offset_s)
+local function set_smoothing_tuning(vel_rate, prediction_offset_s, rotation_rate)
   if type(vel_rate) == "number" then
     M.REMOTE_VEL_SMOOTH_RATE = math.max(0, vel_rate)
   end
   if type(prediction_offset_s) == "number" then
     M.PREDICTION_OFFSET_S = math.max(-0.08, math.min(prediction_offset_s, 0.08))
+  end
+  if type(rotation_rate) == "number" then
+    M.REMOTE_ROTATION_SMOOTH_RATE = math.max(0, rotation_rate)
   end
 end
 
@@ -108,6 +123,7 @@ local function create_sync_state(id)
     linear_acceleration  = vec3(0, 0, 0),
     smooth_velocity = nil,
     smooth_angular_velocity = nil,
+    smooth_rotation = nil,
     smooth_linear_acceleration = nil,
     last_raw_velocity = nil,
     last_smooth_time = 0,
@@ -211,6 +227,35 @@ local function extrapolate_transform(state, current_time)
     base_angular_velocity.z * t
   )
   local predicted_rotation = base.rotation * quatFromEuler(rotation_delta.x, rotation_delta.y, rotation_delta.z)
+  if M.REMOTE_ROTATION_SMOOTH_RATE > 0 then
+    if not state.smooth_rotation then
+      state.smooth_rotation = quat_copy(predicted_rotation)
+    else
+      -- Advance at the predicted angular rate first, then smooth only the
+      -- residual packet correction. This avoids steady heading lag in turns.
+      if frame_dt > 0 then
+        local smooth_delta = vec3(
+          base_angular_velocity.x * frame_dt,
+          base_angular_velocity.y * frame_dt,
+          base_angular_velocity.z * frame_dt
+        )
+        state.smooth_rotation = state.smooth_rotation * quatFromEuler(smooth_delta.x, smooth_delta.y, smooth_delta.z)
+      end
+      local rotation_error = quat_angle_between(state.smooth_rotation, predicted_rotation)
+      if rotation_error > ROTATION_SMOOTH_SNAP_RAD then
+        state.smooth_rotation = quat_copy(predicted_rotation)
+      elseif frame_dt > 0 then
+        state.smooth_rotation = slerp_quaternion(
+          state.smooth_rotation,
+          predicted_rotation,
+          math.min(M.REMOTE_ROTATION_SMOOTH_RATE * frame_dt, 1.0)
+        )
+      end
+    end
+    predicted_rotation = state.smooth_rotation
+  else
+    state.smooth_rotation = quat_copy(predicted_rotation)
+  end
 
   local predicted_angular_velocity = base_angular_velocity
 
@@ -276,6 +321,7 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
   if is_first_snapshot or is_stale then
     state.smooth_velocity = vec3_copy(authoritative.velocity)
     state.smooth_angular_velocity = vec3_copy(authoritative.angular_velocity)
+    state.smooth_rotation = quat_copy(authoritative.rotation)
     state.smooth_linear_acceleration = vec3(0, 0, 0)
   else
     local previous_raw_velocity = state.last_raw_velocity or state.base_transform.velocity
@@ -310,7 +356,7 @@ local function apply_snapshot(id, transform_data, timestamp, generation, current
 
   state.applied_transform = {
     position         = authoritative.position,
-    rotation         = authoritative.rotation,
+    rotation         = state.smooth_rotation or authoritative.rotation,
     velocity         = state.base_transform.velocity,
     angular_velocity = state.base_transform.angular_velocity,
   }
@@ -349,6 +395,7 @@ local function reset_motion_smoothers(id)
   state.linear_acceleration = vec3(0, 0, 0)
   state.smooth_velocity = vec3_copy(base.velocity)
   state.smooth_angular_velocity = vec3_copy(base.angular_velocity)
+  state.smooth_rotation = quat_copy(base.rotation)
   state.smooth_linear_acceleration = vec3(0, 0, 0)
   state.last_raw_velocity = vec3_copy(base.velocity)
   state.last_smooth_time = 0

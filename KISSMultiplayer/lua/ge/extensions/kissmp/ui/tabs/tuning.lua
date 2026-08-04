@@ -1,10 +1,11 @@
 local M = {}
 local imgui = ui_imgui
 
--- Receiver-side velocity smoothing rate (Hz cutoff) consumed by kiss_sync.lua.
--- Default must match kiss_sync.M.REMOTE_VEL_SMOOTH_RATE so the slider state
--- matches the vehicle-side state on first open.
+-- Receiver-side smoothing rates (Hz cutoff) consumed by kiss_sync.lua.
+-- Defaults must match kiss_sync.lua so the slider state matches the
+-- vehicle-side state on first open.
 local vel_rate = imgui.FloatPtr(2.0)
+local rotation_rate = imgui.FloatPtr(8.0)
 local prediction_offset_ms = imgui.FloatPtr(0.0)
 local linear_pull_scale = imgui.FloatPtr(1.0)
 local angular_pull_scale = imgui.FloatPtr(0.65)
@@ -14,9 +15,10 @@ local teleport_reset_delay_ms = imgui.FloatPtr(500.0)
 
 local function build_command()
   return string.format(
-    "kiss_sync.set_smoothing_tuning(%f, %f); kiss_motion_controller.set_linear_pull_scale(%f); kiss_motion_controller.set_angular_pull_scale(%f)",
+    "kiss_sync.set_smoothing_tuning(%f, %f, %f); kiss_motion_controller.set_linear_pull_scale(%f); kiss_motion_controller.set_angular_pull_scale(%f)",
     vel_rate[0],
     prediction_offset_ms[0] * 0.001,
+    rotation_rate[0],
     linear_pull_scale[0],
     angular_pull_scale[0]
   )
@@ -53,13 +55,16 @@ end
 
 local function draw()
   imgui.PushTextWrapPos(0)
-  imgui.Text("Receiver-side velocity smoothing.")
+  imgui.Text("Receiver-side smoothing.")
   imgui.Text("Higher = tracks new packets faster, less smoothing.")
   imgui.Text("Lower = heavier smoothing, more lag.")
   imgui.PopTextWrapPos()
   imgui.Separator()
 
   if imgui.SliderFloat("Velocity smooth rate", vel_rate, 0.0, 30.0, "%.1f Hz") then
+    push_to_all_vehicles()
+  end
+  if imgui.SliderFloat("Rotation smooth rate", rotation_rate, 0.0, 30.0, "%.1f Hz") then
     push_to_all_vehicles()
   end
   if imgui.SliderFloat("Prediction offset", prediction_offset_ms, -80.0, 80.0, "%.0f ms") then
