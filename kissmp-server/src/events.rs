@@ -136,7 +136,6 @@ impl Server {
                                 vehicle.send_timer = data.send_timer;
                                 vehicle.ping_ms = data.ping_ms;
                                 vehicle.send_dt = data.send_dt;
-                                vehicle.cluster_nodes = data.cluster_nodes.clone();
                             }
                             for (cid, client) in &mut self.connections {
                                 if *cid == client_id {
@@ -149,13 +148,11 @@ impl Server {
                                         electrics: data.electrics.clone(),
                                         gearbox: data.gearbox.clone(),
                                         vehicle_id: server_id,
-                                        component_id: server_id,
                                         generation: data.generation,
                                         sent_at: data.sent_at,
                                         send_timer: data.send_timer,
                                         ping_ms: data.ping_ms,
                                         send_dt: data.send_dt,
-                                        cluster_nodes: data.cluster_nodes.clone(),
                                     }))
                                     .await;
                             }

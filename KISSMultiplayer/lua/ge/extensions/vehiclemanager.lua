@@ -161,7 +161,6 @@ local function send_vehicle_update(obj)
     electrics = t.input,
     gearbox = t.gearbox,
     vehicle_id = obj:getID(),
-    component_id = obj:getID(),
     generation = generation,
     sent_at = get_current_time(),
     -- Sender-monotonic timer for receiver-side prediction. sent_at stays for

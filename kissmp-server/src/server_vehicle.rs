@@ -9,7 +9,6 @@ pub struct Vehicle {
     pub send_timer: Option<f64>,
     pub ping_ms: Option<f64>,
     pub send_dt: Option<f64>,
-    pub cluster_nodes: Option<ClusterNodes>,
     pub data: VehicleData,
 }
 
@@ -125,7 +124,6 @@ impl crate::Server {
                 send_timer: None,
                 ping_ms: None,
                 send_dt: None,
-                cluster_nodes: None,
             },
         );
 
