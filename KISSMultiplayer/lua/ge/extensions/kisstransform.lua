@@ -197,9 +197,9 @@ local function update_vehicle_transform(data)
   -- COG-aware recovery snaps) see a unit quaternion.
   local r = transform.rotation
   if r and #r >= 4 then
-    local n = math.sqrt(rotation[1]*rotation[1] + rotation[2]*rotation[2] + rotation[3]*rotation[3] + rotation[4]*rotation[4])
+    local n = math.sqrt(r[1]*r[1] + r[2]*r[2] + r[3]*r[3] + r[4]*r[4])
     if n > 1e-9 then
-      rotation[1], rotation[2], rotation[3], rotation[4] = rotation[1]/n, rotation[2]/n, rotation[3]/n, rotation[4]/n
+      r[1], r[2], r[3], r[4] = r[1]/n, r[2]/n, r[3]/n, r[4]/n
     end
   end
 
