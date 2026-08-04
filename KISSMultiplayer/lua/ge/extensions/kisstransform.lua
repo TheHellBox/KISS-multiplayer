@@ -61,7 +61,7 @@ local function queue_cog_snap(vehicle, transform)
   local angular_velocity = transform.angular_velocity or {0, 0, 0}
   if not (position and rotation and #position >= 3 and #rotation >= 4) then return end
   queue_kiss_command(vehicle,
-    "kiss_transforms.snap_to_cog_target("
+    "kiss_motion_controller.snap_to_cog_target("
     ..position[1]..","..position[2]..","..position[3]..","
     ..rotation[1]..","..rotation[2]..","..rotation[3]..","..rotation[4]..","
     ..(velocity[1] or 0)..","..(velocity[2] or 0)..","..(velocity[3] or 0)..","
@@ -154,7 +154,7 @@ local function update(dt)
         if DEBUG_GLOBAL then
           print("[kisstransform.update] QUEUING update for vehicle " .. tostring(id))
         end
-        -- Per-frame correction runs from kiss_transforms.updateGFX inside
+        -- Per-frame correction runs from kiss_motion_controller.updateGFX inside
         -- vehicle Lua. GE only handles activity/view-distance state here.
       end
     end
@@ -192,9 +192,9 @@ local function update_vehicle_transform(data)
   local vehicle = be:getObjectByID(id)
   if vehicle and (not M.inactive[id]) then
     -- Packet arrival hands the new authoritative COG pose to kiss_sync.
-    -- Application happens per-frame from kiss_transforms.update(dt), not on
+    -- Application happens per-frame from kiss_motion_controller.update(dt), not on
     -- packet arrival.
-    queue_kiss_command(vehicle, "kiss_transforms.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
+    queue_kiss_command(vehicle, "kiss_motion_controller.set_target_transform(" .. string.format("%q", jsonEncode(transform)) .. ")")
   end
 end
 

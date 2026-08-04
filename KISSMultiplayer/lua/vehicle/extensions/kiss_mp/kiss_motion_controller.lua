@@ -1,4 +1,4 @@
--- KissMP Transforms - COG-space cluster replay.
+-- KissMP motion controller - COG-space cluster replay.
 
 local M = {}
 
@@ -256,7 +256,7 @@ local function update(dt)
   end
 
   if M.debug and dt <= 0.1 then
-    print("[kiss_transforms.update] obj=" .. tostring(obj) .. " id=" .. tostring(obj:getID()) .. " sync_id=" .. tostring(M.sync_id) .. " dt=" .. tostring(dt))
+    print("[kiss_motion_controller.update] obj=" .. tostring(obj) .. " id=" .. tostring(obj:getID()) .. " sync_id=" .. tostring(M.sync_id) .. " dt=" .. tostring(dt))
   end
 
   if M.cooldown_timer > 0 then
@@ -266,7 +266,7 @@ local function update(dt)
 
   if dt > 0.1 then
     if M.debug then
-      print("[kiss_transforms.update] BLOCKED by large dt: " .. dt)
+      print("[kiss_motion_controller.update] BLOCKED by large dt: " .. dt)
     end
     return
   end
@@ -276,20 +276,20 @@ local function update(dt)
   M.last_update_dt = dt
 
   if M.debug then
-    print("[kiss_transforms.update] current_time=" .. current_time .. " calling get_synced_transform")
+    print("[kiss_motion_controller.update] current_time=" .. current_time .. " calling get_synced_transform")
   end
 
   local synced_transform = get_synced_transform(current_time)
 
   if not synced_transform then
     if M.debug then
-      print("[kiss_transforms.update] BLOCKED: get_synced_transform returned nil")
+      print("[kiss_motion_controller.update] BLOCKED: get_synced_transform returned nil")
     end
     return
   end
 
   if M.debug then
-    print("[kiss_transforms.update] Got synced_transform pos=(" .. synced_transform.position.x .. "," .. synced_transform.position.y .. "," .. synced_transform.position.z .. ")")
+    print("[kiss_motion_controller.update] Got synced_transform pos=(" .. synced_transform.position.x .. "," .. synced_transform.position.y .. "," .. synced_transform.position.z .. ")")
   end
 
   -- Owner-replay path: heading comes directly from the predicted owner body
@@ -301,7 +301,7 @@ local function update(dt)
 
   if try_rude(target_cog_position, target_cluster_rotation, target_cog_velocity, target_cluster_angular_velocity, dt) then
     if M.debug then
-      print("[kiss_transforms.update] try_rude triggered - rude-snap reset applied")
+      print("[kiss_motion_controller.update] try_rude triggered - rude-snap reset applied")
       draw_debug(synced_transform)
     end
     return

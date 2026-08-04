@@ -4,7 +4,7 @@
 -- position/velocity/rotation/angular-velocity (no acceleration); we derive
 -- acceleration from velocity deltas across consecutive packets and use it
 -- in a constant-acceleration extrapolation model so the consumer (the PD
--- loop in kiss_transforms.update) chases where the sender IS NOW, not where
+-- loop in kiss_motion_controller.update) chases where the sender IS NOW, not where
 -- the sender WAS when the packet was sent.
 --
 local M = {}

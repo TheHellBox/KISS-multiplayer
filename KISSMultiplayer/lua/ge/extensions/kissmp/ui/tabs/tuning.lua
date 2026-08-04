@@ -14,7 +14,7 @@ local teleport_reset_delay_ms = imgui.FloatPtr(500.0)
 
 local function build_command()
   return string.format(
-    "kiss_sync.set_smoothing_tuning(%f, %f); kiss_transforms.set_linear_pull_scale(%f); kiss_transforms.set_angular_pull_scale(%f)",
+    "kiss_sync.set_smoothing_tuning(%f, %f); kiss_motion_controller.set_linear_pull_scale(%f); kiss_motion_controller.set_angular_pull_scale(%f)",
     vel_rate[0],
     prediction_offset_ms[0] * 0.001,
     linear_pull_scale[0],

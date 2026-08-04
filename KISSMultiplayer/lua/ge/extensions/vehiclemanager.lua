@@ -559,7 +559,7 @@ local function reset_vehicle(data)
       rotation[3],
       rotation[4]
     )
-    kisstransform.queue_kiss_command(vehicle, string.format("kiss_transforms.post_teleport_cooldown(%f)", REMOTE_TELEPORT_COOLDOWN))
+    kisstransform.queue_kiss_command(vehicle, string.format("kiss_motion_controller.post_teleport_cooldown(%f)", REMOTE_TELEPORT_COOLDOWN))
   end
 end
 
