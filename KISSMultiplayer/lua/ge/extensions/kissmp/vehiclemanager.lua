@@ -293,12 +293,10 @@ local function spawn_vehicle(server_data)
       string_buffer.encode(controllers.diff)))
   end
 end
-
+-- Defer deletion until the next tick, so that the deleted unicycle ID does not get used
 local function queue_unicycle_cleanup(except_id)
   for vid, vehicle in vehiclesIterator() do
     if vehicle:getJBeamFilename() == "unicycle" and vid ~= except_id then
-      -- Defer deletion until the current vehicle callback has returned. The
-      -- walking extension can still use its old vehicle reference at that point.
       pending_unicycle_cleanup[vid] = true
     end
   end
