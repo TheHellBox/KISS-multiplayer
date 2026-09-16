@@ -8,6 +8,7 @@ local meta_timer = 0
 local colors_buffer = {}
 local plates_buffer = {}
 local first_vehicle = true
+local pending_unicycle_cleanup = {}
 
 M.id_map = {}
 M.server_ids = {}
@@ -292,9 +293,29 @@ local function spawn_vehicle(server_data)
       string_buffer.encode(controllers.diff)))
   end
 end
+-- Defers unicycle deletion until the next tick, as the game still refers to the to-be deleted ID in the current tick
+local function queue_unicycle_cleanup(except_id)
+  for vid, vehicle in vehiclesIterator() do
+    if vehicle:getJBeamFilename() == "unicycle" and vid ~= except_id then
+      pending_unicycle_cleanup[vid] = true
+    end
+  end
+end
+
+local function cleanup_pending_unicycles()
+  for id in pairs(pending_unicycle_cleanup) do
+    local vehicle = getObjectByID(id)
+    if vehicle and vehicle:getJBeamFilename() == "unicycle" then
+      vehicle:delete()
+    end
+    pending_unicycle_cleanup[id] = nil
+  end
+end
 
 local function onUpdate(dt)
   camera_pos:set(core_camera.getPositionXYZ())
+
+  cleanup_pending_unicycles()
 
   -- Track color and plate changes
   meta_timer = meta_timer + dt
@@ -579,11 +600,7 @@ local function onVehicleSpawned(id)
   send_vehicle_config(id)
   -- Attempt to workaround a bug from latest beamng update. Also prevents unicycle cloning(Somewhat)
   if vehicle:getJBeamFilename() == "unicycle" then
-    for vid, v in vehiclesIterator() do
-      if v:getJBeamFilename() == "unicycle" and vid ~= vehicle:getID() then
-        v:delete()
-      end
-    end
+    queue_unicycle_cleanup(vehicle:getID())
   end
 end
 
@@ -616,11 +633,7 @@ local function onVehicleResetted(id)
 end
 
 local function onVehicleSwitched(_id, new_id)
-  for vid, v in vehiclesIterator() do
-    if v:getJBeamFilename() == "unicycle" and vid ~= new_id then
-      v:delete()
-    end
-  end
+  queue_unicycle_cleanup(new_id)
   if M.ownership[new_id] then
     kissmp_network.send_data(
       {
