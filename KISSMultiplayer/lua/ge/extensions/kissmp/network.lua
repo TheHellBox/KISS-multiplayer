@@ -270,19 +270,19 @@ local function generate_secret(server_identifier)
 end
 
 local function connect(addr, player_name, is_public)
-  M.is_server_public = is_public or false
-  public_scripting = kissmp_config.get_setting("security.public_scripting")
-  public_mods = kissmp_config.get_setting("security.public_mods")
-
-  kissmp_main.load_connected_extensions()
-  set_runtime_message_handlers()
-
   if M.connection.connected then
     disconnect()
   elseif M.connection.tcp then
     M.connection.tcp:close()
     M.connection.tcp = nil
   end
+
+  M.is_server_public = is_public or false
+  public_scripting = kissmp_config.get_setting("security.public_scripting")
+  public_mods = kissmp_config.get_setting("security.public_mods")
+
+  kissmp_main.load_connected_extensions()
+  set_runtime_message_handlers()
 
   M.download_start_time = 0
   M.download_queue = {}
