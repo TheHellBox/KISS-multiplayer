@@ -133,7 +133,8 @@ impl Server {
         destroyer: tokio::sync::oneshot::Receiver<()>,
         setup_result: Option<tokio::sync::oneshot::Sender<ServerSetupResult>>,
     ) {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
+        // let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
+        let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), self.port);
         info!("Server is starting on {}", addr);
         if self.upnp_enabled {
             if let Some(port) = upnp_pf(self.port) {
@@ -193,7 +194,16 @@ impl Server {
 
         server_config.transport = std::sync::Arc::new(transport);
 
-        let endpoint = quinn::Endpoint::server(server_config, addr).unwrap();
+        let server_socket = UdpSocket::bind(addr).unwrap();
+        let _ = server_socket.set_only_v6(false);
+
+        let endpoint = quinn::Endpoint::new(
+            quinn::EndpointConfig::default(),
+            Some(server_config),
+            server_socket,
+            Arc::new(quinn::TokioRuntime),
+        )
+        .unwrap();
         info!("Server is listening on {}", addr);
 
         let (client_events_tx, client_events_rx) = mpsc::channel(128);

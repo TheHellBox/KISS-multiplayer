@@ -125,9 +125,25 @@ async fn connect_to_server(
 
         client_cfg.transport_config(Arc::new(transport));
 
-        let mut endpoint = quinn::Endpoint::client(
+        let local_bind_addr = if addr.is_ipv6() {
+            SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0)
+        } else {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)
-        ).unwrap();
+        };
+
+        let socket = std::net::UdpSocket::bind(local_bind_addr).unwrap();
+        if local_bind_addr.is_ipv6() {
+            let _ = socket.set_only_v6(false);
+        }
+
+        let mut endpoint = quinn::Endpoint::new(
+            quinn::EndpointConfig::default(),
+            None,
+            socket,
+            Arc::new(quinn::TokioRuntime),
+        )
+        .unwrap();
+
         endpoint.set_default_client_config(client_cfg);
         endpoint
     };
