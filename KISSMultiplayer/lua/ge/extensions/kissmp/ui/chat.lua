@@ -141,7 +141,6 @@ local function draw()
     if imgui.Button("Send", imgui.ImVec2(button_width, -1)) then
       send_current_chat_message()
     end
-    imgui.PopItemWidth()
   end
   imgui.End()
   imgui.PopStyleVar()
