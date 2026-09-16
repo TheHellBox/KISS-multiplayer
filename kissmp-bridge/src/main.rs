@@ -125,9 +125,11 @@ async fn connect_to_server(
 
         client_cfg.transport_config(Arc::new(transport));
 
-        let mut endpoint = quinn::Endpoint::client(
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)
-        ).unwrap();
+        let local_addr = match addr {
+            SocketAddr::V4(_) => SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            SocketAddr::V6(_) => SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0),
+        };
+        let mut endpoint = quinn::Endpoint::client(local_addr).unwrap();
         endpoint.set_default_client_config(client_cfg);
         endpoint
     };
