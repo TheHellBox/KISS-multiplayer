@@ -21,7 +21,7 @@ use futures::{select, StreamExt, TryStreamExt};
 use log::{error, info, warn, debug};
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -133,14 +133,14 @@ impl Server {
         destroyer: tokio::sync::oneshot::Receiver<()>,
         setup_result: Option<tokio::sync::oneshot::Sender<ServerSetupResult>>,
     ) {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
+        let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), self.port);
         info!("Server is starting on {}", addr);
         if self.upnp_enabled {
             if let Some(port) = upnp_pf(self.port) {
                 info!("uPnP mapping succeeded. Port: {}", port);
                 self.upnp_port = Some(port);
                 info!("Fetching public IP address...");
-                let socket = UdpSocket::bind(&addr).unwrap();
+                let socket = UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)).unwrap();
                 let _ = socket.connect(format!("{}:3691", shared::MASTER_SERVER));
                 let mut i = 0;
                 while i < 5 {
@@ -193,7 +193,19 @@ impl Server {
 
         server_config.transport = std::sync::Arc::new(transport);
 
-        let endpoint = quinn::Endpoint::server(server_config, addr).unwrap();
+        let server_socket = {
+            let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, Some(socket2::Protocol::UDP)).unwrap();
+            socket.set_only_v6(false).unwrap();
+            socket.bind(&addr.into()).unwrap();
+            socket.into()
+        };
+        let endpoint = quinn::Endpoint::new(
+            quinn::EndpointConfig::default(),
+            Some(server_config),
+            server_socket,
+            Arc::new(quinn::TokioRuntime),
+        )
+        .unwrap();
         info!("Server is listening on {}", addr);
 
         let (client_events_tx, client_events_rx) = mpsc::channel(128);
