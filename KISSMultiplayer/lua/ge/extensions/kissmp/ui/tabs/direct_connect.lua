@@ -16,7 +16,7 @@ local function save_history()
 end
 
 local function load_history()
-  local json_history = jsonReadFile("/settings/kissmp_directcon_history.json")
+  local json_history = jsonReadFile(PATH_HISTORY)
   if json_history then
     M.direct_history = json_history
   end
