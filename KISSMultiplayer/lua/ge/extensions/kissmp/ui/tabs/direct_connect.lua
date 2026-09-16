@@ -22,7 +22,6 @@ local function load_history()
   end
 end
 
-
 local function update_history_for_addr(addr)
   for i = #M.direct_history, 1, -1 do
     if M.direct_history[i].addr == addr then
