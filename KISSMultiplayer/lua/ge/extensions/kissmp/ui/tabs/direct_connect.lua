@@ -12,7 +12,7 @@ local function trim(s)
 end
 
 local function save_history()
-  jsonWriteFile("/settings/kissmp_directcon_history.json", M.direct_history, true)
+  jsonWriteFile(PATH_HISTORY, M.direct_history, true)
 end
 
 local function load_history()
