@@ -293,7 +293,7 @@ local function spawn_vehicle(server_data)
       string_buffer.encode(controllers.diff)))
   end
 end
--- Defer deletion until the next tick, so that the deleted unicycle ID does not get used
+-- Defers unicycle deletion until the next tick, as the game still refers to the to-be deleted ID in the current tick
 local function queue_unicycle_cleanup(except_id)
   for vid, vehicle in vehiclesIterator() do
     if vehicle:getJBeamFilename() == "unicycle" and vid ~= except_id then
