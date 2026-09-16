@@ -41,6 +41,13 @@ local function update_history_for_addr(addr)
   save_history()
 end
 
+local function connect_to_server(addr)
+  local player_name = ffi.string(kissmp_ui.player_name)
+  kissmp_config.set_setting("ui.name", player_name)
+  kissmp_config.set_setting("ui.addr", addr)
+  kissmp_network.connect(addr, player_name, false)
+end
+
 local function draw()
   imgui.Text("Server address:")
   imgui.InputText("##addr", kissmp_ui.addr)
@@ -51,10 +58,7 @@ local function draw()
     if addr:len() > 0 then
       update_history_for_addr(addr)
     end
-    local player_name = ffi.string(kissmp_ui.player_name)
-    kissmp_config.set_setting("ui.name", player_name)
-    kissmp_config.set_setting("ui.addr", addr)
-    kissmp_network.connect(addr, player_name, false)
+    connect_to_server(addr)
   end
 
   imgui.Spacing()
@@ -67,15 +71,26 @@ local function draw()
   else
     for i = 1, #M.direct_history do
       local entry = M.direct_history[i]
-      if imgui.Button("X##" .. i, imgui.ImVec2(20, 0)) then
+      local close_button_width = 20
+      if imgui.Button("X##" .. i, imgui.ImVec2(close_button_width, 0)) then
         table.remove(M.direct_history, i)
         history_index = nil
         save_history()
         break
       end
+
       imgui.SameLine()
+
       local label = entry.addr .. "###direct_connect_history_" .. i
-      if imgui.Selectable1(label, history_index == i) then
+      local content_width = imgui.GetWindowContentRegionWidth()
+
+      imgui.PushStyleVar2(imgui.StyleVar_ButtonTextAlign, imgui.ImVec2(0.0, 0.5))
+      local clicked = imgui.Button(label, imgui.ImVec2(content_width / 2 - close_button_width, 0))
+      imgui.PopStyleVar() 
+      
+      if imgui.IsItemHovered() and imgui.IsMouseDoubleClicked(0) then
+        connect_to_server(entry.addr)
+      elseif clicked then
         kissmp_ui.addr = imgui.ArrayChar(128, entry.addr)
         history_index = i
       end
