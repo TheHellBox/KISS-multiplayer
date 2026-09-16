@@ -1,3 +1,5 @@
+local PATH_HISTORY = "/settings/kissmp_directcon_history.json"
+
 local M = {}
 local imgui = ui_imgui
 
